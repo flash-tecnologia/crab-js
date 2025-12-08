@@ -19,13 +19,19 @@ import { nanoid } from 'nanoid'
 import { Buffer } from 'node:buffer'
 import { KafkaClient } from '../dist/index.js'
 
-// OpenTelemetry SDK imports
+// OpenTelemetry SDK imports (mix of ESM and CommonJS)
 import { context, SpanStatusCode, trace } from '@opentelemetry/api'
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
-import { Resource } from '@opentelemetry/resources'
-import { NodeSDK } from '@opentelemetry/sdk-node'
-import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node'
-import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
+import otlpTracePkg from '@opentelemetry/exporter-trace-otlp-http'
+import resourcesPkg from '@opentelemetry/resources'
+import sdkNodePkg from '@opentelemetry/sdk-node'
+import traceNodePkg from '@opentelemetry/sdk-trace-node'
+import semconvPkg from '@opentelemetry/semantic-conventions'
+
+const { OTLPTraceExporter } = otlpTracePkg
+const { resourceFromAttributes } = resourcesPkg
+const { NodeSDK } = sdkNodePkg
+const { ConsoleSpanExporter } = traceNodePkg
+const { SEMRESATTRS_SERVICE_NAME } = semconvPkg
 
 process.env.NAPI_RS_TOKIO_RUNTIME = '1'
 
@@ -46,7 +52,7 @@ const traceExporter = process.env.OTEL_EXPORTER_TYPE === 'otlp'
   : new ConsoleSpanExporter()
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [SEMRESATTRS_SERVICE_NAME]: 'kafka-crab-otel-example',
   }),
   traceExporter,

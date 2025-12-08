@@ -24,10 +24,14 @@ import { nanoid } from 'nanoid'
 import { Buffer } from 'node:buffer'
 import { KafkaClient } from '../dist/index.js'
 
-// OpenTelemetry SDK imports
-import { Resource } from '@opentelemetry/resources'
-import { ConsoleMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
-import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
+// OpenTelemetry SDK imports (CommonJS modules, need default import)
+import resourcesPkg from '@opentelemetry/resources'
+import metricsPkg from '@opentelemetry/sdk-metrics'
+import semconvPkg from '@opentelemetry/semantic-conventions'
+
+const { resourceFromAttributes } = resourcesPkg
+const { ConsoleMetricExporter, MeterProvider, PeriodicExportingMetricReader } = metricsPkg
+const { SEMRESATTRS_SERVICE_NAME } = semconvPkg
 
 process.env.NAPI_RS_TOKIO_RUNTIME = '1'
 
@@ -39,7 +43,7 @@ console.log('🔧 Configuring OpenTelemetry Metrics...\n')
 
 // Create a MeterProvider with ConsoleMetricExporter
 const meterProvider = new MeterProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [SEMRESATTRS_SERVICE_NAME]: 'kafka-crab-metrics-example',
   }),
   readers: [
