@@ -2,6 +2,7 @@ import {
   type Attributes,
   type Context,
   context,
+  diag,
   propagation,
   type Span,
   SpanKind,
@@ -10,7 +11,12 @@ import {
   type Tracer,
 } from '@opentelemetry/api'
 import type { Message, ProducerRecord } from '../../js-binding.js'
-import { KAFKA_DEFAULTS, KAFKA_SEMANTIC_CONVENTIONS } from './constants.js'
+import {
+  KAFKA_DEFAULTS,
+  KAFKA_OPERATION_NAMES,
+  KAFKA_OPERATION_TYPES,
+  KAFKA_SEMANTIC_CONVENTIONS,
+} from './constants.js'
 
 // Safely get tracer
 export function getTracer(name: string, version?: string) {
@@ -30,24 +36,60 @@ export function setSpanStatus(span: Span, error?: Error): void {
   }
 }
 
-// Extract common Kafka attributes from message
-export function getMessageAttributes(message: Message, operation: string): Attributes {
+// Extract common Kafka attributes from message for consumer spans
+// https://opentelemetry.io/docs/specs/semconv/messaging/kafka/
+export function getMessageAttributes(
+  message: Message,
+  operationName: string,
+  operationType: string,
+  clientId?: string,
+  serverAddress?: string,
+  serverPort?: number,
+): Attributes {
   const attributes: Attributes = {
+    // Required attributes - SHOULD be provided at span creation time
     [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM]: KAFKA_DEFAULTS.MESSAGING_SYSTEM,
+    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME]: operationName,
+    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_TYPE]: operationType,
     [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME]: message.topic,
-    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_KIND]: KAFKA_DEFAULTS.DESTINATION_KIND,
-    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME]: operation,
-    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_PARTITION]: message.partition,
-    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET]: message.offset,
   }
 
-  // Add optional attributes if present
+  // Recommended: client ID
+  if (clientId) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID] = clientId
+  }
+
+  // Conditionally Required: server address and port (when available)
+  if (serverAddress) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_ADDRESS] = serverAddress
+  }
+  if (serverPort !== undefined && serverPort !== null) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_PORT] = serverPort
+  }
+
+  // Recommended: partition ID as string
+  if (message.partition !== undefined && message.partition !== null) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] = String(message.partition)
+  }
+
+  // Recommended: offset (for single message operations)
+  if (message.offset !== undefined && message.offset !== null) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET] = message.offset
+  }
+
+  // Recommended: message key (for single message operations)
   if (message.key !== null && message.key !== undefined) {
     attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY] = typeof message.key === 'string'
       ? message.key
       : String(message.key)
   }
 
+  // Conditionally Required: tombstone detection
+  if (message.payload === null || message.payload === undefined) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_TOMBSTONE] = true
+  }
+
+  // Opt-In: message body size (for single message operations)
   if (message.payload) {
     let payloadSize: number
     if (Buffer.isBuffer(message.payload)) {
@@ -64,29 +106,58 @@ export function getMessageAttributes(message: Message, operation: string): Attri
 }
 
 // Extract common Kafka attributes from producer record
-export function getProducerRecordAttributes(record: ProducerRecord, operation: string): Attributes {
+// https://opentelemetry.io/docs/specs/semconv/messaging/kafka/
+export function getProducerRecordAttributes(
+  record: ProducerRecord,
+  operationName: string,
+  operationType: string,
+  clientId?: string,
+  serverAddress?: string,
+  serverPort?: number,
+): Attributes {
   const attributes: Attributes = {
+    // Required attributes - SHOULD be provided at span creation time
     [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM]: KAFKA_DEFAULTS.MESSAGING_SYSTEM,
+    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME]: operationName,
+    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_TYPE]: operationType,
     [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME]: record.topic,
-    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_KIND]: KAFKA_DEFAULTS.DESTINATION_KIND,
-    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME]: operation,
   }
 
-  // Add message count
+  // Recommended: client ID
+  if (clientId) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID] = clientId
+  }
+
+  // Conditionally Required: server address and port (when available)
+  if (serverAddress) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_ADDRESS] = serverAddress
+  }
+  if (serverPort !== undefined && serverPort !== null) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_PORT] = serverPort
+  }
+
+  // Add batch message count (always for producer spans per semantic conventions)
   if (record.messages && record.messages.length > 0) {
     attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] = record.messages.length
+  }
 
-    // Use first message for key and payload size
+  // For single message, add message-specific attributes
+  if (record.messages && record.messages.length === 1) {
     const [firstMessage] = record.messages
 
-    // Add key if present
+    // Recommended: message key
     if (firstMessage.key !== null && firstMessage.key !== undefined) {
       attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY] = Buffer.isBuffer(firstMessage.key)
         ? firstMessage.key.toString()
         : String(firstMessage.key)
     }
 
-    // Add payload size if present
+    // Conditionally Required: tombstone detection
+    if (firstMessage.payload === null || firstMessage.payload === undefined) {
+      attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_TOMBSTONE] = true
+    }
+
+    // Opt-In: message body size
     if (firstMessage.payload) {
       let payloadSize: number
       if (Buffer.isBuffer(firstMessage.payload)) {
@@ -103,85 +174,77 @@ export function getProducerRecordAttributes(record: ProducerRecord, operation: s
   return attributes
 }
 
-// Convert Buffer headers to string headers for trace context injection
-function convertBufferHeaders(
-  bufferHeaders: Record<string, Buffer> = {},
-): Record<string, string | string[] | undefined> {
-  const stringHeaders: Record<string, string | string[] | undefined> = {}
-  for (const [key, value] of Object.entries(bufferHeaders)) {
-    stringHeaders[key] = value.toString('utf8')
-  }
-  return stringHeaders
-}
+// Type for header values that can be passed to/from the instrumentation layer
+export type HeaderValue = Buffer | string | string[] | undefined
 
-// Convert string headers back to Buffer headers
-function convertToBufferHeaders(stringHeaders: Record<string, string | string[] | undefined>): Record<string, Buffer> {
-  const bufferHeaders: Record<string, Buffer> = {}
-  for (const [key, value] of Object.entries(stringHeaders)) {
-    if (value !== undefined) {
-      const stringValue = Array.isArray(value) ? value.join(',') : value
-      bufferHeaders[key] = Buffer.from(stringValue, 'utf8')
-    }
-  }
-  return bufferHeaders
-}
-
-export type KafkaHeaderValue = Buffer | string | string[] | undefined
-export type KafkaHeaderCarrier = Record<string, KafkaHeaderValue>
-
-// Inject trace context into Kafka headers (works with both string and Buffer headers)
+// Inject trace context into Kafka headers
+// Note: This function mutates the headers object in place
+// Accepts both Kafka's native Buffer headers and plain objects for flexibility
+// Returns original headers unchanged if injection fails to prevent instrumentation from breaking
 export function injectTraceContext(
-  headers: KafkaHeaderCarrier = {},
+  headers: Record<string, HeaderValue> = {},
   ctx?: Context,
-): KafkaHeaderCarrier {
-  const activeContext = ctx || context.active()
-  const headerEntries = Object.entries(headers)
-  const hasBufferValues = headerEntries.some(([, value]) => Buffer.isBuffer(value))
+): Record<string, HeaderValue> {
+  try {
+    const activeContext = ctx || context.active()
 
-  // Convert Buffer headers to string headers if needed
-  if (hasBufferValues) {
-    const bufferCarrier = headers as Record<string, Buffer>
-    const stringHeaders = convertBufferHeaders(bufferCarrier)
+    // Convert existing headers to string format for OpenTelemetry propagation
+    const stringHeaders: Record<string, string | string[] | undefined> = {}
+    for (const [key, value] of Object.entries(headers)) {
+      if (value === undefined || value === null) {
+        stringHeaders[key] = undefined
+      } else if (Buffer.isBuffer(value)) {
+        stringHeaders[key] = value.toString('utf8')
+      } else if (Array.isArray(value)) {
+        stringHeaders[key] = value
+      } else {
+        stringHeaders[key] = String(value)
+      }
+    }
 
+    // Inject trace context using OpenTelemetry propagation API
     propagation.inject(activeContext, stringHeaders, {
       set: (carrier: Record<string, string | string[] | undefined>, key: string, value: string) => {
         carrier[key] = value
       },
     })
 
-    const bufferHeaders = convertToBufferHeaders(stringHeaders)
-
-    for (const [key, value] of Object.entries(bufferHeaders)) {
-      bufferCarrier[key] = value
+    // Mutate original headers object with injected trace context
+    // Keep the same type format as the input (Buffer headers stay as Buffer)
+    const inputHasBuffers = Object.values(headers).some((headerValue) => Buffer.isBuffer(headerValue))
+    for (const [key, value] of Object.entries(stringHeaders)) {
+      if (value !== undefined) {
+        if (inputHasBuffers) {
+          // Convert back to Buffer for Kafka native binding compatibility
+          const stringValue = Array.isArray(value) ? value.join(',') : value
+          headers[key] = Buffer.from(stringValue, 'utf8')
+        } else {
+          // Keep as string for user-facing API
+          headers[key] = value
+        }
+      }
     }
 
-    return bufferCarrier
+    return headers
+  } catch (error) {
+    diag.warn('Failed to inject trace context into headers, returning original headers:', error)
+    return headers
   }
-
-  const stringCarrier = headers as Record<string, string | string[] | undefined>
-
-  propagation.inject(activeContext, stringCarrier, {
-    set: (carrier: Record<string, string | string[] | undefined>, key: string, value: string) => {
-      carrier[key] = value
-    },
-  })
-
-  // Preserve original string-based carrier for callers expecting strings
-  return stringCarrier
 }
 
-// Normalize any header carrier into Buffer headers for Kafka bindings
-export function normalizeHeadersToBuffer(headers: KafkaHeaderCarrier): Record<string, Buffer> {
+// Normalize any header value to Buffer format required by Kafka native bindings
+// Kafka native API requires headers as Record<string, Buffer>
+export function normalizeHeadersToBuffer(headers: Record<string, HeaderValue>): Record<string, Buffer> {
   const bufferHeaders: Record<string, Buffer> = {}
 
   for (const [key, value] of Object.entries(headers)) {
-    if (value !== undefined) {
+    if (value !== undefined && value !== null) {
       if (Buffer.isBuffer(value)) {
         bufferHeaders[key] = value
       } else if (Array.isArray(value)) {
         bufferHeaders[key] = Buffer.from(value.join(','), 'utf8')
       } else {
-        bufferHeaders[key] = Buffer.from(value, 'utf8')
+        bufferHeaders[key] = Buffer.from(String(value), 'utf8')
       }
     }
   }
@@ -189,23 +252,29 @@ export function normalizeHeadersToBuffer(headers: KafkaHeaderCarrier): Record<st
   return bufferHeaders
 }
 
-// Extract trace context from Kafka headers
+// Extract trace context from Kafka headers (supports both Buffer and string headers)
+// Returns active context if extraction fails to prevent instrumentation from breaking
 export function extractTraceContext(
-  headers: Record<string, string | string[] | undefined> = {},
+  headers: Record<string, Buffer | string | string[] | undefined> = {},
 ): Context {
-  return propagation.extract(context.active(), headers, {
-    get: (carrier: Record<string, string | string[] | undefined>, key: string) => {
-      const value = carrier[key]
-      const singleValue = Array.isArray(value) ? value[0] : value
+  try {
+    return propagation.extract(context.active(), headers, {
+      get: (carrier: Record<string, Buffer | string | string[] | undefined>, key: string) => {
+        const value = carrier[key]
+        const singleValue = Array.isArray(value) ? value[0] : value
 
-      if (Buffer.isBuffer(singleValue)) {
-        return singleValue.toString('utf8')
-      }
+        if (Buffer.isBuffer(singleValue)) {
+          return singleValue.toString('utf8')
+        }
 
-      return singleValue
-    },
-    keys: (carrier: Record<string, string | string[] | undefined>) => Object.keys(carrier),
-  })
+        return singleValue
+      },
+      keys: (carrier: Record<string, Buffer | string | string[] | undefined>) => Object.keys(carrier),
+    })
+  } catch (error) {
+    diag.warn('Failed to extract trace context from headers, using active context:', error)
+    return context.active()
+  }
 }
 
 // Check if topic should be ignored based on filter configuration
@@ -233,20 +302,46 @@ export function shouldIgnoreTopic(
   return false
 }
 
-// Create span for producer operation
+// Options for creating producer spans
+export interface ProducerSpanOptions {
+  operationName?: string
+  parentContext?: Context
+  clientId?: string
+  serverAddress?: string
+  serverPort?: number
+}
+
+// Create span for producer send operation
+// Span name follows: "<operation> <destination>" per semantic conventions
+// https://opentelemetry.io/docs/specs/semconv/messaging/kafka/
 export function createProducerSpan(
   tracer: Tracer,
   record: ProducerRecord,
-  operation = 'send',
-  parentContext?: Context,
+  options: ProducerSpanOptions = {},
 ): Span | null {
   if (!tracer) {
     return null
   }
+  const {
+    operationName = KAFKA_OPERATION_NAMES.SEND,
+    parentContext,
+    clientId,
+    serverAddress,
+    serverPort,
+  } = options
+
   const parent = parentContext ?? context.active()
 
-  const spanName = `${record.topic} ${operation}`
-  const attributes = getProducerRecordAttributes(record, operation)
+  // Span name: "<operation> <destination>" (e.g., "send my-topic")
+  const spanName = `${operationName} ${record.topic}`
+  const attributes = getProducerRecordAttributes(
+    record,
+    operationName,
+    KAFKA_OPERATION_TYPES.SEND,
+    clientId,
+    serverAddress,
+    serverPort,
+  )
 
   const spanOptions = {
     kind: SpanKind.PRODUCER,
@@ -256,19 +351,47 @@ export function createProducerSpan(
   return tracer.startSpan(spanName, spanOptions, parent)
 }
 
-// Create span for consumer operation
+// Options for creating consumer spans
+export interface ConsumerSpanOptions {
+  operationName?: string
+  operationType?: string
+  parentContext?: Context
+  clientId?: string
+  serverAddress?: string
+  serverPort?: number
+}
+
+// Create span for consumer process operation
+// Span name follows: "<operation> <destination>" per semantic conventions
+// https://opentelemetry.io/docs/specs/semconv/messaging/kafka/
 export function createConsumerSpan(
   tracer: Tracer,
   message: Message,
-  operation = 'process',
-  parentContext?: Context,
+  options: ConsumerSpanOptions = {},
 ): Span | null {
   if (!tracer) {
     return null
   }
 
-  const spanName = `${message.topic} ${operation}`
-  const attributes = getMessageAttributes(message, operation)
+  const {
+    operationName = KAFKA_OPERATION_NAMES.PROCESS,
+    operationType = KAFKA_OPERATION_TYPES.PROCESS,
+    parentContext,
+    clientId,
+    serverAddress,
+    serverPort,
+  } = options
+
+  // Span name: "<operation> <destination>" (e.g., "process my-topic")
+  const spanName = `${operationName} ${message.topic}`
+  const attributes = getMessageAttributes(
+    message,
+    operationName,
+    operationType,
+    clientId,
+    serverAddress,
+    serverPort,
+  )
 
   const spanOptions = {
     kind: SpanKind.CONSUMER,
@@ -283,28 +406,61 @@ export function createConsumerSpan(
   return tracer.startSpan(spanName, spanOptions)
 }
 
-// Create batch span for batch operations
+// Options for creating batch spans
+export interface BatchSpanOptions {
+  topic?: string
+  operationName?: string
+  parentContext?: Context
+  clientId?: string
+  serverAddress?: string
+  serverPort?: number
+}
+
+// Create batch span for batch processing operations
+// https://opentelemetry.io/docs/specs/semconv/messaging/kafka/
 export function createBatchSpan(
   tracer: Tracer,
   batchSize: number,
-  topic?: string,
-  operation = 'batch_process',
-  parentContext?: Context,
+  options: BatchSpanOptions = {},
 ): Span | null {
   if (!tracer) {
     return null
   }
 
-  const spanName = topic ? `${topic} ${operation}` : `kafka ${operation}`
+  const {
+    topic,
+    operationName = KAFKA_OPERATION_NAMES.PROCESS,
+    parentContext,
+    clientId,
+    serverAddress,
+    serverPort,
+  } = options
+
+  // Span name: "<operation> <destination>" (e.g., "process my-topic")
+  const spanName = topic ? `${operationName} ${topic}` : `${operationName} kafka`
+
   const attributes: Attributes = {
     [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM]: KAFKA_DEFAULTS.MESSAGING_SYSTEM,
-    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME]: operation,
+    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME]: operationName,
+    [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_TYPE]: KAFKA_OPERATION_TYPES.PROCESS,
     [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT]: batchSize,
   }
 
   if (topic) {
     attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] = topic
-    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_KIND] = KAFKA_DEFAULTS.DESTINATION_KIND
+  }
+
+  // Recommended: client ID
+  if (clientId) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID] = clientId
+  }
+
+  // Conditionally Required: server address and port (when available)
+  if (serverAddress) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_ADDRESS] = serverAddress
+  }
+  if (serverPort !== undefined && serverPort !== null) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_PORT] = serverPort
   }
 
   const spanOptions = {

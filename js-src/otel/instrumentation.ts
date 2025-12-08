@@ -1,9 +1,11 @@
 import { type Attributes, context, diag, type Span, trace, type Tracer } from '@opentelemetry/api'
 
 import type { KafkaConsumer, KafkaProducer, Message, ProducerRecord, RecordMetadata } from '../../js-binding.js'
-import { PACKAGE_INFO } from './constants.js'
+import { KAFKA_OPERATION_NAMES, KAFKA_OPERATION_TYPES, PACKAGE_INFO } from './constants.js'
+import { getKafkaMetrics, KafkaMetrics, resetKafkaMetrics } from './metrics.js'
 import {
   DEFAULT_OTEL_CONFIG,
+  type KafkaMetricsConfig,
   type KafkaOtelContext,
   type KafkaOtelInstrumentationConfig,
   type TracerProvider,
@@ -23,6 +25,7 @@ import {
 export class KafkaCrabInstrumentation {
   private _kafkaTracer: Tracer | null = null
   private _kafkaConfig: KafkaOtelInstrumentationConfig
+  private _kafkaMetrics: KafkaMetrics | null = null
   private _enabled = false
 
   constructor(config: KafkaOtelInstrumentationConfig = {}) {
@@ -37,17 +40,40 @@ export class KafkaCrabInstrumentation {
     return this._kafkaTracer
   }
 
+  public get kafkaMetrics(): KafkaMetrics | null {
+    return this._kafkaMetrics
+  }
+
   public updateConfig(config: KafkaOtelInstrumentationConfig): void {
     this._kafkaConfig = { ...this._kafkaConfig, ...config }
+
+    // Update metrics config if provided
+    if (config.metrics && this._kafkaMetrics) {
+      this._kafkaMetrics.updateConfig(config.metrics)
+    }
   }
 
   public setTracerProvider(provider: TracerProvider): void {
     this._kafkaTracer = provider.getTracer(PACKAGE_INFO.NAME, PACKAGE_INFO.VERSION)
   }
 
+  public setMetricsConfig(config: KafkaMetricsConfig): void {
+    if (this._kafkaMetrics) {
+      this._kafkaMetrics.updateConfig(config)
+    } else if (this._enabled) {
+      this._kafkaMetrics = getKafkaMetrics(config)
+    }
+  }
+
   public enable(): void {
     this._kafkaTracer = getTracer(PACKAGE_INFO.NAME, PACKAGE_INFO.VERSION)
     this._enabled = true
+
+    // Enable metrics if configured
+    const metricsConfig = this._kafkaConfig.metrics ?? DEFAULT_OTEL_CONFIG.metrics
+    if (metricsConfig.enabled !== false) {
+      this._kafkaMetrics = getKafkaMetrics(metricsConfig)
+    }
 
     if (this._kafkaConfig?.registerOnInitialization && this._kafkaTracer) {
       diag.debug('Kafka OTEL instrumentation enabled')
@@ -57,6 +83,16 @@ export class KafkaCrabInstrumentation {
   public disable(): void {
     this._kafkaTracer = null
     this._enabled = false
+
+    if (this._kafkaMetrics) {
+      this._kafkaMetrics.dispose()
+      this._kafkaMetrics = null
+    }
+
+    // Clear hook references to prevent memory leaks
+    this._kafkaConfig.producerHook = undefined
+    this._kafkaConfig.messageHook = undefined
+
     diag.debug('Kafka OTEL instrumentation disabled')
   }
 
@@ -64,16 +100,21 @@ export class KafkaCrabInstrumentation {
     return this._enabled && this._kafkaTracer !== null
   }
 
+  public isMetricsEnabled(): boolean {
+    return this._kafkaMetrics?.isEnabled() ?? false
+  }
+
   public createOtelContext(): KafkaOtelContext {
-    if (!this.isEnabled()) {
+    if (!this.isEnabled() || !this._kafkaTracer) {
       return this._createDisabledContext()
     }
+
+    const tracer = this._kafkaTracer
 
     return {
       enabled: true,
       span: trace.getActiveSpan() || null,
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      tracer: this._kafkaTracer!,
+      tracer,
       context: context.active(),
       inject: (carrier, spanToInject?: Span) => {
         if (spanToInject) {
@@ -92,10 +133,7 @@ export class KafkaCrabInstrumentation {
       },
       extract: (carrier) => extractTraceContext(carrier),
       startSpan: (name, attributes: Attributes = {}) => {
-        if (!this._kafkaTracer) {
-          throw new Error('Tracer not available')
-        }
-        const span = this._kafkaTracer.startSpan(name, { attributes })
+        const span = tracer.startSpan(name, { attributes })
         return span
       },
       endSpan: (span, error) => {
@@ -109,148 +147,191 @@ export class KafkaCrabInstrumentation {
   }
 
   public instrumentProducerSend(
-    originalSend: Function,
+    originalSend: (record: ProducerRecord) => Promise<RecordMetadata[]>,
     clientId?: string,
   ): (producerRecord: ProducerRecord) => Promise<RecordMetadata[]> {
     if (!this.isEnabled()) {
-      return originalSend as (producerRecord: ProducerRecord) => Promise<RecordMetadata[]>
+      return originalSend
     }
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const instrumentation = this
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const tracer = this._kafkaTracer!
+    const metrics = this._kafkaMetrics
+    const { serverAddress, serverPort } = this._kafkaConfig
 
-    return async function instrumentedSend(this: KafkaProducer, record: ProducerRecord | ProducerRecord[]) {
+    return async function instrumentedSend(this: KafkaProducer, record: ProducerRecord) {
       if (!record) {
-        return originalSend.call(this, record as ProducerRecord)
+        return originalSend.call(this, record)
       }
 
       const callerContext = context.active()
 
-      const isArrayInput = Array.isArray(record)
-      const records = isArrayInput ? record : [record]
-
-      if (records.length === 0) {
-        return originalSend.call(this, isArrayInput ? records : (record as ProducerRecord))
+      // Check if topic should be ignored
+      if (shouldIgnoreTopic(record.topic, instrumentation._kafkaConfig.ignoreTopics)) {
+        return originalSend.call(this, record)
       }
 
-      const allIgnored = records.every((currentRecord) =>
-        shouldIgnoreTopic(currentRecord.topic, instrumentation._kafkaConfig.ignoreTopics)
-      )
+      // Start timer for metrics - must match span duration per OTEL semantic conventions
+      const spanTimer = metrics ? KafkaMetrics.startTimer() : undefined
 
-      if (allIgnored) {
-        return originalSend.call(this, isArrayInput ? records : records[0])
-      }
-
-      const spans: Span[] = []
-      const spanMetadata: { span: Span; record: ProducerRecord }[] = []
-
-      const instrumentedRecords = records.map((currentRecord) => {
-        if (!currentRecord || shouldIgnoreTopic(currentRecord.topic, instrumentation._kafkaConfig.ignoreTopics)) {
-          return currentRecord
-        }
-
-        const span = createProducerSpan(tracer, currentRecord, 'send', callerContext)
-
-        if (!span) {
-          return currentRecord
-        }
-
-        if (clientId) {
-          span.setAttributes({ 'messaging.client.id': clientId })
-        }
-
-        spans.push(span)
-        spanMetadata.push({ span, record: currentRecord })
-
-        const spanContext = trace.setSpan(callerContext, span)
-
-        const instrumentedRecord: ProducerRecord = {
-          ...currentRecord,
-          messages: (currentRecord.messages ?? []).map(message => {
-            const originalHeaders = { ...message.headers }
-            const injectedHeaders = injectTraceContext(originalHeaders, spanContext)
-            const normalizedHeaders = normalizeHeadersToBuffer(injectedHeaders)
-
-            return {
-              ...message,
-              headers: normalizedHeaders,
-            }
-          }),
-        }
-
-        if (instrumentation._kafkaConfig.producerHook) {
-          try {
-            context.with(spanContext, () => {
-              instrumentation._kafkaConfig.producerHook?.(span, currentRecord)
-            })
-          } catch (error) {
-            diag.warn('Producer hook failed:', error)
-          }
-        }
-
-        return instrumentedRecord
+      const span = createProducerSpan(tracer, record, {
+        operationName: KAFKA_OPERATION_NAMES.SEND,
+        parentContext: callerContext,
+        clientId,
+        serverAddress,
+        serverPort,
       })
 
-      const payload = isArrayInput ? instrumentedRecords : instrumentedRecords[0]
+      if (!span) {
+        // Call timer to release closure reference even though we won't use the duration
+        if (spanTimer) {
+          spanTimer()
+        }
+        return originalSend.call(this, record)
+      }
+
+      const spanContext = trace.setSpan(callerContext, span)
+
+      const instrumentedRecord: ProducerRecord = {
+        ...record,
+        messages: (record.messages ?? []).map(message => {
+          const originalHeaders = message.headers ?? {}
+          const injectedHeaders = injectTraceContext(originalHeaders, spanContext)
+          const normalizedHeaders = normalizeHeadersToBuffer(injectedHeaders)
+
+          return {
+            ...message,
+            headers: normalizedHeaders,
+          }
+        }),
+      }
+
+      if (instrumentation._kafkaConfig.producerHook) {
+        try {
+          context.with(spanContext, () => {
+            instrumentation._kafkaConfig.producerHook?.(span, record)
+          })
+        } catch (error) {
+          diag.warn('Producer hook failed:', error)
+        }
+      }
 
       try {
-        const result = await context.with(callerContext, async () => originalSend.call(this, payload as ProducerRecord))
+        const result = await context.with(callerContext, async () => originalSend.call(this, instrumentedRecord))
 
         const metadataArray = Array.isArray(result) ? result : []
-        for (let idx = 0; idx < spanMetadata.length; idx++) {
-          const { span } = spanMetadata[idx]
-          const metadata = metadataArray[idx]
+
+        // Set partition and offset attributes from metadata
+        if (metadataArray.length > 0) {
+          const [metadata] = metadataArray
           if (metadata) {
             if (metadata.partition !== undefined) {
-              span.setAttribute('messaging.kafka.partition', metadata.partition)
+              span.setAttribute('messaging.destination.partition.id', String(metadata.partition))
             }
             if (metadata.offset !== undefined) {
               span.setAttribute('messaging.kafka.offset', metadata.offset)
             }
           }
           setSpanStatus(span, metadata?.error ? new Error(metadata.error.message) : undefined)
-          span.end()
+        } else {
+          setSpanStatus(span)
         }
 
-        if (instrumentation._kafkaConfig.producerHook && metadataArray.length) {
-          const [first] = spanMetadata
-          if (first) {
-            try {
-              instrumentation._kafkaConfig.producerHook(first.span, first.record, metadataArray[0])
-            } catch (error) {
-              diag.warn('Producer hook failed with metadata:', error)
-            }
+        span.end()
+
+        // Record metrics after span ends so duration matches span duration
+        if (metrics && spanTimer) {
+          try {
+            const duration = spanTimer()
+            metrics.recordProducerDuration(record.topic, duration, {
+              partition: metadataArray[0]?.partition,
+              clientId,
+            })
+            metrics.recordMessagesSent(record, metadataArray, { clientId })
+          } catch (error) {
+            diag.warn('Failed to record producer metrics:', error)
+          }
+        }
+
+        if (instrumentation._kafkaConfig.producerHook && metadataArray.length > 0) {
+          try {
+            instrumentation._kafkaConfig.producerHook(span, record, metadataArray[0])
+          } catch (error) {
+            diag.warn('Producer hook failed with metadata:', error)
           }
         }
 
         return result
       } catch (error) {
-        for (const span of spans) {
-          setSpanStatus(span, error instanceof Error ? error : new Error(String(error)))
-          span.end()
+        const errorInstance = error instanceof Error ? error : new Error(String(error))
+
+        setSpanStatus(span, errorInstance)
+        span.end()
+
+        // Record metrics after span ends so duration matches span duration
+        if (metrics && spanTimer) {
+          try {
+            const duration = spanTimer()
+            metrics.recordProducerDuration(record.topic, duration, {
+              error: errorInstance,
+              clientId,
+            })
+            metrics.recordMessagesSent(record, undefined, {
+              error: errorInstance,
+              clientId,
+            })
+          } catch (error) {
+            diag.warn('Failed to record producer error metrics:', error)
+          }
         }
         throw error
       }
     }
   }
 
-  public instrumentConsumerReceive(originalReceive: Function, groupId?: string): () => Promise<Message | null> {
+  public instrumentConsumerReceive(
+    originalReceive: () => Promise<Message | null>,
+    groupId?: string,
+    clientId?: string,
+  ): () => Promise<Message | null> {
     if (!this.isEnabled()) {
-      return originalReceive as () => Promise<Message | null>
+      return originalReceive
     }
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const instrumentation = this
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const tracer = this._kafkaTracer!
+    const metrics = this._kafkaMetrics
+    const { serverAddress, serverPort } = this._kafkaConfig
 
     return async function instrumentedReceive(this: KafkaConsumer) {
+      // Start timer for metrics
+      const timer = metrics ? KafkaMetrics.startTimer() : undefined
+
       const message = await originalReceive.call(this)
 
       if (!message) {
         return message
+      }
+
+      // Record consumed message metric
+      if (metrics && timer) {
+        try {
+          const duration = timer()
+          metrics.recordConsumerDuration(message.topic, duration, {
+            partition: message.partition,
+            groupId,
+          })
+
+          if (!shouldIgnoreTopic(message.topic, instrumentation._kafkaConfig.ignoreTopics)) {
+            metrics.recordMessagesConsumed(message, { groupId })
+          }
+        } catch (error) {
+          diag.warn('Failed to record consumer metrics:', error)
+        }
       }
 
       if (shouldIgnoreTopic(message.topic, instrumentation._kafkaConfig.ignoreTopics)) {
@@ -258,7 +339,20 @@ export class KafkaCrabInstrumentation {
       }
 
       const parentContext = extractTraceContext(message.headers || {}) || context.active()
-      const span = createConsumerSpan(tracer, message, 'process', parentContext)
+
+      // Start timer for process duration - must match span duration per OTEL semantic conventions
+      const processTimer = metrics ? KafkaMetrics.startTimer() : undefined
+
+      // Create a "process" span for message processing (not "receive")
+      // The receive operation already happened; this span tracks the application's processing
+      const span = createConsumerSpan(tracer, message, {
+        operationName: KAFKA_OPERATION_NAMES.PROCESS,
+        operationType: KAFKA_OPERATION_TYPES.PROCESS,
+        parentContext,
+        clientId,
+        serverAddress,
+        serverPort,
+      })
 
       if (span) {
         const spanCtx = trace.setSpan(parentContext, span)
@@ -280,6 +374,14 @@ export class KafkaCrabInstrumentation {
         })
 
         span.end()
+
+        // Record process duration - metric value matches span duration per OTEL semantic conventions
+        if (metrics && processTimer) {
+          metrics.recordProcessDuration(message, processTimer(), { groupId })
+        }
+      } else if (metrics && processTimer) {
+        // Record process duration even if span wasn't created (e.g., tracer unavailable)
+        metrics.recordProcessDuration(message, processTimer(), { groupId })
       }
 
       return message
@@ -287,23 +389,52 @@ export class KafkaCrabInstrumentation {
   }
 
   public instrumentBatchReceive(
-    originalBatchReceive: Function,
+    originalBatchReceive: (size: number, timeoutMs: number) => Promise<Message[]>,
     groupId?: string,
+    clientId?: string,
   ): (size: number, timeoutMs: number) => Promise<Message[]> {
     if (!this.isEnabled() || !this._kafkaConfig.enableBatchInstrumentation) {
-      return originalBatchReceive as (size: number, timeoutMs: number) => Promise<Message[]>
+      return originalBatchReceive
     }
 
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const instrumentation = this
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const tracer = this._kafkaTracer!
+    const metrics = this._kafkaMetrics
+    const { serverAddress, serverPort } = this._kafkaConfig
 
     return async function instrumentedBatchReceive(this: KafkaConsumer, size: number, timeoutMs: number) {
+      // Start timer for metrics
+      const timer = metrics ? KafkaMetrics.startTimer() : undefined
+
       const messages = await originalBatchReceive.call(this, size, timeoutMs)
 
       if (!Array.isArray(messages) || messages.length === 0) {
         return messages
+      }
+
+      // Record consumed messages metrics
+      if (metrics && timer) {
+        try {
+          const duration = timer()
+          const [firstMessage] = messages
+          if (firstMessage) {
+            metrics.recordConsumerDuration(firstMessage.topic, duration, {
+              partition: firstMessage.partition,
+              groupId,
+            })
+          }
+
+          const nonIgnoredMessages = messages.filter((message: Message) =>
+            !shouldIgnoreTopic(message.topic, instrumentation._kafkaConfig.ignoreTopics)
+          )
+          if (nonIgnoredMessages.length > 0) {
+            metrics.recordMessagesConsumed(nonIgnoredMessages, { groupId })
+          }
+        } catch (error) {
+          diag.warn('Failed to record batch consumer metrics:', error)
+        }
       }
 
       const instrumentedMessages = messages.filter((message: Message) =>
@@ -316,13 +447,21 @@ export class KafkaCrabInstrumentation {
 
       const [firstMessage] = instrumentedMessages
       const parentContext = extractTraceContext(firstMessage.headers || {}) || context.active()
-      const batchSpan = createBatchSpan(
-        tracer,
-        instrumentedMessages.length,
-        firstMessage.topic,
-        'batch_process',
+
+      // Start timer for batch process duration - must match span duration per OTEL semantic conventions
+      const processTimer = metrics ? KafkaMetrics.startTimer() : undefined
+
+      const batchSpan = createBatchSpan(tracer, instrumentedMessages.length, {
+        topic: firstMessage.topic,
+        operationName: KAFKA_OPERATION_NAMES.BATCH_PROCESS,
         parentContext,
-      )
+        clientId,
+        serverAddress,
+        serverPort,
+      })
+
+      // Track whether we've already recorded metrics (to avoid double recording)
+      let metricsRecorded = false
 
       if (batchSpan) {
         if (groupId) {
@@ -332,7 +471,14 @@ export class KafkaCrabInstrumentation {
         try {
           for (const message of instrumentedMessages) {
             const msgParentContext = extractTraceContext(message.headers || {}) || parentContext
-            const messageSpan = createConsumerSpan(tracer, message, 'process', msgParentContext)
+            const messageSpan = createConsumerSpan(tracer, message, {
+              operationName: KAFKA_OPERATION_NAMES.PROCESS,
+              operationType: KAFKA_OPERATION_TYPES.PROCESS,
+              parentContext: msgParentContext,
+              clientId,
+              serverAddress,
+              serverPort,
+            })
 
             if (messageSpan) {
               const messageSpanContext = trace.setSpan(msgParentContext || context.active(), messageSpan)
@@ -358,9 +504,27 @@ export class KafkaCrabInstrumentation {
           setSpanStatus(batchSpan)
         } catch (error) {
           setSpanStatus(batchSpan, error instanceof Error ? error : new Error(String(error)))
+
+          // Record error in batch process metrics - metric value matches span duration
+          if (metrics && processTimer && !metricsRecorded) {
+            metricsRecorded = true
+            metrics.recordBatchProcessDuration(instrumentedMessages, processTimer(), {
+              groupId,
+              error: error instanceof Error ? error : new Error(String(error)),
+            })
+          }
         } finally {
           batchSpan.end()
+
+          // Record batch process duration on success - metric value matches span duration
+          if (metrics && processTimer && !metricsRecorded) {
+            metricsRecorded = true
+            metrics.recordBatchProcessDuration(instrumentedMessages, processTimer(), { groupId })
+          }
         }
+      } else if (metrics && processTimer) {
+        // Record process duration even if span wasn't created (e.g., tracer unavailable)
+        metrics.recordBatchProcessDuration(instrumentedMessages, processTimer(), { groupId })
       }
 
       return messages
@@ -404,4 +568,6 @@ export function resetKafkaInstrumentation(): void {
     globalInstrumentation.disable()
     globalInstrumentation = null
   }
+  // Also reset metrics
+  resetKafkaMetrics()
 }

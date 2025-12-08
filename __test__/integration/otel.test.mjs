@@ -110,7 +110,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     )
 
     assert(producerSpan, 'Should have a producer span')
-    assert.equal(producerSpan.name, `${testTopic} send`)
+    assert.equal(producerSpan.name, `send ${testTopic}`)
     assert.equal(producerSpan.kind, SpanKind.PRODUCER)
     assert.equal(producerSpan.status.code, SpanStatusCode.OK)
 
@@ -210,7 +210,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     )
 
     assert(consumerSpan, 'Should have a consumer span')
-    assert.equal(consumerSpan.name, `${testTopic} process`)
+    assert.equal(consumerSpan.name, `process ${testTopic}`)
     assert.equal(consumerSpan.kind, SpanKind.CONSUMER)
     assert.equal(consumerSpan.status.code, SpanStatusCode.OK)
 
@@ -259,14 +259,14 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
 
     const producerSpan = spans.find(span =>
       span.kind === SpanKind.PRODUCER &&
-      span.name === `${testTopic} send`
+      span.name === `send ${testTopic}`
     )
 
     assert(producerSpan, 'Producer span should be present for propagation test')
 
     const consumerSpan = spans.find(span =>
       span.kind === SpanKind.CONSUMER &&
-      span.name === `${testTopic} process`
+      span.name === `process ${testTopic}`
     )
 
     assert(consumerSpan, 'Consumer span should be present for propagation test')
@@ -521,7 +521,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     const spans = memoryExporter.getFinishedSpans()
     const streamSpan = spans.find(span =>
       span.kind === SpanKind.CONSUMER &&
-      span.name === `${testTopic} process`
+      span.name === `process ${testTopic}`
     )
 
     assert(streamSpan, 'Stream consumer should create a consumer span')
@@ -1111,7 +1111,8 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     const producerSpans = spans.filter(s => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
 
     assert(producerSpans.length >= concurrentCount,
-      `Should have producer spans for all operations. Producer spans: ${producerSpans.length}, names: ${producerSpans.map(s => s.name).join(', ')
+      `Should have producer spans for all operations. Producer spans: ${producerSpans.length}, names: ${
+        producerSpans.map(s => s.name).join(', ')
       }`)
   })
 

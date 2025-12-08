@@ -112,19 +112,20 @@ describe('KafkaClient OTEL Unit Tests', () => {
   })
 
   test('should verify OTEL constants are properly defined', () => {
-    // Test semantic conventions
+    // Test semantic conventions (https://opentelemetry.io/docs/specs/semconv/messaging/kafka/)
     assert.equal(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM, 'messaging.system')
     assert.equal(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME, 'messaging.destination.name')
     assert.equal(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME, 'messaging.operation.name')
+    assert.equal(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_TYPE, 'messaging.operation.type')
     assert.equal(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET, 'messaging.kafka.offset')
-    assert.equal(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_PARTITION, 'messaging.kafka.partition')
+    assert.equal(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID, 'messaging.destination.partition.id')
 
-    // Test operation types
+    // Test operation types (messaging.operation.type values)
+    assert.equal(KAFKA_OPERATION_TYPES.CREATE, 'create')
     assert.equal(KAFKA_OPERATION_TYPES.SEND, 'send')
     assert.equal(KAFKA_OPERATION_TYPES.RECEIVE, 'receive')
     assert.equal(KAFKA_OPERATION_TYPES.PROCESS, 'process')
-    assert.equal(KAFKA_OPERATION_TYPES.BATCH_RECEIVE, 'batch_receive')
-    assert.equal(KAFKA_OPERATION_TYPES.BATCH_PROCESS, 'batch_process')
+    assert.equal(KAFKA_OPERATION_TYPES.SETTLE, 'settle')
   })
 
   test('should support manual span creation through OTEL context', () => {
@@ -923,15 +924,13 @@ describe('KafkaClient OTEL Unit Tests', () => {
 
     // Execute within span context and make sure span is active
     await context.with(spanContext, async () => {
-      return await instrumentedSend([testRecord])
+      return await instrumentedSend(testRecord)
     })
 
     // Verify the record was instrumented with headers
     assert(capturedRecords, 'Records should be captured')
-    assert(capturedRecords.length > 0, 'Should have records')
-    const firstRecord = capturedRecords[0]
-    assert(firstRecord.messages && firstRecord.messages.length > 0, 'Should have messages')
-    const firstMessage = firstRecord.messages[0]
+    assert(capturedRecords.messages && capturedRecords.messages.length > 0, 'Should have messages')
+    const firstMessage = capturedRecords.messages[0]
     assert(firstMessage.headers, 'Message should have headers')
 
     // Note: The producer instrumentation injects headers during actual send operations
@@ -1019,15 +1018,13 @@ describe('KafkaClient OTEL Unit Tests', () => {
     }
 
     await context.with(spanContext, async () => {
-      await instrumentedSend([testRecord])
+      await instrumentedSend(testRecord)
     })
 
     // Verify the record was instrumented and headers were updated
     assert(capturedRecords, 'Records should be captured')
-    assert(capturedRecords.length > 0, 'Should have records')
-    const firstRecord = capturedRecords[0]
-    assert(firstRecord.messages && firstRecord.messages.length > 0, 'Should have messages')
-    const firstMessage = firstRecord.messages[0]
+    assert(capturedRecords.messages && capturedRecords.messages.length > 0, 'Should have messages')
+    const firstMessage = capturedRecords.messages[0]
     assert(firstMessage.headers, 'Message should have headers')
     assert(firstMessage.headers.traceparent, 'Message should have traceparent header')
     const instrumentationCustomHeader = firstMessage.headers['custom-header']

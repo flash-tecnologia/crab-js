@@ -317,7 +317,8 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
         const committedOffset = lastCommittedOffsets.get(partitionKey)
 
         console.log(
-          `Consumer2 received message at offset ${message.offset} on partition ${message.partition} (committed offset: ${committedOffset ?? 'none'
+          `Consumer2 received message at offset ${message.offset} on partition ${message.partition} (committed offset: ${
+            committedOffset ?? 'none'
           })`,
         )
         remainingMessages.push(message)

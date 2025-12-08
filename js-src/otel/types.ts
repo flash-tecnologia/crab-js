@@ -11,8 +11,85 @@ export interface TracerProvider {
   getTracer(name: string, version?: string, options?: unknown): Tracer
 }
 
-// Use the actual types from js-binding instead of custom interfaces
-// This avoids type compatibility issues with the real implementations
+// OpenTelemetry MeterProvider interface
+export interface MeterProvider {
+  getMeter(name: string, version?: string, options?: unknown): Meter
+}
+
+// OpenTelemetry Meter interface (simplified)
+export interface Meter {
+  createCounter(name: string, options?: MetricOptions): Counter
+  createHistogram(name: string, options?: MetricOptions): Histogram
+  createUpDownCounter(name: string, options?: MetricOptions): UpDownCounter
+  createObservableGauge(name: string, options?: MetricOptions): ObservableGauge
+}
+
+// Metric options interface
+export interface MetricOptions {
+  description?: string
+  unit?: string
+  valueType?: ValueType
+  advice?: MetricAdvice
+}
+
+// Metric advice interface (for histogram boundaries)
+export interface MetricAdvice {
+  explicitBucketBoundaries?: number[]
+}
+
+// Value type enum
+export enum ValueType {
+  INT = 0,
+  DOUBLE = 1,
+}
+
+// Counter interface
+export interface Counter {
+  add(value: number, attributes?: Attributes): void
+}
+
+// Histogram interface
+export interface Histogram {
+  record(value: number, attributes?: Attributes): void
+}
+
+// UpDownCounter interface
+export interface UpDownCounter {
+  add(value: number, attributes?: Attributes): void
+}
+
+// ObservableGauge interface
+export interface ObservableGauge {
+  addCallback(callback: (result: ObservableResult) => void): void
+}
+
+// ObservableResult interface
+export interface ObservableResult {
+  observe(value: number, attributes?: Attributes): void
+}
+
+// Metrics configuration options
+export interface KafkaMetricsConfig {
+  // Whether to enable metrics collection
+  enabled?: boolean
+
+  // Custom meter provider (if not using global)
+  meterProvider?: MeterProvider
+
+  // Server address for broker attribution
+  serverAddress?: string
+
+  // Server port for broker attribution
+  serverPort?: number
+
+  // Whether to include partition ID in metrics
+  includePartitionId?: boolean
+
+  // Custom histogram bucket boundaries for duration metrics (in seconds)
+  // Must be in ascending order. If not provided, uses default OTEL recommended buckets.
+  // Default: [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]
+  histogramBuckets?: number[]
+}
 
 // Configuration interface for Kafka OTEL instrumentation
 export interface KafkaOtelInstrumentationConfig extends InstrumentationConfig {
@@ -21,6 +98,12 @@ export interface KafkaOtelInstrumentationConfig extends InstrumentationConfig {
 
   // Whether to register instrumentation automatically on initialization
   registerOnInitialization?: boolean
+
+  // Broker server address for span attributes (conditionally required by semantic conventions)
+  serverAddress?: string
+
+  // Broker server port for span attributes (conditionally required by semantic conventions)
+  serverPort?: number
 
   // Function to filter topics from instrumentation
   ignoreTopics?: string[] | ((topic: string) => boolean)
@@ -42,6 +125,9 @@ export interface KafkaOtelInstrumentationConfig extends InstrumentationConfig {
 
   // Whether to enable batch operation instrumentation
   enableBatchInstrumentation?: boolean
+
+  // Metrics configuration
+  metrics?: KafkaMetricsConfig
 }
 
 // OpenTelemetry context interface exposed by clients
@@ -109,22 +195,31 @@ export type MessageHookFn = (span: Span, message: Message) => void
 export type ProducerHookFn = (span: Span, record: ProducerRecord, metadata?: RecordMetadata) => void
 export type TopicFilterFn = (topic: string) => boolean
 
+// Metrics hook function signature (called after recording metrics)
+export type MetricsHookFn = (metricName: string, value: number, attributes: Attributes) => void
+
 // Configuration defaults
-export const DEFAULT_OTEL_CONFIG: Required<
-  Pick<
-    KafkaOtelInstrumentationConfig,
-    | 'serviceName'
-    | 'registerOnInitialization'
-    | 'captureMessagePayload'
-    | 'maxPayloadSize'
-    | 'captureMessageHeaders'
-    | 'enableBatchInstrumentation'
+export const DEFAULT_OTEL_CONFIG:
+  & Required<
+    Pick<
+      KafkaOtelInstrumentationConfig,
+      | 'serviceName'
+      | 'registerOnInitialization'
+      | 'captureMessagePayload'
+      | 'maxPayloadSize'
+      | 'captureMessageHeaders'
+      | 'enableBatchInstrumentation'
+    >
   >
-> = {
-  serviceName: process.env.OTEL_SERVICE_NAME || 'kafka-client',
-  registerOnInitialization: true,
-  captureMessagePayload: false,
-  maxPayloadSize: 1024,
-  captureMessageHeaders: true,
-  enableBatchInstrumentation: true,
-} as const
+  & { metrics: Required<Pick<KafkaMetricsConfig, 'enabled' | 'includePartitionId'>> } = {
+    serviceName: process.env.OTEL_SERVICE_NAME || 'kafka-client',
+    registerOnInitialization: true,
+    captureMessagePayload: false,
+    maxPayloadSize: 1024,
+    captureMessageHeaders: true,
+    enableBatchInstrumentation: true,
+    metrics: {
+      enabled: true,
+      includePartitionId: true,
+    },
+  } as const

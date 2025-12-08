@@ -91,7 +91,7 @@ export class KafkaClient {
 
     // Instrument consumer if OTEL is enabled
     if (this._otelEnabled && this._otelContext.enabled) {
-      return KafkaClient._instrumentConsumer(consumer, consumerConfiguration.groupId)
+      return this._instrumentConsumer(consumer, consumerConfiguration.groupId)
     }
 
     return consumer
@@ -109,7 +109,7 @@ export class KafkaClient {
     const { batchSize, batchTimeout, streamOptions, ...consumerConfiguration } = streamConfiguration
     const kafkaConsumer = this.kafkaClientConfig.createConsumer(consumerConfiguration)
     const instrumentedConsumer = this._otelEnabled && this._otelContext.enabled
-      ? KafkaClient._instrumentConsumer(kafkaConsumer, consumerConfiguration.groupId)
+      ? this._instrumentConsumer(kafkaConsumer, consumerConfiguration.groupId)
       : kafkaConsumer
     const opts = streamOptions ?? { objectMode: true }
 
@@ -133,13 +133,21 @@ export class KafkaClient {
     return producer
   }
 
-  private static _instrumentConsumer(consumer: KafkaConsumer, groupId?: string) {
+  private _instrumentConsumer(consumer: KafkaConsumer, groupId?: string) {
     const instrumentation = getKafkaInstrumentation()
     const originalRecv = consumer.recv.bind(consumer)
     const originalRecvBatch = consumer.recvBatch.bind(consumer)
 
-    consumer.recv = instrumentation.instrumentConsumerReceive(originalRecv, groupId)
-    consumer.recvBatch = instrumentation.instrumentBatchReceive(originalRecvBatch, groupId)
+    consumer.recv = instrumentation.instrumentConsumerReceive(
+      originalRecv,
+      groupId,
+      this.kafkaConfiguration.clientId,
+    )
+    consumer.recvBatch = instrumentation.instrumentBatchReceive(
+      originalRecvBatch,
+      groupId,
+      this.kafkaConfiguration.clientId,
+    )
 
     return consumer
   }
