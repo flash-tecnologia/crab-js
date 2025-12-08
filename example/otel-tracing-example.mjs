@@ -21,10 +21,8 @@ import { KafkaClient } from '../dist/index.js'
 
 // OpenTelemetry SDK imports
 import { context, SpanStatusCode, trace } from '@opentelemetry/api'
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import { Resource } from '@opentelemetry/resources'
-import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import { NodeSDK } from '@opentelemetry/sdk-node'
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node'
 import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
@@ -47,25 +45,16 @@ const traceExporter = process.env.OTEL_EXPORTER_TYPE === 'otlp'
   })
   : new ConsoleSpanExporter()
 
-const metricExporter = new OTLPMetricExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/metrics',
-})
-
 const sdk = new NodeSDK({
   resource: new Resource({
     [SEMRESATTRS_SERVICE_NAME]: 'kafka-crab-otel-example',
   }),
   traceExporter,
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: metricExporter,
-    exportIntervalMillis: 5000, // Export metrics every 5 seconds
-  }),
 })
 
 sdk.start()
 console.log('✅ OpenTelemetry SDK initialized')
-console.log(`📊 Trace Exporter: ${process.env.OTEL_EXPORTER_TYPE === 'otlp' ? 'OTLP' : 'Console'}`)
-console.log(`📈 Metrics Exporter: OTLP\n`)
+console.log(`📊 Trace Exporter: ${process.env.OTEL_EXPORTER_TYPE === 'otlp' ? 'OTLP' : 'Console'}\n`)
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
@@ -101,14 +90,9 @@ const kafkaClient = new KafkaClient({
     // Topic filtering
     ignoreTopics: ['__consumer_offsets'], // Topics to exclude from tracing
 
-    // Metrics configuration
+    // Metrics configuration (disabled for this tracing-focused example)
     metrics: {
-      enabled: true, // Enable metrics collection (default: true)
-      includePartitionId: true, // Include partition ID in metrics (default: true)
-      serverAddress: 'localhost', // Broker address for metrics attributes
-      serverPort: 9092, // Broker port for metrics attributes
-      // Custom histogram buckets (optional)
-      // histogramBuckets: [0.001, 0.01, 0.1, 1, 10],
+      enabled: false, // Metrics disabled - see otel-metrics-example.mjs for metrics
     },
 
     // Custom hooks for advanced scenarios

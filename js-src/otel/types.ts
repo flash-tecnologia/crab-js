@@ -70,7 +70,7 @@ export interface ObservableResult {
 
 // Metrics configuration options
 export interface KafkaMetricsConfig {
-  // Whether to enable metrics collection
+  // Whether to enable metrics collection (default: false)
   enabled?: boolean
 
   // Custom meter provider (if not using global)
@@ -219,7 +219,7 @@ export const DEFAULT_OTEL_CONFIG:
     captureMessageHeaders: true,
     enableBatchInstrumentation: true,
     metrics: {
-      enabled: true,
+      enabled: false,
       includePartitionId: true,
     },
   } as const
