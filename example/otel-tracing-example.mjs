@@ -10,7 +10,7 @@
  *
  * Prerequisites:
  * - Running Kafka broker at localhost:9092
- * - Grafana Tempo at http://localhost:3000 (default, or set OTEL_EXPORTER_OTLP_ENDPOINT)
+ * - Grafana Tempo with OTLP gRPC receiver at localhost:4317 (or set OTEL_EXPORTER_OTLP_ENDPOINT)
  * - Or use console exporter: OTEL_EXPORTER_TYPE=console
  *
  * Run: KAFKA_AVAILABLE=true node example/otel-tracing-example.mjs
@@ -22,13 +22,13 @@ import { KafkaClient } from '../dist/index.js'
 
 // OpenTelemetry SDK imports (mix of ESM and CommonJS)
 import { context, SpanStatusCode, trace } from '@opentelemetry/api'
-import otlpTracePkg from '@opentelemetry/exporter-trace-otlp-http'
+import otlpTraceGrpcPkg from '@opentelemetry/exporter-trace-otlp-grpc'
 import resourcesPkg from '@opentelemetry/resources'
 import sdkNodePkg from '@opentelemetry/sdk-node'
 import traceNodePkg from '@opentelemetry/sdk-trace-node'
 import semconvPkg from '@opentelemetry/semantic-conventions'
 
-const { OTLPTraceExporter } = otlpTracePkg
+const { OTLPTraceExporter } = otlpTraceGrpcPkg
 const { resourceFromAttributes } = resourcesPkg
 const { NodeSDK } = sdkNodePkg
 const { ConsoleSpanExporter } = traceNodePkg
@@ -44,15 +44,15 @@ console.log('🔧 Configuring OpenTelemetry SDK...\n')
 
 // Choose your exporter configuration:
 // - ConsoleSpanExporter: Logs traces to console (good for development)
-// - OTLPTraceExporter: Sends to OTLP-compatible backend (Jaeger, Grafana Tempo, etc.)
+// - OTLPTraceExporter: Sends to OTLP-compatible backend via gRPC (Grafana Tempo, etc.)
 //
-// Default: OTLP to Grafana Tempo at http://localhost:3000/api/traces
+// Default: OTLP gRPC to Grafana Tempo at localhost:4317
 // Set OTEL_EXPORTER_TYPE=console to use console exporter instead
 
 const traceExporter = process.env.OTEL_EXPORTER_TYPE === 'console'
   ? new ConsoleSpanExporter()
   : new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:3000/api/traces',
+    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
   })
 
 const sdk = new NodeSDK({
