@@ -567,27 +567,126 @@ You can see the available options here: [librdkafka](https://docs.confluent.io/p
 
 ### OpenTelemetry Configuration
 
-OpenTelemetry is enabled by default when the `otel` field is omitted or set to an object. Set `otel: false` to disable instrumentation entirely.
+OpenTelemetry instrumentation provides automatic tracing and optional metrics for Kafka operations. Tracing is enabled by default, while metrics are opt-in.
 
-```ts
+#### Minimal Configuration (Tracing Only)
+
+```typescript
 const client = new KafkaClient({
-  brokers: 'localhost:29092',
-  clientId: 'payments-service',
+  brokers: 'localhost:9092',
+  clientId: 'my-service',
+  // Tracing enabled by default with sensible defaults
   otel: {
-    serviceName: 'payments-api',
-    ignoreTopics: topic => topic.startsWith('internal.'),
+    serviceName: 'my-kafka-service', // Optional: defaults to 'kafka-client'
+  },
+})
+```
+
+#### Complete Configuration (All Options)
+
+```typescript
+const client = new KafkaClient({
+  brokers: 'localhost:9092',
+  clientId: 'my-service',
+  otel: {
+    // === Basic Configuration ===
+    enabled: true,                    // Enable/disable all OTEL features (default: true)
+    serviceName: 'my-kafka-service',  // Service name (default: process.env.OTEL_SERVICE_NAME || 'kafka-client')
+    
+    // === Tracing Configuration ===
+    captureMessagePayload: false,     // Capture message payload in spans (default: false, security sensitive)
+    maxPayloadSize: 1024,             // Max payload size to capture in bytes (default: 1024)
+    captureMessageHeaders: true,      // Capture message headers in spans (default: true)
+    enableBatchInstrumentation: true, // Enable batch operation spans (default: true)
+    
+    // === Broker Attribution (Optional) ===
+    serverAddress: 'localhost',       // Broker address for span attributes
+    serverPort: 9092,                 // Broker port for span attributes
+    
+    // === Topic Filtering ===
+    ignoreTopics: ['__consumer_offsets', 'internal.*'], // Array of topics to exclude
+    // OR use a function:
+    // ignoreTopics: (topic) => topic.startsWith('internal.'),
+    
+    // === Custom Hooks ===
+    producerHook: (span, record, metadata) => {
+      // Add custom attributes to producer spans
+      span.setAttribute('custom.message_count', record.messages.length)
+      if (metadata) {
+        span.setAttribute('custom.partition', metadata.partition)
+      }
+    },
+    
     messageHook: (span, message) => {
-      span.setAttribute('app.message.key', message.key?.toString('utf8'))
+      // Add custom attributes to consumer spans
+      span.setAttribute('custom.message_size', message.payload.length)
+      
+      // Extract business data
+      try {
+        const data = JSON.parse(message.payload.toString())
+        if (data.userId) {
+          span.setAttribute('app.user_id', data.userId)
+        }
+      } catch { /* ignore */ }
+    },
+    
+    // === Metrics Configuration (Opt-in) ===
+    metrics: {
+      enabled: false,                 // Enable metrics collection (default: false)
+      includePartitionId: true,       // Include partition in metrics (default: true)
+      serverAddress: 'localhost',     // Broker address for metrics
+      serverPort: 9092,               // Broker port for metrics
+      
+      // Custom histogram buckets (optional, in seconds)
+      // Default: [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]
+      histogramBuckets: [0.001, 0.01, 0.1, 1, 10],
+      
+      // Custom meter provider (optional)
+      // meterProvider: myMeterProvider,
     },
   },
 })
 ```
 
+#### Disable OpenTelemetry Entirely
+
+```typescript
+const client = new KafkaClient({
+  brokers: 'localhost:9092',
+  clientId: 'my-service',
+  otel: false, // Completely disable OTEL instrumentation
+})
+```
+
+#### Configuration Defaults
+
+| Property | Default Value | Description |
+|----------|--------------|-------------|
+| `enabled` | `true` | Whether OTEL is enabled |
+| `serviceName` | `process.env.OTEL_SERVICE_NAME \|\| 'kafka-client'` | Service name for telemetry |
+| `captureMessagePayload` | `false` | Capture payloads (security sensitive) |
+| `maxPayloadSize` | `1024` | Max payload size in bytes |
+| `captureMessageHeaders` | `true` | Capture message headers |
+| `enableBatchInstrumentation` | `true` | Enable batch operation spans |
+| `metrics.enabled` | `false` | Metrics are opt-in |
+| `metrics.includePartitionId` | `true` | Include partition in metrics |
+
+#### How It Works
+
 When instrumentation is active:
 
-- Producer `send` calls automatically propagate the active span context via Kafka headers while preserving custom headers and their Buffer/string types.
-- Consumer `recv`, `recvBatch`, and stream consumers generate spans that capture consumer group, topic, partition, offset, and batch size.
-- Hooks registered through `messageHook` and `producerHook` execute within the active span context so that additional attributes/events can be attached safely.
+- **Automatic Tracing**: Producer `send` calls automatically propagate the active span context via Kafka headers while preserving custom headers and their Buffer/string types.
+- **Consumer Spans**: Consumer `recv`, `recvBatch`, and stream consumers generate spans that capture consumer group, topic, partition, offset, and batch size.
+- **Context Propagation**: Trace context is automatically injected into producer messages and extracted from consumer messages, enabling distributed tracing across services.
+- **Custom Hooks**: Hooks registered through `messageHook` and `producerHook` execute within the active span context so that additional attributes/events can be attached safely.
+- **Metrics (Opt-in)**: When enabled, collects OpenTelemetry semantic convention compliant metrics for Kafka operations.
+
+#### Examples
+
+See comprehensive examples in the `example/` directory:
+- `example/otel-tracing-example.mjs` - Complete tracing setup with Jaeger
+- `example/otel-metrics-example.mjs` - Metrics collection with Prometheus
+- `example/README.md` - Full documentation for all examples
 
 ## Performance Benchmarks
 
