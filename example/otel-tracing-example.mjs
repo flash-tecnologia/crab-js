@@ -10,7 +10,8 @@
  *
  * Prerequisites:
  * - Running Kafka broker at localhost:9092
- * - (Optional) Jaeger for trace visualization: docker run -d -p 16686:16686 -p 4318:4318 jaegertracing/all-in-one:latest
+ * - Grafana Tempo at http://localhost:3000 (default, or set OTEL_EXPORTER_OTLP_ENDPOINT)
+ * - Or use console exporter: OTEL_EXPORTER_TYPE=console
  *
  * Run: KAFKA_AVAILABLE=true node example/otel-tracing-example.mjs
  */
@@ -44,12 +45,15 @@ console.log('🔧 Configuring OpenTelemetry SDK...\n')
 // Choose your exporter configuration:
 // - ConsoleSpanExporter: Logs traces to console (good for development)
 // - OTLPTraceExporter: Sends to OTLP-compatible backend (Jaeger, Grafana Tempo, etc.)
+//
+// Default: OTLP to Grafana Tempo at http://localhost:3000/api/traces
+// Set OTEL_EXPORTER_TYPE=console to use console exporter instead
 
-const traceExporter = process.env.OTEL_EXPORTER_TYPE === 'otlp'
-  ? new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+const traceExporter = process.env.OTEL_EXPORTER_TYPE === 'console'
+  ? new ConsoleSpanExporter()
+  : new OTLPTraceExporter({
+    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:3000/api/traces',
   })
-  : new ConsoleSpanExporter()
 
 const sdk = new NodeSDK({
   resource: resourceFromAttributes({
@@ -60,7 +64,7 @@ const sdk = new NodeSDK({
 
 sdk.start()
 console.log('✅ OpenTelemetry SDK initialized')
-console.log(`📊 Trace Exporter: ${process.env.OTEL_EXPORTER_TYPE === 'otlp' ? 'OTLP' : 'Console'}\n`)
+console.log(`📊 Trace Exporter: ${process.env.OTEL_EXPORTER_TYPE === 'console' ? 'Console' : 'OTLP (Grafana Tempo)'}\n`)
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
@@ -352,9 +356,10 @@ async function main() {
     console.log('='.repeat(80))
     console.log()
     console.log('📊 Next steps:')
-    console.log('  1. Check console output for trace spans')
-    console.log('  2. If using Jaeger, open http://localhost:16686 to view traces')
+    console.log('  1. Open Grafana at http://localhost:3000')
+    console.log('  2. Go to Explore → Select Tempo data source')
     console.log('  3. Search for service: kafka-crab-otel-example')
+    console.log('  4. View distributed traces showing producer → consumer flow')
     console.log()
   } catch (error) {
     console.error('❌ Example failed:', error)
