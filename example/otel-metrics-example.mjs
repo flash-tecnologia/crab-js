@@ -15,7 +15,8 @@
  *
  * Prerequisites:
  * - Running Kafka broker at localhost:9092
- * - (Optional) Prometheus for metrics: docker run -d -p 9090:9090 -v ./prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+ * - Prometheus/Grafana with OTLP gRPC receiver at localhost:4317 (or set OTEL_EXPORTER_OTLP_ENDPOINT)
+ * - Or use console exporter: OTEL_EXPORTER_TYPE=console
  *
  * Run: KAFKA_AVAILABLE=true node example/otel-metrics-example.mjs
  */
@@ -27,10 +28,12 @@ import { KafkaClient } from '../dist/index.js'
 // OpenTelemetry SDK imports (CommonJS modules, need default import)
 import resourcesPkg from '@opentelemetry/resources'
 import metricsPkg from '@opentelemetry/sdk-metrics'
+import otlpMetricsGrpcPkg from '@opentelemetry/exporter-metrics-otlp-grpc'
 import semconvPkg from '@opentelemetry/semantic-conventions'
 
 const { resourceFromAttributes } = resourcesPkg
 const { ConsoleMetricExporter, MeterProvider, PeriodicExportingMetricReader } = metricsPkg
+const { OTLPMetricExporter } = otlpMetricsGrpcPkg
 const { SEMRESATTRS_SERVICE_NAME } = semconvPkg
 
 process.env.NAPI_RS_TOKIO_RUNTIME = '1'
@@ -41,21 +44,33 @@ process.env.NAPI_RS_TOKIO_RUNTIME = '1'
 
 console.log('🔧 Configuring OpenTelemetry Metrics...\n')
 
-// Create a MeterProvider with ConsoleMetricExporter
+// Choose your exporter configuration:
+// - ConsoleMetricExporter: Logs metrics to console (good for development)
+// - OTLPMetricExporter: Sends to OTLP-compatible backend via gRPC (Prometheus, Grafana, etc.)
+//
+// Default: OTLP gRPC to Prometheus/Grafana at localhost:4317
+// Set OTEL_EXPORTER_TYPE=console to use console exporter instead
+
+const metricExporter = process.env.OTEL_EXPORTER_TYPE === 'console'
+  ? new ConsoleMetricExporter()
+  : new OTLPMetricExporter({
+    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+  })
+
 const meterProvider = new MeterProvider({
   resource: resourceFromAttributes({
     [SEMRESATTRS_SERVICE_NAME]: 'kafka-crab-metrics-example',
   }),
   readers: [
     new PeriodicExportingMetricReader({
-      exporter: new ConsoleMetricExporter(),
+      exporter: metricExporter,
       exportIntervalMillis: 10000, // Export metrics every 10 seconds
     }),
   ],
 })
 
 console.log('✅ Metrics provider configured')
-console.log('📊 Exporting metrics to console every 10 seconds\n')
+console.log(`📊 Metric Exporter: ${process.env.OTEL_EXPORTER_TYPE === 'console' ? 'Console' : 'OTLP (Prometheus/Grafana)'}\n`)
 
 // ============================================================================
 // 2. Create Kafka Client with Metrics Configuration
@@ -346,9 +361,11 @@ async function main() {
     console.log('  - Counter metrics show total counts')
     console.log()
     console.log('🚀 Next steps:')
-    console.log('  1. Replace ConsoleMetricExporter with PrometheusExporter')
-    console.log('  2. Set up Grafana dashboards for visualization')
-    console.log('  3. Configure alerting based on metric thresholds')
+    console.log('  1. Open Grafana at http://localhost:3000')
+    console.log('  2. Go to Explore → Select Prometheus data source')
+    console.log('  3. Query metrics: messaging_client_operation_duration_bucket')
+    console.log('  4. Create dashboards to visualize Kafka operation metrics')
+    console.log('  5. Set up alerts based on metric thresholds')
     console.log()
   } catch (error) {
     console.error('❌ Example failed:', error)
