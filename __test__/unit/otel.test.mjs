@@ -907,7 +907,7 @@ describe('KafkaClient OTEL Unit Tests', () => {
 
     // Get the instrumentation to test the record transformation
     const instrumentation = getKafkaInstrumentation()
-    const originalSend = function(records) {
+    const originalSend = function (records) {
       capturedRecords = records
       return Promise.resolve({ deliveryResults: [] })
     }
@@ -998,7 +998,7 @@ describe('KafkaClient OTEL Unit Tests', () => {
     const instrumentation = getKafkaInstrumentation()
     let capturedRecords = null
 
-    const originalSend = function(records) {
+    const originalSend = function (records) {
       capturedRecords = records
       return Promise.resolve({ deliveryResults: [] })
     }

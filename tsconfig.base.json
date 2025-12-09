@@ -20,7 +20,8 @@
       "src/*": [
         "./js-src"
       ]
-    }
+    },
+    "resolveJsonModule": true
   },
   "include": [
     "js-src/*.ts"

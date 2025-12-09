@@ -79,9 +79,11 @@ export function getMessageAttributes(
 
   // Recommended: message key (for single message operations)
   if (message.key !== null && message.key !== undefined) {
-    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY] = typeof message.key === 'string'
-      ? message.key
-      : String(message.key)
+    if (Buffer.isBuffer(message.key)) {
+      attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY] = message.key.toString('utf8')
+    } else {
+      attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY] = String(message.key)
+    }
   }
 
   // Conditionally Required: tombstone detection

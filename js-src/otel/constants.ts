@@ -114,9 +114,8 @@ export const ERROR_TYPES = {
 } as const
 
 // Package information
-// Note: VERSION should be kept in sync with package.json manually
-// or replaced during build process. Consider using a build tool to inject this.
+// Version must be kept in sync with package.json (verified by tests)
 export const PACKAGE_INFO = {
   NAME: 'kafka-crab-js',
   VERSION: '2.1.0',
-} as const
+} as const 

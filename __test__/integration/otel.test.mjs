@@ -1111,8 +1111,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     const producerSpans = spans.filter(s => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
 
     assert(producerSpans.length >= concurrentCount,
-      `Should have producer spans for all operations. Producer spans: ${producerSpans.length}, names: ${
-        producerSpans.map(s => s.name).join(', ')
+      `Should have producer spans for all operations. Producer spans: ${producerSpans.length}, names: ${producerSpans.map(s => s.name).join(', ')
       }`)
   })
 
@@ -1161,9 +1160,24 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
       })
 
       await new Promise((resolve, reject) => {
-        streamConsumer.on('end', resolve)
-        streamConsumer.on('error', reject)
-        setTimeout(() => reject(new Error('Stream context timeout')), 5000)
+        const timer = setTimeout(() => reject(new Error('Stream context timeout')), 5000)
+        const cleanup = () => {
+          clearTimeout(timer)
+          streamConsumer.removeListener('end', onEnd)
+          streamConsumer.removeListener('close', onEnd)
+          streamConsumer.removeListener('error', onError)
+        }
+        const onEnd = () => {
+          cleanup()
+          resolve()
+        }
+        const onError = (err) => {
+          cleanup()
+          reject(err)
+        }
+        streamConsumer.on('end', onEnd)
+        streamConsumer.on('close', onEnd) // destroy() triggers close, not end
+        streamConsumer.on('error', onError)
       })
     })
 

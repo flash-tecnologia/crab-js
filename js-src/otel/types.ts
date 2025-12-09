@@ -145,7 +145,8 @@ export interface KafkaOtelContext {
   context: Context | null
 
   // Inject trace context into carrier (e.g., Kafka headers)
-  inject: (carrier: Record<string, string | string[] | undefined>) => void
+  // Optional span parameter allows injecting a specific span's context
+  inject: (carrier: Record<string, string | string[] | undefined>, span?: Span) => void
 
   // Extract trace context from carrier (e.g., Kafka headers)
   extract: (carrier: Record<string, string | string[] | undefined>) => Context
@@ -198,28 +199,29 @@ export type TopicFilterFn = (topic: string) => boolean
 // Metrics hook function signature (called after recording metrics)
 export type MetricsHookFn = (metricName: string, value: number, attributes: Attributes) => void
 
-// Configuration defaults
-export const DEFAULT_OTEL_CONFIG:
-  & Required<
-    Pick<
-      KafkaOtelInstrumentationConfig,
-      | 'serviceName'
-      | 'registerOnInitialization'
-      | 'captureMessagePayload'
-      | 'maxPayloadSize'
-      | 'captureMessageHeaders'
-      | 'enableBatchInstrumentation'
-    >
-  >
-  & { metrics: Required<Pick<KafkaMetricsConfig, 'enabled' | 'includePartitionId'>> } = {
-    serviceName: process.env.OTEL_SERVICE_NAME || 'kafka-client',
-    registerOnInitialization: true,
-    captureMessagePayload: false,
-    maxPayloadSize: 1024,
-    captureMessageHeaders: true,
-    enableBatchInstrumentation: true,
-    metrics: {
-      enabled: false,
-      includePartitionId: true,
-    },
-  } as const
+// Configuration defaults - simplified type definition
+export interface DefaultOtelConfig {
+  serviceName: string
+  registerOnInitialization: boolean
+  captureMessagePayload: boolean
+  maxPayloadSize: number
+  captureMessageHeaders: boolean
+  enableBatchInstrumentation: boolean
+  metrics: {
+    enabled: boolean
+    includePartitionId: boolean
+  }
+}
+
+export const DEFAULT_OTEL_CONFIG: DefaultOtelConfig = {
+  serviceName: process.env.OTEL_SERVICE_NAME || 'kafka-client',
+  registerOnInitialization: true,
+  captureMessagePayload: false,
+  maxPayloadSize: 1024,
+  captureMessageHeaders: true,
+  enableBatchInstrumentation: true,
+  metrics: {
+    enabled: false,
+    includePartitionId: true,
+  },
+}

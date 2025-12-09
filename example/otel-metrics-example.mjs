@@ -26,9 +26,9 @@ import { Buffer } from 'node:buffer'
 import { KafkaClient } from '../dist/index.js'
 
 // OpenTelemetry SDK imports (CommonJS modules, need default import)
+import otlpMetricsGrpcPkg from '@opentelemetry/exporter-metrics-otlp-grpc'
 import resourcesPkg from '@opentelemetry/resources'
 import metricsPkg from '@opentelemetry/sdk-metrics'
-import otlpMetricsGrpcPkg from '@opentelemetry/exporter-metrics-otlp-grpc'
 import semconvPkg from '@opentelemetry/semantic-conventions'
 
 const { resourceFromAttributes } = resourcesPkg
@@ -70,7 +70,9 @@ const meterProvider = new MeterProvider({
 })
 
 console.log('✅ Metrics provider configured')
-console.log(`📊 Metric Exporter: ${process.env.OTEL_EXPORTER_TYPE === 'console' ? 'Console' : 'OTLP (Prometheus/Grafana)'}\n`)
+console.log(
+  `📊 Metric Exporter: ${process.env.OTEL_EXPORTER_TYPE === 'console' ? 'Console' : 'OTLP (Prometheus/Grafana)'}\n`,
+)
 
 // ============================================================================
 // 2. Create Kafka Client with Metrics Configuration

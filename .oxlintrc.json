@@ -73,7 +73,9 @@
     "report/",
     "**/dist/**",
     "js-binding*.*",
-    "build.mjs"
+    "build.mjs",
+    "index.js",
+    "index.d.ts"
   ],
   "globals": {
     "__dirname": "off",

@@ -18,10 +18,18 @@ import type { Counter, Histogram, KafkaMetricsConfig, Meter } from './types.js'
  * Get error type for metrics attribution
  * Uses low-cardinality error types as per semantic conventions
  */
-function getErrorType(error: Error): string {
+function getErrorType(error: Error | unknown): string {
+  // Check if it's a KafkaCrabError with a specific code
+  if (error && typeof error === 'object' && 'code' in error && typeof (error as { code: unknown }).code === 'number') {
+    // Map known codes to error types if we had a mapping
+    // For now, we can try to infer from message or just return KAFKA_ERROR_<code>
+    return `KAFKA_ERROR_${(error as { code: number }).code}`
+  }
+
+  const err = error as Error | null
   // Check for Kafka-specific error codes in the message
-  if (error.message) {
-    const message = error.message.toUpperCase()
+  if (err?.message) {
+    const message = err.message.toUpperCase()
 
     // Common Kafka error patterns
     if (message.includes('TIMEOUT')) {
@@ -48,8 +56,8 @@ function getErrorType(error: Error): string {
   }
 
   // Use error constructor name if available
-  if (error.name && error.name !== 'Error') {
-    return error.name
+  if (err && err.name && err.name !== 'Error') {
+    return err.name
   }
 
   // Fallback to generic error type

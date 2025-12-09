@@ -1,7 +1,14 @@
-import { type Attributes, context, diag, type Span, trace, type Tracer } from '@opentelemetry/api'
+import { type Attributes, context, diag, type Span, SpanKind, trace, type Tracer } from '@opentelemetry/api'
 
 import type { KafkaConsumer, KafkaProducer, Message, ProducerRecord, RecordMetadata } from '../../js-binding.js'
-import { KAFKA_OPERATION_NAMES, KAFKA_OPERATION_TYPES, PACKAGE_INFO } from './constants.js'
+import {
+  KAFKA_DEFAULTS,
+  KAFKA_OPERATION_NAMES,
+  KAFKA_OPERATION_TYPES,
+  KAFKA_SEMANTIC_CONVENTIONS,
+  KAFKA_SPAN_NAMES,
+  PACKAGE_INFO,
+} from './constants.js'
 import { getKafkaMetrics, KafkaMetrics, resetKafkaMetrics } from './metrics.js'
 import {
   DEFAULT_OTEL_CONFIG,
@@ -208,6 +215,8 @@ export class KafkaCrabInstrumentation {
         }),
       }
 
+      // Producer hook is called BEFORE send to allow modification/inspection of the record
+      // It will be called AGAIN after send with metadata if available (see below)
       if (instrumentation._kafkaConfig.producerHook) {
         try {
           context.with(spanContext, () => {
@@ -219,7 +228,8 @@ export class KafkaCrabInstrumentation {
       }
 
       try {
-        const result = await context.with(callerContext, async () => originalSend.call(this, instrumentedRecord))
+        // Use spanContext to ensure the producer span is active during the send operation
+        const result = await context.with(spanContext, async () => originalSend.call(this, instrumentedRecord))
 
         const metadataArray = Array.isArray(result) ? result : []
 
@@ -255,6 +265,7 @@ export class KafkaCrabInstrumentation {
           }
         }
 
+        // Producer hook called AFTER send with metadata to allow inspection of results
         if (instrumentation._kafkaConfig.producerHook && metadataArray.length > 0) {
           try {
             instrumentation._kafkaConfig.producerHook(span, record, metadataArray[0])
@@ -308,37 +319,81 @@ export class KafkaCrabInstrumentation {
     const { serverAddress, serverPort } = this._kafkaConfig
 
     return async function instrumentedReceive(this: KafkaConsumer) {
+      // Start "receive" span (CLIENT kind) for the network operation
+      // https://opentelemetry.io/docs/specs/semconv/messaging/kafka/#consumer-receive-operation
+      const receiveSpan = tracer.startSpan(KAFKA_SPAN_NAMES.CONSUMER_RECEIVE('kafka'), {
+        kind: SpanKind.CLIENT,
+        attributes: {
+          [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM]: KAFKA_DEFAULTS.MESSAGING_SYSTEM,
+          [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME]: KAFKA_OPERATION_NAMES.RECEIVE,
+          [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_TYPE]: KAFKA_OPERATION_TYPES.RECEIVE,
+          ...(clientId ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID]: clientId } : {}),
+          ...(serverAddress ? { [KAFKA_SEMANTIC_CONVENTIONS.SERVER_ADDRESS]: serverAddress } : {}),
+          ...(serverPort ? { [KAFKA_SEMANTIC_CONVENTIONS.SERVER_PORT]: serverPort } : {}),
+          ...(groupId ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: groupId } : {}),
+        },
+      })
+
       // Start timer for metrics
       const timer = metrics ? KafkaMetrics.startTimer() : undefined
 
-      const message = await originalReceive.call(this)
+      let message: Message | null = null
+      let opError: Error | undefined
+
+      try {
+        message = await context.with(trace.setSpan(context.active(), receiveSpan), () => originalReceive.call(this))
+      } catch (error) {
+        opError = error instanceof Error ? error : new Error(String(error))
+        throw error
+      } finally {
+        // End receive span
+        if (message) {
+          receiveSpan.updateName(KAFKA_SPAN_NAMES.CONSUMER_RECEIVE(message.topic))
+          receiveSpan.setAttributes({
+            [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME]: message.topic,
+            [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID]: String(message.partition),
+          })
+        }
+        setSpanStatus(receiveSpan, opError)
+        receiveSpan.end()
+
+        // Record metrics
+        if (metrics && timer) {
+          try {
+            const duration = timer()
+            // Use topic from message, or 'unknown' if failed before message received
+
+            // Only record if we have a topic implies we sort of succeeded or at least know where we were looking,
+            // but for generic receive error we might not know topic.
+            // If message is null (empty poll), we might not want to record duration against "unknown" topic always,
+            // or maybe we do? Existing logic requires topic.
+            if (message) {
+              metrics.recordConsumerDuration(message.topic, duration, {
+                partition: message.partition,
+                groupId,
+                error: opError,
+              })
+
+              if (!shouldIgnoreTopic(message.topic, instrumentation._kafkaConfig.ignoreTopics)) {
+                metrics.recordMessagesConsumed(message, { groupId, error: opError })
+              }
+            }
+          } catch (error) {
+            diag.warn('Failed to record consumer metrics:', error)
+          }
+        }
+      }
 
       if (!message) {
         return message
-      }
-
-      // Record consumed message metric
-      if (metrics && timer) {
-        try {
-          const duration = timer()
-          metrics.recordConsumerDuration(message.topic, duration, {
-            partition: message.partition,
-            groupId,
-          })
-
-          if (!shouldIgnoreTopic(message.topic, instrumentation._kafkaConfig.ignoreTopics)) {
-            metrics.recordMessagesConsumed(message, { groupId })
-          }
-        } catch (error) {
-          diag.warn('Failed to record consumer metrics:', error)
-        }
       }
 
       if (shouldIgnoreTopic(message.topic, instrumentation._kafkaConfig.ignoreTopics)) {
         return message
       }
 
-      const parentContext = extractTraceContext(message.headers || {}) || context.active()
+      // extractTraceContext already returns context.active() on failure, no fallback needed
+      const parentContext = extractTraceContext(message.headers || {})
 
       // Start timer for process duration - must match span duration per OTEL semantic conventions
       const processTimer = metrics ? KafkaMetrics.startTimer() : undefined
@@ -356,28 +411,33 @@ export class KafkaCrabInstrumentation {
 
       if (span) {
         const spanCtx = trace.setSpan(parentContext, span)
+        let hookError: Error | undefined
 
-        context.with(spanCtx, () => {
-          if (groupId) {
-            span.setAttributes({ 'messaging.consumer.group.name': groupId })
-          }
-
-          if (instrumentation._kafkaConfig.messageHook) {
-            try {
-              instrumentation._kafkaConfig.messageHook(span, message)
-            } catch (error) {
-              diag.warn('Message hook failed:', error)
+        try {
+          context.with(spanCtx, () => {
+            if (groupId) {
+              span.setAttributes({ [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: groupId })
             }
+
+            if (instrumentation._kafkaConfig.messageHook) {
+              try {
+                instrumentation._kafkaConfig.messageHook(span, message)
+              } catch (error) {
+                diag.warn('Message hook failed:', error)
+              }
+            }
+          })
+        } catch (error) {
+          hookError = error instanceof Error ? error : new Error(String(error))
+        } finally {
+          // Always set status, end span, and record metrics to ensure cleanup
+          setSpanStatus(span, hookError)
+          span.end()
+
+          // Record process duration - metric value matches span duration per OTEL semantic conventions
+          if (metrics && processTimer) {
+            metrics.recordProcessDuration(message, processTimer(), { groupId, error: hookError })
           }
-
-          setSpanStatus(span)
-        })
-
-        span.end()
-
-        // Record process duration - metric value matches span duration per OTEL semantic conventions
-        if (metrics && processTimer) {
-          metrics.recordProcessDuration(message, processTimer(), { groupId })
         }
       } else if (metrics && processTimer) {
         // Record process duration even if span wasn't created (e.g., tracer unavailable)
@@ -405,41 +465,80 @@ export class KafkaCrabInstrumentation {
     const { serverAddress, serverPort } = this._kafkaConfig
 
     return async function instrumentedBatchReceive(this: KafkaConsumer, size: number, timeoutMs: number) {
+      const receiveSpan = tracer.startSpan(KAFKA_SPAN_NAMES.CONSUMER_RECEIVE('batch'), {
+        kind: SpanKind.CLIENT,
+        attributes: {
+          [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM]: KAFKA_DEFAULTS.MESSAGING_SYSTEM,
+          [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME]: KAFKA_OPERATION_NAMES.RECEIVE,
+          [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_TYPE]: KAFKA_OPERATION_TYPES.RECEIVE,
+          ...(clientId ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID]: clientId } : {}),
+          ...(serverAddress ? { [KAFKA_SEMANTIC_CONVENTIONS.SERVER_ADDRESS]: serverAddress } : {}),
+          ...(serverPort ? { [KAFKA_SEMANTIC_CONVENTIONS.SERVER_PORT]: serverPort } : {}),
+          ...(groupId ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: groupId } : {}),
+          'messaging.batch.message_count_target': size,
+        },
+      })
+
       // Start timer for metrics
       const timer = metrics ? KafkaMetrics.startTimer() : undefined
 
-      const messages = await originalBatchReceive.call(this, size, timeoutMs)
+      let messages: Message[] = []
+      let instrumentedMessages: Message[] = []
+      let opError: Error | undefined
+
+      try {
+        messages = await context.with(trace.setSpan(context.active(), receiveSpan), () =>
+          originalBatchReceive.call(this, size, timeoutMs))
+
+        // Calculate instrumented (non-ignored) messages once to avoid redundant filtering
+        // This is used for both metrics and span creation
+        if (messages.length > 0) {
+          instrumentedMessages = messages.filter((message: Message) =>
+            !shouldIgnoreTopic(message.topic, instrumentation._kafkaConfig.ignoreTopics)
+          )
+        }
+      } catch (error) {
+        opError = error instanceof Error ? error : new Error(String(error))
+        throw error
+      } finally {
+        if (messages.length > 0) {
+          const [first] = messages
+          receiveSpan.updateName(KAFKA_SPAN_NAMES.CONSUMER_RECEIVE(first.topic))
+          receiveSpan.setAttributes({
+            [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME]: first.topic,
+            [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT]: messages.length,
+          })
+        }
+        setSpanStatus(receiveSpan, opError)
+        receiveSpan.end()
+
+        // Metrics logic
+        if (metrics && timer) {
+          try {
+            const duration = timer()
+
+            if (messages.length > 0) {
+              const [firstMessage] = messages
+              metrics.recordConsumerDuration(firstMessage.topic, duration, {
+                partition: firstMessage.partition,
+                groupId,
+                error: opError,
+              })
+
+              // Use pre-calculated instrumented messages for metrics
+              if (instrumentedMessages.length > 0) {
+                metrics.recordMessagesConsumed(instrumentedMessages, { groupId, error: opError })
+              }
+            }
+          } catch (error) {
+            diag.warn('Failed to record batch consumer metrics:', error)
+          }
+        }
+      }
 
       if (!Array.isArray(messages) || messages.length === 0) {
         return messages
       }
-
-      // Record consumed messages metrics
-      if (metrics && timer) {
-        try {
-          const duration = timer()
-          const [firstMessage] = messages
-          if (firstMessage) {
-            metrics.recordConsumerDuration(firstMessage.topic, duration, {
-              partition: firstMessage.partition,
-              groupId,
-            })
-          }
-
-          const nonIgnoredMessages = messages.filter((message: Message) =>
-            !shouldIgnoreTopic(message.topic, instrumentation._kafkaConfig.ignoreTopics)
-          )
-          if (nonIgnoredMessages.length > 0) {
-            metrics.recordMessagesConsumed(nonIgnoredMessages, { groupId })
-          }
-        } catch (error) {
-          diag.warn('Failed to record batch consumer metrics:', error)
-        }
-      }
-
-      const instrumentedMessages = messages.filter((message: Message) =>
-        !shouldIgnoreTopic(message.topic, instrumentation._kafkaConfig.ignoreTopics)
-      )
 
       if (instrumentedMessages.length === 0) {
         return messages
@@ -465,12 +564,13 @@ export class KafkaCrabInstrumentation {
 
       if (batchSpan) {
         if (groupId) {
-          batchSpan.setAttributes({ 'messaging.consumer.group.name': groupId })
+          batchSpan.setAttributes({ [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: groupId })
         }
 
         try {
           for (const message of instrumentedMessages) {
-            const msgParentContext = extractTraceContext(message.headers || {}) || parentContext
+            // extractTraceContext already returns context.active() on failure, no fallback needed
+            const msgParentContext = extractTraceContext(message.headers || {})
             const messageSpan = createConsumerSpan(tracer, message, {
               operationName: KAFKA_OPERATION_NAMES.PROCESS,
               operationType: KAFKA_OPERATION_TYPES.PROCESS,
@@ -484,7 +584,7 @@ export class KafkaCrabInstrumentation {
               const messageSpanContext = trace.setSpan(msgParentContext || context.active(), messageSpan)
               context.with(messageSpanContext, () => {
                 messageSpan.setAttributes({
-                  'messaging.batch.message_count': instrumentedMessages.length,
+                  [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT]: instrumentedMessages.length,
                 })
 
                 if (instrumentation._kafkaConfig.messageHook) {
