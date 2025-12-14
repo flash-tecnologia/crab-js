@@ -1,7 +1,27 @@
 import { nanoid } from 'nanoid'
 import { Buffer } from 'node:buffer'
-import { KafkaClient } from '../dist/index.js'
+import { endSpan, KafkaClient } from '../dist/index.js'
+
+// Minimal OTEL SDK bootstrap so spans are actually exported.
+// Configure with:
+//   OTEL_EXPORTER_OTLP_ENDPOINT (default: http://localhost:4317)
+//   OTEL_SERVICE_NAME (default: kafka-crab-js-example)
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc'
+import { resourceFromAttributes } from '@opentelemetry/resources'
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
+
 process.env.NAPI_RS_TOKIO_RUNTIME = '1'
+
+const otelEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317'
+const otelServiceName = process.env.OTEL_SERVICE_NAME || 'kafka-crab-js-example'
+const sdk = new NodeSDK({
+  traceExporter: new OTLPTraceExporter({ url: otelEndpoint }),
+  resource: resourceFromAttributes({
+    [SEMRESATTRS_SERVICE_NAME]: otelServiceName,
+  }),
+})
+await sdk.start()
 
 const kafkaClient = new KafkaClient({
   brokers: 'localhost:9092',
@@ -55,6 +75,7 @@ async function startConsumer() {
       'Message => ',
       payload.toString(),
     )
+    endSpan(message)
   }
 }
 

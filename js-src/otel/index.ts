@@ -2,6 +2,7 @@
 export type {
   BatchOtelContext,
   InstrumentedMessage,
+  InstrumentedMessageBatch,
   InstrumentedProducerRecord,
   KafkaMetricsConfig,
   KafkaOtelContext,
@@ -12,9 +13,12 @@ export type {
   TopicFilterFn,
 } from './types.js'
 
-export { getKafkaInstrumentation, KafkaCrabInstrumentation, resetKafkaInstrumentation } from './instrumentation.js'
+export { getKafkaInstrumentation, peekKafkaInstrumentation, KafkaCrabInstrumentation, resetKafkaInstrumentation } from
+  './instrumentation.js'
 
 export { getKafkaMetrics, KafkaMetrics, resetKafkaMetrics } from './metrics.js'
+
+export { EndSpan, endSpan } from './helpers.js'
 
 export {
   ERROR_TYPES,

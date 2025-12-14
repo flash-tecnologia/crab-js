@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid'
 import assert from 'node:assert'
+import * as net from 'node:net'
 import { createRequire } from 'node:module'
 import { afterEach, beforeEach, describe, test } from 'node:test'
 
@@ -18,7 +19,140 @@ const { KafkaClient, KAFKA_SEMANTIC_CONVENTIONS, getKafkaInstrumentation, resetK
 const KAFKA_BROKERS = process.env.KAFKA_BROKERS || 'localhost:9092'
 const TEST_TIMEOUT = 120000
 
-describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () => {
+async function isKafkaReachable(brokers, timeoutMs = 750) {
+  const first = String(brokers).split(',')[0]?.trim()
+  if (!first) {
+    return false
+  }
+
+  const [host, portRaw] = first.split(':')
+  const port = portRaw ? Number(portRaw) : 9092
+
+  if (!host || !Number.isFinite(port)) {
+    return false
+  }
+
+  return new Promise(resolve => {
+    const socket = net.connect({ host, port })
+
+    let done = false
+    const finish = (ok) => {
+      if (done) {
+        return
+      }
+      done = true
+      socket.removeAllListeners()
+      socket.destroy()
+      resolve(ok)
+    }
+
+    socket.once('error', () => finish(false))
+    socket.setTimeout(timeoutMs, () => finish(false))
+
+    socket.once('connect', () => {
+      try {
+        // Kafka protocol sanity check (ApiVersionsRequest v0)
+        // This avoids false positives when the port is open but isn't Kafka.
+        const clientId = 'kafka-crab-js-test'
+        const clientIdBytes = Buffer.from(clientId, 'utf8')
+
+        const header = Buffer.alloc(2 + 2 + 4 + 2 + clientIdBytes.length)
+        let offset = 0
+        header.writeInt16BE(18, offset) // ApiKey: ApiVersions
+        offset += 2
+        header.writeInt16BE(0, offset) // ApiVersion: 0
+        offset += 2
+        header.writeInt32BE(1, offset) // CorrelationId
+        offset += 4
+        header.writeInt16BE(clientIdBytes.length, offset) // ClientId length
+        offset += 2
+        clientIdBytes.copy(header, offset)
+
+        const frame = Buffer.alloc(4 + header.length)
+        frame.writeInt32BE(header.length, 0) // length prefix excludes itself
+        header.copy(frame, 4)
+
+        socket.write(frame)
+      } catch {
+        finish(false)
+      }
+    })
+
+    let buffered = Buffer.alloc(0)
+    socket.on('data', (chunk) => {
+      buffered = Buffer.concat([buffered, chunk])
+      if (buffered.length < 4) {
+        return
+      }
+
+      const size = buffered.readInt32BE(0)
+      // Kafka responses start with a sane frame size; cap to 1MB for reachability checks.
+      if (size <= 0 || size > 1024 * 1024) {
+        finish(false)
+        return
+      }
+
+      if (buffered.length < 4 + size) {
+        return
+      }
+
+      const payload = buffered.subarray(4, 4 + size)
+      if (payload.length < 6) {
+        finish(false)
+        return
+      }
+
+      const correlationId = payload.readInt32BE(0)
+      if (correlationId !== 1) {
+        finish(false)
+        return
+      }
+
+      // ApiVersionsResponse v0 begins with error_code (int16) after correlationId
+      const errorCode = payload.readInt16BE(4)
+      if (errorCode < 0 || errorCode > 1000) {
+        finish(false)
+        return
+      }
+
+      finish(true)
+    })
+  })
+}
+
+function endOtelSpans(target) {
+  if (!target) {
+    return
+  }
+
+  if (Array.isArray(target)) {
+    if (typeof target.endSpan === 'function') {
+      target.endSpan()
+      return
+    }
+
+    for (const item of target) {
+      if (item?.endSpan) {
+        item.endSpan()
+      }
+    }
+    return
+  }
+
+  if (typeof target.endSpan === 'function') {
+    target.endSpan()
+  }
+}
+
+const kafkaAvailable = process.env.KAFKA_AVAILABLE === 'true'
+  ? true
+  : process.env.KAFKA_AVAILABLE === 'false'
+    ? false
+    : await isKafkaReachable(KAFKA_BROKERS)
+
+const describeKafka = kafkaAvailable ? describe : describe.skip
+
+describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () => {
   let memoryExporter
   let spanProcessor
   let provider
@@ -54,7 +188,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
       otel: {
         serviceName: 'kafka-test-service',
         captureMessageHeaders: true,
-        captureMessagePayload: false,
+        captureMessagePayload: true,
         enableBatchInstrumentation: true,
       },
     })
@@ -122,6 +256,55 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY], 'test-key-1')
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT], 1)
     assert(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE] > 0)
+  })
+
+  test('should omit message body size when payload capture is disabled', async () => {
+    // Recreate client with payload capture disabled
+    kafkaClient = new KafkaClient({
+      brokers: KAFKA_BROKERS,
+      clientId: `test-otel-client-no-payload-${nanoid()}`,
+      otel: {
+        serviceName: 'kafka-test-service-no-payload',
+        captureMessageHeaders: true,
+        captureMessagePayload: false,
+        enableBatchInstrumentation: true,
+      },
+    })
+
+    // Ensure instrumentation uses the test tracer provider
+    instrumentation = getKafkaInstrumentation()
+    instrumentation.setTracerProvider(provider)
+
+    const producer = kafkaClient.createProducer()
+
+    const testMessage = {
+      topic: testTopic,
+      messages: [
+        {
+          payload: Buffer.from('test message without payload capture'),
+          headers: { 'test-header': Buffer.from('test-value') },
+        },
+      ],
+    }
+
+    await producer.send(testMessage)
+    await producer.flush()
+
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    const spans = memoryExporter.getFinishedSpans()
+    const producerSpan = spans.find(span =>
+      span.kind === SpanKind.PRODUCER &&
+      span.name.includes(testTopic)
+    )
+
+    assert(producerSpan, 'Should have a producer span')
+    const attributes = producerSpan.attributes
+    assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM], 'kafka')
+    assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME], testTopic)
+    assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME], 'send')
+    assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT], 1)
+    assert.strictEqual(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE], undefined)
   })
 
   test('should inject trace context into message headers', async () => {
@@ -195,6 +378,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
 
     // Receive the message
     const receivedMessage = await consumer.recv()
+    endOtelSpans(receivedMessage)
     assert(receivedMessage, 'Should receive a message')
     assert.equal(receivedMessage.topic, testTopic)
 
@@ -206,7 +390,8 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     const spans = memoryExporter.getFinishedSpans()
     const consumerSpan = spans.find(span =>
       span.kind === SpanKind.CONSUMER &&
-      span.name.includes(testTopic)
+      span.name.startsWith('process ') &&
+      span.name.endsWith(testTopic)
     )
 
     assert(consumerSpan, 'Should have a consumer span')
@@ -219,8 +404,54 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM], 'kafka')
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME], testTopic)
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME], 'process')
-    assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_PARTITION], receivedMessage.partition)
+    assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID], receivedMessage.partition)
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET], receivedMessage.offset)
+  })
+
+  test('should not finish process span until endSpan is invoked', async () => {
+    const producer = kafkaClient.createProducer()
+    await producer.send({
+      topic: testTopic,
+      messages: [{ payload: Buffer.from('delayed endSpan message') }],
+    })
+    await producer.flush()
+
+    memoryExporter.reset()
+
+    const consumer = kafkaClient.createConsumer({
+      groupId: `no-endspan-group-${nanoid()}`,
+      enableAutoCommit: false,
+    })
+
+    await consumer.subscribe([{
+      topic: testTopic,
+      allOffsets: { position: 'Beginning' },
+    }])
+
+    const receivedMessage = await consumer.recv()
+    assert(receivedMessage, 'Should receive a message')
+    assert.equal(typeof receivedMessage.endSpan, 'function', 'Message should expose endSpan when OTEL is enabled')
+
+    await consumer.disconnect()
+
+    await new Promise(resolve => setTimeout(resolve, 100))
+    const spansBefore = memoryExporter.getFinishedSpans()
+    const processBefore = spansBefore.find(span =>
+      span.kind === SpanKind.CONSUMER &&
+      span.name === `process ${testTopic}`
+    )
+    assert.equal(processBefore, undefined, 'Process span should not be finished without calling endSpan()')
+
+    // Cleanup: end span after assertion so we don't leak spans across tests
+    endOtelSpans(receivedMessage)
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    const spansAfter = memoryExporter.getFinishedSpans()
+    const processAfter = spansAfter.find(span =>
+      span.kind === SpanKind.CONSUMER &&
+      span.name === `process ${testTopic}`
+    )
+    assert(processAfter, 'Process span should finish after calling endSpan()')
   })
 
   test('should propagate producer span context to consumers', async () => {
@@ -248,6 +479,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     }])
 
     const propagatedMessage = await consumer.recv()
+    endOtelSpans(propagatedMessage)
     assert(propagatedMessage, 'Should receive a message for propagation check')
 
     await consumer.disconnect()
@@ -317,6 +549,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
 
     // Receive messages in batch
     const messages = await consumer.recvBatch(batchSize, 5000)
+    endOtelSpans(messages)
     assert(messages.length >= 1, `Should receive at least 1 message, got ${messages.length}`)
 
     await consumer.disconnect()
@@ -328,8 +561,10 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
 
     // Should have batch span and individual message spans
     const batchSpan = spans.find(span =>
-      span.name.includes('batch_process') &&
-      span.name.includes(testTopic)
+      span.kind === SpanKind.CONSUMER &&
+      span.name === `process ${testTopic}` &&
+      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] >= 1 &&
+      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined
     )
 
     assert(batchSpan, 'Should have a batch processing span')
@@ -338,14 +573,14 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     // Verify batch attributes
     const batchAttributes = batchSpan.attributes
     assert.equal(batchAttributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM], 'kafka')
-    assert.equal(batchAttributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME], 'batch_process')
+    assert.equal(batchAttributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME], 'process')
     assert(batchAttributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] >= 1)
 
     // Should also have individual message spans
     const messageSpans = spans.filter(span =>
       span.kind === SpanKind.CONSUMER &&
-      span.name.includes('process') &&
-      !span.name.includes('batch')
+      span.name === `process ${testTopic}` &&
+      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] !== undefined
     )
 
     assert(messageSpans.length >= 1, 'Should have individual message spans')
@@ -458,6 +693,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     }])
 
     const receivedMessage = await consumer.recv()
+    endOtelSpans(receivedMessage)
     assert(receivedMessage, 'Should receive a message')
 
     await consumer.disconnect()
@@ -468,7 +704,8 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     const spans = memoryExporter.getFinishedSpans()
     const consumerSpan = spans.find(span =>
       span.kind === SpanKind.CONSUMER &&
-      span.name.includes(testTopic)
+      span.name.startsWith('process ') &&
+      span.name.endsWith(testTopic)
     )
 
     assert(consumerSpan, 'Should have a consumer span')
@@ -511,6 +748,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     }])
 
     const streamMessage = await messagePromise
+    endOtelSpans(streamMessage)
     assert(streamMessage, 'Stream consumer should receive a message')
 
     await streamConsumer.disconnect()
@@ -599,6 +837,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
 
     // Collect messages from stream
     streamConsumer.on('data', (message) => {
+      endOtelSpans(message)
       receivedMessages.push(message)
       receivedCount++
       if (receivedCount >= messageCount) {
@@ -687,6 +926,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     const receivedMessages = []
 
     streamConsumer.on('data', (message) => {
+      endOtelSpans(message)
       receivedMessages.push(message)
       receivedCount++
       // stop after we see at least two batches worth of messages
@@ -722,8 +962,10 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
 
     const spans = memoryExporter.getFinishedSpans()
     const batchSpans = spans.filter(span =>
-      span.name.includes('batch_process') &&
-      span.name.includes(testTopic)
+      span.kind === SpanKind.CONSUMER &&
+      span.name === `process ${testTopic}` &&
+      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] >= batchSize &&
+      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined
     )
 
     assert(batchSpans.length >= 1, 'Should have batch processing spans')
@@ -766,7 +1008,8 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
     // Verify delivery report information is captured
     const attributes = producerSpan.attributes
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME], testTopic)
-    assert(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_PARTITION] !== undefined, 'Should have partition info')
+    assert(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] !== undefined,
+      'Should have partition info')
   })
 
   test('should trace complex producer-consumer flow with context propagation', async () => {
@@ -806,6 +1049,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
       }])
 
       const receivedMessage = await consumer.recv()
+      endOtelSpans(receivedMessage)
       assert(receivedMessage, 'Should receive message')
 
       await consumer.disconnect()
@@ -893,6 +1137,8 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
       consumer2.recv(),
     ])
 
+    endOtelSpans(messageA)
+    endOtelSpans(messageB)
     assert(messageA && messageA.topic === topicA, 'Should receive message from topic A')
     assert(messageB && messageB.topic === topicB, 'Should receive message from topic B')
 
@@ -972,6 +1218,8 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
 
     // Try to receive from both consumers
     const message2 = await consumer2.recv()
+    endOtelSpans(message1)
+    endOtelSpans(message2)
     assert(message2, 'Second consumer should receive message after rebalancing')
 
     await Promise.all([consumer1.disconnect(), consumer2.disconnect()])
@@ -1144,6 +1392,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
       }])
 
       streamConsumer.on('data', (message) => {
+        endOtelSpans(message)
         // Create processing span within the context
         const processingSpan = trace.getTracer('test').startSpan('stream-message-processing')
 
@@ -1240,6 +1489,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
       }])
 
       receivedMessage = await consumer.recv()
+      endOtelSpans(receivedMessage)
       await consumer.disconnect()
     })
 
@@ -1357,6 +1607,7 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
         messageSpan.end()
       }
 
+      endOtelSpans(messages)
       await consumer.disconnect()
     })
 
@@ -1367,7 +1618,12 @@ describe('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () 
 
     const spans = memoryExporter.getFinishedSpans()
 
-    const kafkaBatchSpan = spans.find(s => s.name.includes('batch_process') && s.name.includes(testTopic))
+    const kafkaBatchSpan = spans.find(s =>
+      s.kind === SpanKind.CONSUMER &&
+      s.name === `process ${testTopic}` &&
+      s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] >= 1 &&
+      s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined
+    )
 
     assert(kafkaBatchSpan, `Should have Kafka batch span. Spans: ${spans.map(s => s.name).join(', ')}`)
     assert(processedMessages.length >= 1, 'Should process at least one message')

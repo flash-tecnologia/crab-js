@@ -42,10 +42,22 @@ export function getMessageAttributes(
   message: Message,
   operationName: string,
   operationType: string,
-  clientId?: string,
-  serverAddress?: string,
-  serverPort?: number,
+  options: {
+    clientId?: string
+    serverAddress?: string
+    serverPort?: number
+    capturePayload?: boolean
+    maxPayloadSize?: number
+  } = {},
 ): Attributes {
+  const {
+    clientId,
+    serverAddress,
+    serverPort,
+    capturePayload,
+    maxPayloadSize,
+  } = options
+
   const attributes: Attributes = {
     // Required attributes - SHOULD be provided at span creation time
     [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM]: KAFKA_DEFAULTS.MESSAGING_SYSTEM,
@@ -92,16 +104,22 @@ export function getMessageAttributes(
   }
 
   // Opt-In: message body size (for single message operations)
-  if (message.payload) {
+  if (capturePayload && message.payload) {
     let payloadSize: number
     if (Buffer.isBuffer(message.payload)) {
       payloadSize = message.payload.length
     } else if (typeof message.payload === 'string') {
       payloadSize = Buffer.byteLength(message.payload, 'utf8')
     } else {
-      payloadSize = JSON.stringify(message.payload).length
+      try {
+        payloadSize = JSON.stringify(message.payload).length
+      } catch {
+        payloadSize = undefined as unknown as number
+      }
     }
-    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE] = payloadSize
+    if (payloadSize !== undefined && (maxPayloadSize === undefined || payloadSize <= maxPayloadSize)) {
+      attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE] = payloadSize
+    }
   }
 
   return attributes
@@ -113,10 +131,22 @@ export function getProducerRecordAttributes(
   record: ProducerRecord,
   operationName: string,
   operationType: string,
-  clientId?: string,
-  serverAddress?: string,
-  serverPort?: number,
+  options: {
+    clientId?: string
+    serverAddress?: string
+    serverPort?: number
+    capturePayload?: boolean
+    maxPayloadSize?: number
+  } = {},
 ): Attributes {
+  const {
+    clientId,
+    serverAddress,
+    serverPort,
+    capturePayload,
+    maxPayloadSize,
+  } = options
+
   const attributes: Attributes = {
     // Required attributes - SHOULD be provided at span creation time
     [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM]: KAFKA_DEFAULTS.MESSAGING_SYSTEM,
@@ -160,16 +190,22 @@ export function getProducerRecordAttributes(
     }
 
     // Opt-In: message body size
-    if (firstMessage.payload) {
+    if (capturePayload && firstMessage.payload) {
       let payloadSize: number
       if (Buffer.isBuffer(firstMessage.payload)) {
         payloadSize = firstMessage.payload.length
       } else if (typeof firstMessage.payload === 'string') {
         payloadSize = Buffer.byteLength(firstMessage.payload, 'utf8')
       } else {
-        payloadSize = JSON.stringify(firstMessage.payload).length
+        try {
+          payloadSize = JSON.stringify(firstMessage.payload).length
+        } catch {
+          payloadSize = undefined as unknown as number
+        }
       }
-      attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE] = payloadSize
+      if (payloadSize !== undefined && (maxPayloadSize === undefined || payloadSize <= maxPayloadSize)) {
+        attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE] = payloadSize
+      }
     }
   }
 
@@ -180,7 +216,7 @@ export function getProducerRecordAttributes(
 export type HeaderValue = Buffer | string | string[] | undefined
 
 // Inject trace context into Kafka headers
-// Note: This function mutates the headers object in place
+// Returns a new headers object (does not mutate the input) to avoid altering caller-owned objects
 // Accepts both Kafka's native Buffer headers and plain objects for flexibility
 // Returns original headers unchanged if injection fails to prevent instrumentation from breaking
 export function injectTraceContext(
@@ -189,10 +225,12 @@ export function injectTraceContext(
 ): Record<string, HeaderValue> {
   try {
     const activeContext = ctx || context.active()
+    // Clone headers to avoid mutating caller input
+    const targetHeaders: Record<string, HeaderValue> = { ...headers }
 
     // Convert existing headers to string format for OpenTelemetry propagation
     const stringHeaders: Record<string, string | string[] | undefined> = {}
-    for (const [key, value] of Object.entries(headers)) {
+    for (const [key, value] of Object.entries(targetHeaders)) {
       if (value === undefined || value === null) {
         stringHeaders[key] = undefined
       } else if (Buffer.isBuffer(value)) {
@@ -211,23 +249,23 @@ export function injectTraceContext(
       },
     })
 
-    // Mutate original headers object with injected trace context
+    // Mutate cloned headers object with injected trace context
     // Keep the same type format as the input (Buffer headers stay as Buffer)
-    const inputHasBuffers = Object.values(headers).some((headerValue) => Buffer.isBuffer(headerValue))
+    const inputHasBuffers = Object.values(targetHeaders).some((headerValue) => Buffer.isBuffer(headerValue))
     for (const [key, value] of Object.entries(stringHeaders)) {
       if (value !== undefined) {
         if (inputHasBuffers) {
           // Convert back to Buffer for Kafka native binding compatibility
           const stringValue = Array.isArray(value) ? value.join(',') : value
-          headers[key] = Buffer.from(stringValue, 'utf8')
+          targetHeaders[key] = Buffer.from(stringValue, 'utf8')
         } else {
           // Keep as string for user-facing API
-          headers[key] = value
+          targetHeaders[key] = value
         }
       }
     }
 
-    return headers
+    return targetHeaders
   } catch (error) {
     diag.warn('Failed to inject trace context into headers, returning original headers:', error)
     return headers
@@ -252,6 +290,29 @@ export function normalizeHeadersToBuffer(headers: Record<string, HeaderValue>): 
   }
 
   return bufferHeaders
+}
+
+export function getCapturedHeaderAttributes(
+  headers: Record<string, unknown> | null | undefined,
+  options: {
+    maxHeaderKeys?: number
+  } = {},
+): Attributes {
+  if (!headers || typeof headers !== 'object') {
+    return {}
+  }
+
+  const maxHeaderKeys = options.maxHeaderKeys ?? 20
+  const headerNames = Object.keys(headers).toSorted()
+
+  if (headerNames.length === 0) {
+    return {}
+  }
+
+  return {
+    'kafka_crab.message.header_count': headerNames.length,
+    'kafka_crab.message.header_names': headerNames.slice(0, maxHeaderKeys),
+  }
 }
 
 // Extract trace context from Kafka headers (supports both Buffer and string headers)
@@ -311,6 +372,8 @@ export interface ProducerSpanOptions {
   clientId?: string
   serverAddress?: string
   serverPort?: number
+  capturePayload?: boolean
+  maxPayloadSize?: number
 }
 
 // Create span for producer send operation
@@ -340,9 +403,13 @@ export function createProducerSpan(
     record,
     operationName,
     KAFKA_OPERATION_TYPES.SEND,
-    clientId,
-    serverAddress,
-    serverPort,
+    {
+      clientId,
+      serverAddress,
+      serverPort,
+      capturePayload: options.capturePayload,
+      maxPayloadSize: options.maxPayloadSize,
+    },
   )
 
   const spanOptions = {
@@ -361,6 +428,8 @@ export interface ConsumerSpanOptions {
   clientId?: string
   serverAddress?: string
   serverPort?: number
+  capturePayload?: boolean
+  maxPayloadSize?: number
 }
 
 // Create span for consumer process operation
@@ -390,9 +459,13 @@ export function createConsumerSpan(
     message,
     operationName,
     operationType,
-    clientId,
-    serverAddress,
-    serverPort,
+    {
+      clientId,
+      serverAddress,
+      serverPort,
+      capturePayload: options.capturePayload,
+      maxPayloadSize: options.maxPayloadSize,
+    },
   )
 
   const spanOptions = {

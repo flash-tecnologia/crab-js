@@ -72,6 +72,7 @@ pub struct KafkaConsumer {
   stream_consumer: Arc<StreamConsumer<KafkaCrabContext>>,
   fetch_metadata_timeout: Duration,
   disconnect_signal: DisconnectSignal,
+  client_id: String,
 }
 
 #[napi]
@@ -100,6 +101,7 @@ impl KafkaConsumer {
         |t| t as u64,
       )),
       disconnect_signal: watch::channel(()),
+      client_id: kafka_client.configuration().client_id,
     })
   }
 
@@ -107,6 +109,12 @@ impl KafkaConsumer {
   #[napi]
   pub fn get_config(&self) -> Result<ConsumerConfiguration> {
     Ok(self.consumer_config.clone())
+  }
+
+  /// Returns the client ID associated with this consumer
+  #[napi(getter)]
+  pub fn client_id(&self) -> String {
+    self.client_id.clone()
   }
 
   /// Returns the list of topics and partitions currently subscribed to.

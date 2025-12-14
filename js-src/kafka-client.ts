@@ -10,9 +10,20 @@ import {
 } from '../js-binding.js'
 
 import { getKafkaInstrumentation } from './otel/instrumentation.js'
-import type { KafkaOtelContext, KafkaOtelInstrumentationConfig } from './otel/types.js'
+import type {
+  InstrumentedMessage,
+  InstrumentedMessageBatch,
+  KafkaOtelContext,
+  KafkaOtelInstrumentationConfig,
+} from './otel/types.js'
 import { KafkaBatchStreamReadable } from './streams/kafka-batch-stream-readable.js'
 import { KafkaStreamReadable } from './streams/kafka-stream-readable.js'
+import {
+  instrumentBatchReceive,
+  instrumentConsumerReceive,
+  instrumentProducerSend,
+} from './diagnostics/instrumentation.js'
+import { getOtelAdapter } from './diagnostics/otel-adapter.js'
 
 export interface StreamConsumerConfiguration extends ConsumerConfiguration {
   batchSize?: number // Default 1 (single mode), > 1 enables batch mode
@@ -20,7 +31,13 @@ export interface StreamConsumerConfiguration extends ConsumerConfiguration {
   streamOptions?: ReadableOptions
 }
 
-export interface KafkaClientConfiguration extends KafkaConfiguration {
+export interface KafkaClientConfiguration extends Omit<KafkaConfiguration, 'clientId'> {
+  /**
+   * Optional client id; defaults to librdkafka's default (`rdkafka`).
+   *
+   * See: https://github.com/confluentinc/librdkafka/blob/master/CONFIGURATION.md
+   */
+  clientId?: string
   otel?: KafkaOtelInstrumentationConfig | false // OTEL configuration or false to disable
 }
 
@@ -29,29 +46,73 @@ export interface KafkaClientConfiguration extends KafkaConfiguration {
  */
 export class KafkaClient {
   private readonly kafkaClientConfig: KafkaClientConfig
+  private readonly kafkaConfiguration: KafkaClientConfiguration & { clientId: string }
   private readonly _otelEnabled: boolean
   private readonly _otelContext: KafkaOtelContext
+  private readonly _otelBatchInstrumentationEnabled: boolean
+  private readonly _otelDiagnosticConfig: {
+    clientId?: string
+    serverAddress?: string
+    serverPort?: number
+  }
 
   /**
    * Creates a KafkaClient instance
    * @throws {Error} If the configuration is invalid
    */
-  constructor(private readonly kafkaConfiguration: KafkaClientConfiguration) {
+  constructor(kafkaConfiguration: KafkaClientConfiguration) {
+    const resolvedClientId = kafkaConfiguration.clientId ?? 'rdkafka'
+    this.kafkaConfiguration = { ...kafkaConfiguration, clientId: resolvedClientId }
+
     // Extract OTEL configuration
-    const { otel, ...kafkaConfig } = kafkaConfiguration
-    this.kafkaClientConfig = new KafkaClientConfig(kafkaConfig)
+    const { otel, ...kafkaConfig } = this.kafkaConfiguration
+    this.kafkaClientConfig = new KafkaClientConfig(kafkaConfig as KafkaConfiguration)
+
+    const resolvedOtelConfig = typeof otel === 'object' ? otel : undefined
 
     // Initialize OTEL instrumentation
-    this._otelEnabled = otel !== false && otel !== null
-    if (this._otelEnabled && typeof otel === 'object') {
-      const instrumentation = getKafkaInstrumentation(otel)
-      this._otelContext = instrumentation.createOtelContext()
-    } else if (this._otelEnabled) {
-      const instrumentation = getKafkaInstrumentation()
-      this._otelContext = instrumentation.createOtelContext()
-    } else {
+    this._otelEnabled = otel !== false && otel !== null && resolvedOtelConfig?.enabled !== false
+    if (!this._otelEnabled) {
       this._otelContext = this._createDisabledOtelContext()
+      this._otelBatchInstrumentationEnabled = false
+      this._otelDiagnosticConfig = { clientId: this.kafkaConfiguration.clientId }
+      return
     }
+
+    const instrumentation = getKafkaInstrumentation(resolvedOtelConfig)
+    const normalizedConfig = instrumentation.kafkaConfig
+    this._otelBatchInstrumentationEnabled = normalizedConfig.enableBatchInstrumentation !== false
+
+    // Enable OTEL adapter to subscribe to diagnostic channels (normalized config includes defaults)
+    getOtelAdapter({
+      ignoreTopics: normalizedConfig.ignoreTopics,
+      captureMessageHeaders: normalizedConfig.captureMessageHeaders,
+      captureMessagePayload: normalizedConfig.captureMessagePayload,
+      maxPayloadSize: normalizedConfig.maxPayloadSize,
+      messageHook: normalizedConfig.messageHook,
+      producerHook: normalizedConfig.producerHook,
+      metrics: normalizedConfig.metrics,
+    })
+
+    const firstBroker = String(this.kafkaConfiguration.brokers).split(',')[0]?.trim()
+    const [brokerHostRaw, brokerPortRaw] = firstBroker ? firstBroker.split(':') : [undefined, undefined]
+    const brokerHost = brokerHostRaw?.trim()
+    const brokerPort = brokerPortRaw ? Number(brokerPortRaw) : undefined
+
+    const serverAddress = normalizedConfig.serverAddress
+      ?? (normalizedConfig.metrics?.serverAddress && String(normalizedConfig.metrics.serverAddress))
+      ?? brokerHost
+    const serverPort = normalizedConfig.serverPort
+      ?? (normalizedConfig.metrics?.serverPort !== undefined ? Number(normalizedConfig.metrics.serverPort) : undefined)
+      ?? (Number.isFinite(brokerPort) ? brokerPort : undefined)
+
+    this._otelDiagnosticConfig = {
+      clientId: this.kafkaConfiguration.clientId,
+      ...(serverAddress ? { serverAddress } : {}),
+      ...(serverPort !== undefined ? { serverPort } : {}),
+    }
+
+    this._otelContext = instrumentation.createOtelContext()
   }
 
   /**
@@ -122,32 +183,23 @@ export class KafkaClient {
   }
 
   private _instrumentProducer(producer: KafkaProducer) {
-    const instrumentation = getKafkaInstrumentation()
     const originalSend = producer.send.bind(producer)
 
-    producer.send = instrumentation.instrumentProducerSend(
-      originalSend,
-      this.kafkaConfiguration.clientId,
-    )
+    // Use diagnostic channel-based instrumentation for near-zero overhead when no subscribers
+    producer.send = instrumentProducerSend(originalSend, this._otelDiagnosticConfig)
 
     return producer
   }
 
   private _instrumentConsumer(consumer: KafkaConsumer, groupId?: string) {
-    const instrumentation = getKafkaInstrumentation()
     const originalRecv = consumer.recv.bind(consumer)
     const originalRecvBatch = consumer.recvBatch.bind(consumer)
 
-    consumer.recv = instrumentation.instrumentConsumerReceive(
-      originalRecv,
-      groupId,
-      this.kafkaConfiguration.clientId,
-    )
-    consumer.recvBatch = instrumentation.instrumentBatchReceive(
-      originalRecvBatch,
-      groupId,
-      this.kafkaConfiguration.clientId,
-    )
+    // Use diagnostic channel-based instrumentation for near-zero overhead when no subscribers
+    consumer.recv = instrumentConsumerReceive(originalRecv, groupId, this._otelDiagnosticConfig)
+    if (this._otelBatchInstrumentationEnabled) {
+      consumer.recvBatch = instrumentBatchReceive(originalRecvBatch, groupId, this._otelDiagnosticConfig)
+    }
 
     return consumer
   }
@@ -168,6 +220,58 @@ export class KafkaClient {
       endSpan: (span?: Span | null) => {
         if (span && typeof span.end === 'function') {
           span.end()
+        }
+      },
+      endMessageSpan: (message, error) => {
+        if (!message) {
+          return
+        }
+        const existingEndSpan = (message as unknown as { endSpan?: (error?: Error) => void }).endSpan
+        if (typeof existingEndSpan === 'function') {
+          existingEndSpan(error)
+        }
+      },
+      endBatchSpan: (batch, error) => {
+        if (!batch) {
+          return
+        }
+        const existingEndSpan = (batch as unknown as { endSpan?: (error?: Error) => void }).endSpan
+        if (typeof existingEndSpan === 'function') {
+          existingEndSpan(error)
+        }
+      },
+      toInstrumentedMessage: message => message as unknown as InstrumentedMessage,
+      toInstrumentedBatch: batch => batch as unknown as InstrumentedMessageBatch,
+      processMessage: async (message, handler) => {
+        let capturedError: Error | undefined
+        try {
+          return await handler(message)
+        } catch (error) {
+          capturedError = error instanceof Error ? error : new Error(String(error))
+          throw error
+        } finally {
+          const existingEndSpan = message
+            ? (message as unknown as { endSpan?: (error?: Error) => void }).endSpan
+            : undefined
+          if (typeof existingEndSpan === 'function') {
+            existingEndSpan(capturedError)
+          }
+        }
+      },
+      processBatch: async (batch, handler) => {
+        let capturedError: Error | undefined
+        try {
+          return await handler(batch)
+        } catch (error) {
+          capturedError = error instanceof Error ? error : new Error(String(error))
+          throw error
+        } finally {
+          const existingEndSpan = batch
+            ? (batch as unknown as { endSpan?: (error?: Error) => void }).endSpan
+            : undefined
+          if (typeof existingEndSpan === 'function') {
+            existingEndSpan(capturedError)
+          }
         }
       },
     }

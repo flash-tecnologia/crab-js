@@ -1,5 +1,6 @@
 import { NapiCli } from '@napi-rs/cli'
 import * as esbuild from 'esbuild'
+import fs from 'node:fs'
 
 const getTarget = () => {
   const idx = process.argv.findIndex(arg => arg === '--target')
@@ -43,11 +44,17 @@ async function execNapibuild() {
 }
 
 async function execEsbuild() {
+  const packageJson = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+
   const commonConfig = {
     entryPoints: ['./js-src/index.ts'],
     platform: 'node',
     bundle: true,
     sourcemap: true,
+    define: {
+      __PACKAGE_NAME__: JSON.stringify(packageJson.name),
+      __PACKAGE_VERSION__: JSON.stringify(packageJson.version),
+    },
     external: [
       '../js-binding.js',
       '../js-binding.d.ts',

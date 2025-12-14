@@ -25,6 +25,15 @@ await test('KafkaClient can be created with configuration', async () => {
   equal(client.kafkaConfiguration.clientId, testConfig.clientId, 'ClientId should match')
 })
 
+await test('KafkaClient defaults clientId to rdkafka when omitted', async () => {
+  const client = new KafkaClient({
+    brokers: testConfig.brokers,
+  })
+
+  ok(client.kafkaConfiguration, 'Client should have kafkaConfiguration property')
+  equal(client.kafkaConfiguration.clientId, 'rdkafka', 'ClientId should default to rdkafka')
+})
+
 // Test client with additional configuration
 await test('KafkaClient accepts additional configuration options', async () => {
   const client = new KafkaClient({

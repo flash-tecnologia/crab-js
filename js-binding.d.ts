@@ -28,6 +28,8 @@ export declare class KafkaClientConfig {
 export declare class KafkaConsumer {
   /** Returns the current consumer configuration. */
   getConfig(): ConsumerConfiguration
+  /** Returns the client ID associated with this consumer */
+  get clientId(): string
   /** Returns the list of topics and partitions currently subscribed to. */
   getSubscription(): Array<TopicPartition>
   /**

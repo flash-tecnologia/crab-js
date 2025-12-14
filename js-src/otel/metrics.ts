@@ -95,7 +95,7 @@ export class KafkaMetrics {
     }
 
     this._config = {
-      enabled: true,
+      enabled: false,
       includePartitionId: true,
       ...config,
     }
@@ -174,7 +174,21 @@ export class KafkaMetrics {
       KafkaMetrics._validateHistogramBuckets(config.histogramBuckets)
     }
 
+    const bucketsChanged = Array.isArray(config.histogramBuckets) &&
+      (this._config.histogramBuckets?.length !== config.histogramBuckets.length ||
+        this._config.histogramBuckets?.some((bucket, index) => bucket !== config.histogramBuckets?.[index]))
+
     this._config = { ...this._config, ...config }
+
+    // Handle enable/disable toggle
+    if (this._config.enabled && !this._enabled) {
+      this.enable()
+    } else if (this._config.enabled === false && this._enabled) {
+      this.disable()
+    } else if (this._enabled && bucketsChanged) {
+      // Recreate instruments to apply new bucket boundaries
+      this._createInstruments()
+    }
   }
 
   /**
@@ -242,14 +256,19 @@ export class KafkaMetrics {
       partition?: number
       groupId?: string
       error?: Error
+      clientId?: string
     } = {},
   ): void {
     if (!this._enabled || !this._operationDuration) {
       return
     }
 
-    const attributes = this._buildConsumerAttributes(topic, KAFKA_OPERATION_NAMES.RECEIVE,
-      KAFKA_OPERATION_TYPES.RECEIVE, options)
+    const attributes = this._buildConsumerAttributes(
+      topic,
+      KAFKA_OPERATION_NAMES.POLL,
+      KAFKA_OPERATION_TYPES.RECEIVE,
+      options,
+    )
     this._operationDuration.record(durationSeconds, attributes)
   }
 
@@ -261,6 +280,7 @@ export class KafkaMetrics {
     options: {
       groupId?: string
       error?: Error
+      clientId?: string
     } = {},
   ): void {
     if (!this._enabled || !this._consumedMessages) {
@@ -285,12 +305,13 @@ export class KafkaMetrics {
       const [firstMessage] = topicMessages
       const attributes = this._buildConsumerAttributes(
         topic,
-        KAFKA_OPERATION_NAMES.RECEIVE,
+        KAFKA_OPERATION_NAMES.POLL,
         KAFKA_OPERATION_TYPES.RECEIVE,
         {
           partition: firstMessage?.partition,
           groupId: options.groupId,
           error: options.error,
+          clientId: options.clientId,
         },
       )
       this._consumedMessages.add(topicMessages.length, attributes)
@@ -306,6 +327,7 @@ export class KafkaMetrics {
     options: {
       groupId?: string
       error?: Error
+      clientId?: string
     } = {},
   ): void {
     if (!this._enabled || !this._processDuration) {
@@ -320,6 +342,7 @@ export class KafkaMetrics {
         partition: message.partition,
         groupId: options.groupId,
         error: options.error,
+        clientId: options.clientId,
       },
     )
 
@@ -335,6 +358,7 @@ export class KafkaMetrics {
     options: {
       groupId?: string
       error?: Error
+      clientId?: string
     } = {},
   ): void {
     if (!this._enabled || !this._processDuration || messages.length === 0) {
@@ -354,6 +378,7 @@ export class KafkaMetrics {
         partition: firstMessage.partition,
         groupId: options.groupId,
         error: options.error,
+        clientId: options.clientId,
       },
     )
 
@@ -394,7 +419,7 @@ export class KafkaMetrics {
       if (index > 0 && bucket <= buckets[index - 1]) {
         throw new Error(
           `histogramBuckets must be in strictly ascending order. ` +
-            `Found ${bucket} at index ${index}, but previous value was ${buckets[index - 1]}`,
+          `Found ${bucket} at index ${index}, but previous value was ${buckets[index - 1]}`,
         )
       }
     }
@@ -503,6 +528,7 @@ export class KafkaMetrics {
       partition?: number
       groupId?: string
       error?: Error
+      clientId?: string
     } = {},
   ): Attributes {
     const attributes: Attributes = {
@@ -532,6 +558,11 @@ export class KafkaMetrics {
       attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] = String(options.partition)
     }
 
+    // Add client ID if available
+    if (options.clientId) {
+      attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID] = options.clientId
+    }
+
     // Add error type if operation failed
     if (options.error) {
       attributes[KAFKA_SEMANTIC_CONVENTIONS.ERROR_TYPE] = getErrorType(options.error)
@@ -550,7 +581,9 @@ let globalMetrics: KafkaMetrics | null = null
 export function getKafkaMetrics(config?: KafkaMetricsConfig): KafkaMetrics {
   if (!globalMetrics) {
     globalMetrics = new KafkaMetrics(config)
-    globalMetrics.enable()
+    if (config?.enabled === true) {
+      globalMetrics.enable()
+    }
   } else if (config) {
     globalMetrics.updateConfig(config)
   }

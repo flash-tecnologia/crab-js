@@ -35,6 +35,7 @@ export type { KafkaClientConfiguration, StreamConsumerConfiguration } from './ka
 export type {
   BatchOtelContext,
   InstrumentedMessage,
+  InstrumentedMessageBatch,
   InstrumentedProducerRecord,
   KafkaOtelContext,
   KafkaOtelInstrumentationConfig,
@@ -43,6 +44,57 @@ export type {
   TopicFilterFn,
 } from './otel/types.js'
 
-export { getKafkaInstrumentation, KafkaCrabInstrumentation, resetKafkaInstrumentation } from './otel/instrumentation.js'
+export {
+  getKafkaInstrumentation,
+  peekKafkaInstrumentation,
+  KafkaCrabInstrumentation,
+  resetKafkaInstrumentation,
+} from './otel/instrumentation.js'
+
+export { EndSpan, endSpan } from './otel/helpers.js'
 
 export { KAFKA_OPERATION_TYPES, KAFKA_SEMANTIC_CONVENTIONS, PACKAGE_INFO } from './otel/constants.js'
+
+// Diagnostic Channels exports
+export {
+  // Channel names and types
+  CHANNEL_NAMES,
+  type ChannelName,
+  type TypedChannel,
+  type BaseEvent,
+  type ProducerSendStartEvent,
+  type ProducerSendEndEvent,
+  type ProducerSendErrorEvent,
+  type ConsumerReceiveStartEvent,
+  type ConsumerReceiveEndEvent,
+  type ConsumerProcessStartEvent,
+  type ConsumerProcessEndEvent,
+  type BatchReceiveStartEvent,
+  type BatchReceiveEndEvent,
+  type BatchProcessStartEvent,
+  type BatchProcessEndEvent,
+  // Channel instances
+  channels,
+  producerSendStartChannel,
+  producerSendEndChannel,
+  producerSendErrorChannel,
+  consumerReceiveStartChannel,
+  consumerReceiveEndChannel,
+  consumerProcessStartChannel,
+  consumerProcessEndChannel,
+  batchReceiveStartChannel,
+  batchReceiveEndChannel,
+  batchProcessStartChannel,
+  batchProcessEndChannel,
+  // OTEL Adapter
+  OtelAdapter,
+  type OtelAdapterConfig,
+  getOtelAdapter,
+  resetOtelAdapter,
+  enableOtelInstrumentation,
+  // Diagnostic instrumentation
+  type DiagnosticInstrumentationConfig,
+  instrumentProducerSend,
+  instrumentConsumerReceive,
+  instrumentBatchReceive,
+} from './diagnostics/index.js'

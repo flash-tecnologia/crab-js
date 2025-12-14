@@ -1,6 +1,6 @@
-import RDKafka from '@platformatic/rdkafka'
 import { printResults, type Result, Tracker } from 'cronometro'
 import { Kafka as KafkaJS, logLevel } from 'kafkajs'
+import RDKafka from 'node-rdkafka'
 import assert from 'node:assert'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -34,6 +34,9 @@ async function kafkaCrabJs(useBatchMode = false): Promise<Result> {
     securityProtocol: 'Plaintext',
     logLevel: 'warn',
     brokerAddressFamily: 'v4',
+    otel: {
+      enabled: false,
+    },
   })
 
   const consumer = client.createStreamConsumer({

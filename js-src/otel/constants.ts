@@ -15,8 +15,6 @@ export const KAFKA_SEMANTIC_CONVENTIONS = {
   MESSAGING_KAFKA_OFFSET: 'messaging.kafka.offset',
   MESSAGING_KAFKA_MESSAGE_KEY: 'messaging.kafka.message.key',
   MESSAGING_KAFKA_TOMBSTONE: 'messaging.kafka.message.tombstone',
-  // Alias for partition (maps to messaging.destination.partition.id)
-  MESSAGING_KAFKA_PARTITION: 'messaging.destination.partition.id',
 
   // Consumer-specific attributes
   MESSAGING_CONSUMER_GROUP_NAME: 'messaging.consumer.group.name',
@@ -114,8 +112,12 @@ export const ERROR_TYPES = {
 } as const
 
 // Package information
-// Version must be kept in sync with package.json (verified by tests)
+// Values are injected at build time by esbuild (see build.mjs)
+// Fallbacks exist so unbundled execution doesn't throw.
+const PACKAGE_NAME = typeof __PACKAGE_NAME__ !== 'undefined' ? __PACKAGE_NAME__ : 'kafka-crab-js'
+const PACKAGE_VERSION = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : '0.0.0'
+
 export const PACKAGE_INFO = {
-  NAME: 'kafka-crab-js',
-  VERSION: '2.1.0',
-} as const 
+  NAME: PACKAGE_NAME,
+  VERSION: PACKAGE_VERSION,
+} as const

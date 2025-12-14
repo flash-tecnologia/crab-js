@@ -123,6 +123,11 @@ export interface KafkaOtelInstrumentationConfig extends InstrumentationConfig {
   // Whether to capture message headers as span attributes
   captureMessageHeaders?: boolean
 
+  // Whether to augment received messages/batches with OTEL helper fields (default: true)
+  // When false, the native Message objects are not mutated; recv()/recvBatch() return shallow clones augmented with
+  // `otelContext`/`span`/`endSpan`.
+  decorateMessages?: boolean
+
   // Whether to enable batch operation instrumentation
   enableBatchInstrumentation?: boolean
 
@@ -156,6 +161,30 @@ export interface KafkaOtelContext {
 
   // End a span with proper status handling
   endSpan: (span: Span | null | undefined, error?: Error) => void
+
+  // End a consumer processing span for a message without mutating the message object
+  endMessageSpan: (message: Message | InstrumentedMessage | null | undefined, error?: Error) => void
+
+  // End a batch processing span for a recvBatch() result without mutating the batch array
+  endBatchSpan: (batch: Message[] | InstrumentedMessageBatch | null | undefined, error?: Error) => void
+
+  // Convert a Message into an InstrumentedMessage wrapper (does not modify the original message)
+  toInstrumentedMessage: (message: Message) => InstrumentedMessage
+
+  // Convert a Message[] batch into an instrumented wrapper batch (does not modify the original batch)
+  toInstrumentedBatch: (batch: Message[]) => InstrumentedMessageBatch
+
+  // Wrap message processing and automatically end the consumer span (records errors/metrics as needed)
+  processMessage: <TResult>(
+    message: Message | InstrumentedMessage,
+    handler: (message: Message | InstrumentedMessage) => TResult | Promise<TResult>,
+  ) => Promise<TResult>
+
+  // Wrap batch processing and automatically end the batch span (and contained message spans)
+  processBatch: <TResult>(
+    batch: Message[] | InstrumentedMessageBatch,
+    handler: (batch: Message[] | InstrumentedMessageBatch) => TResult | Promise<TResult>,
+  ) => Promise<TResult>
 }
 
 // Enhanced message interface with OTEL context
@@ -165,6 +194,15 @@ export interface InstrumentedMessage extends Message {
 
   // Optional span created for this message
   span?: Span
+
+  // Optional helper to end the span and record processing duration
+  endSpan?: (error?: Error) => void
+}
+
+// Enhanced batch (Message[]) interface with OTEL helpers
+export interface InstrumentedMessageBatch extends Array<InstrumentedMessage> {
+  span?: Span
+  endSpan?: (error?: Error) => void
 }
 
 // Enhanced producer record with OTEL context injection
@@ -206,6 +244,7 @@ export interface DefaultOtelConfig {
   captureMessagePayload: boolean
   maxPayloadSize: number
   captureMessageHeaders: boolean
+  decorateMessages: boolean
   enableBatchInstrumentation: boolean
   metrics: {
     enabled: boolean
@@ -219,6 +258,7 @@ export const DEFAULT_OTEL_CONFIG: DefaultOtelConfig = {
   captureMessagePayload: false,
   maxPayloadSize: 1024,
   captureMessageHeaders: true,
+  decorateMessages: true,
   enableBatchInstrumentation: true,
   metrics: {
     enabled: false,

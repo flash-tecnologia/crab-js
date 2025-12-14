@@ -506,7 +506,7 @@ You can find some examples on the [example](https://github.com/flash-tecnologia/
 | Property | Type | Default | Description |
 | --- | --- | --- | --- |
 | `brokers` | `string` || List of brokers to connect to |
-| `clientId` | `string` || Client id to use for the connection |
+| `clientId` | `string` | `"rdkafka"` | Client id to use for the connection |
 | `securityProtocol` | `SecurityProtocol` || Security protocol to use (PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL) |
 | `logLevel` | `string` | `info`  | Log level for the client |
 | `brokerAddressFamily` | `string` | `"v4"` | Address family to use for the connection (v4, v6) |
@@ -596,7 +596,7 @@ const client = new KafkaClient({
     // === Tracing Configuration ===
     captureMessagePayload: false,     // Capture message payload in spans (default: false, security sensitive)
     maxPayloadSize: 1024,             // Max payload size to capture in bytes (default: 1024)
-    captureMessageHeaders: true,      // Capture message headers in spans (default: true)
+    captureMessageHeaders: true,      // Capture message header keys in spans (default: true; values are not recorded)
     enableBatchInstrumentation: true, // Enable batch operation spans (default: true)
     
     // === Broker Attribution (Optional) ===
@@ -666,7 +666,7 @@ const client = new KafkaClient({
 | `serviceName` | `process.env.OTEL_SERVICE_NAME \|\| 'kafka-client'` | Service name for telemetry |
 | `captureMessagePayload` | `false` | Capture payloads (security sensitive) |
 | `maxPayloadSize` | `1024` | Max payload size in bytes |
-| `captureMessageHeaders` | `true` | Capture message headers |
+| `captureMessageHeaders` | `true` | Capture message header keys (values are not recorded) |
 | `enableBatchInstrumentation` | `true` | Enable batch operation spans |
 | `metrics.enabled` | `false` | Metrics are opt-in |
 | `metrics.includePartitionId` | `true` | Include partition in metrics |
@@ -822,10 +822,34 @@ Kafka Crab JS offers turnkey tracing for Kafka workloads:
 - **Hook-friendly spans** – Both `messageHook` and `producerHook` callbacks run inside the active span context, simplifying attribute decoration or error handling.
 - **Header normalization helpers** – The runtime automatically normalizes mixed header carriers to Buffers when talking to the native binding, removing the need for manual conversions.
 
+### Consumer span lifecycle (important)
+
+Kafka Crab JS creates consumer `process <topic>` spans, but only your application knows when processing is complete.
+
+- For single-message consumers, call `message.endSpan()` when you're done processing the message.
+- For batch consumers, call `batch.endSpan()` (the returned array is augmented) when you're done processing the batch.
+- To avoid optional chaining in user code, use the helper `endSpan(message)` (or `EndSpan(message)`).
+- For automatic end + error capture, wrap your handler with `await client.otel.processMessage(message, async (msg) => { ... })` (or `processBatch`).
+
+This closes the span(s) and (when metrics are enabled) records `messaging.process.duration`.
+
+If you prefer not to mutate the native `Message` objects, set `otel.decorateMessages=false`. In that mode,
+`recv()`/`recvBatch()` return shallow clones augmented with the same OTEL helper fields.
+
+### Global instrumentation (singleton)
+
+`kafka-crab-js` uses a process-wide OpenTelemetry instrumentation singleton.
+
+- Creating multiple `KafkaClient` instances shares the same instrumentation and configuration.
+- Passing different `otel` configs to different clients updates the same singleton (the latest config wins).
+- For tests, use `resetKafkaInstrumentation()` to clear the singleton between runs.
+
 ### Minimal Setup Example
 
+When using stream consumers, the easiest pattern is calling `endSpan()` in a `finally` block:
+
 ```ts
-import { KafkaClient } from 'kafka-crab-js'
+import { KafkaClient, endSpan } from 'kafka-crab-js'
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { AsyncHooksContextManager } from '@opentelemetry/context-async-hooks'
@@ -861,7 +885,12 @@ const consumer = client.createStreamConsumer({
 })
 
 consumer.on('data', message => {
-  console.log(message.headers?.['custom-header']?.toString())
+  try {
+    console.log(message.headers?.['custom-header']?.toString())
+  } finally {
+    // IMPORTANT: close the "process <topic>" span when your app finishes handling the message
+    endSpan(message)
+  }
 })
 ```
 

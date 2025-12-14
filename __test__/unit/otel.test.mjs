@@ -15,6 +15,9 @@ const {
   KAFKA_OPERATION_TYPES,
   KAFKA_SEMANTIC_CONVENTIONS,
   getKafkaInstrumentation,
+  getOtelAdapter,
+  instrumentProducerSend,
+  peekKafkaInstrumentation,
   resetKafkaInstrumentation,
 } = require('../../dist/index.cjs')
 
@@ -73,6 +76,13 @@ describe('KafkaClient OTEL Unit Tests', () => {
     assert.equal(typeof client.otel.extract, 'function', 'Should have extract function')
     assert.equal(typeof client.otel.startSpan, 'function', 'Should have startSpan function')
     assert.equal(typeof client.otel.endSpan, 'function', 'Should have endSpan function')
+    assert.equal(typeof client.otel.endMessageSpan, 'function', 'Should have endMessageSpan function')
+    assert.equal(typeof client.otel.endBatchSpan, 'function', 'Should have endBatchSpan function')
+    assert.equal(typeof client.otel.toInstrumentedMessage, 'function', 'Should have toInstrumentedMessage function')
+    assert.equal(typeof client.otel.toInstrumentedBatch, 'function', 'Should have toInstrumentedBatch function')
+    assert.equal(typeof client.otel.processMessage, 'function', 'Should have processMessage function')
+    assert.equal(typeof client.otel.processBatch, 'function', 'Should have processBatch function')
+    assert.equal(typeof peekKafkaInstrumentation, 'function', 'Should export peekKafkaInstrumentation')
   })
 
   test('should create KafkaClient with OTEL disabled', () => {
@@ -109,6 +119,58 @@ describe('KafkaClient OTEL Unit Tests', () => {
     assert.equal(config.captureMessageHeaders, false)
     assert.deepEqual(config.ignoreTopics, ['internal-topic'])
     assert.equal(config.enableBatchInstrumentation, false)
+  })
+
+  test('metrics should be opt-in (metrics: {} should not enable metrics)', () => {
+    const client = new KafkaClient({
+      brokers: 'localhost:9092',
+      clientId: 'test-client',
+      otel: {
+        serviceName: 'metrics-optin-test',
+        metrics: {},
+      },
+    })
+
+    assert.equal(client.otel.enabled, true, 'OTEL should be enabled')
+    assert.equal(getOtelAdapter().isMetricsEnabled(), false, 'Metrics should remain disabled without metrics.enabled=true')
+  })
+
+  test('metrics should enable only when metrics.enabled is true', () => {
+    const client = new KafkaClient({
+      brokers: 'localhost:9092',
+      clientId: 'test-client',
+      otel: {
+        serviceName: 'metrics-enabled-test',
+        metrics: { enabled: true },
+      },
+    })
+
+    assert.equal(client.otel.enabled, true, 'OTEL should be enabled')
+    assert.equal(getOtelAdapter().isMetricsEnabled(), true, 'Metrics should be enabled when metrics.enabled=true')
+  })
+
+  test('metrics can be enabled after initial instrumentation setup', () => {
+    new KafkaClient({
+      brokers: 'localhost:9092',
+      clientId: 'test-client-a',
+      otel: {
+        serviceName: 'metrics-first-client',
+        metrics: {},
+      },
+    })
+
+    assert.equal(getOtelAdapter().isMetricsEnabled(), false, 'Metrics should start disabled')
+
+    new KafkaClient({
+      brokers: 'localhost:9092',
+      clientId: 'test-client-b',
+      otel: {
+        serviceName: 'metrics-second-client',
+        metrics: { enabled: true },
+      },
+    })
+
+    assert.equal(getOtelAdapter().isMetricsEnabled(), true, 'Metrics should enable after config update')
   })
 
   test('should verify OTEL constants are properly defined', () => {
@@ -900,19 +962,14 @@ describe('KafkaClient OTEL Unit Tests', () => {
     assert.equal(traceparentParts[3].length, 2, 'flags should be 2 hex characters')
 
     // Also test that producer instrumentation would inject headers
-    const _producer = client.createProducer()
-
-    // Create a mock for the underlying Rust send to capture instrumented records
     let capturedRecords = null
 
-    // Get the instrumentation to test the record transformation
-    const instrumentation = getKafkaInstrumentation()
-    const originalSend = function (records) {
-      capturedRecords = records
-      return Promise.resolve({ deliveryResults: [] })
+    const originalSend = async function(record) {
+      capturedRecords = record
+      return []
     }
 
-    const instrumentedSend = instrumentation.instrumentProducerSend(originalSend, 'traceparent-test')
+    const instrumentedSend = instrumentProducerSend(originalSend, { clientId: 'traceparent-test' })
 
     const testRecord = {
       topic: 'test-topic',
@@ -923,9 +980,7 @@ describe('KafkaClient OTEL Unit Tests', () => {
     }
 
     // Execute within span context and make sure span is active
-    await context.with(spanContext, async () => {
-      return await instrumentedSend(testRecord)
-    })
+    await context.with(spanContext, async () => await instrumentedSend(testRecord))
 
     // Verify the record was instrumented with headers
     assert(capturedRecords, 'Records should be captured')
@@ -995,15 +1050,14 @@ describe('KafkaClient OTEL Unit Tests', () => {
     assert.equal(injectedCustomValue, 'custom-value', 'Custom headers should be preserved')
 
     // Also test producer instrumentation with pre-existing headers
-    const instrumentation = getKafkaInstrumentation()
     let capturedRecords = null
 
-    const originalSend = function (records) {
-      capturedRecords = records
-      return Promise.resolve({ deliveryResults: [] })
+    const originalSend = async function(record) {
+      capturedRecords = record
+      return []
     }
 
-    const instrumentedSend = instrumentation.instrumentProducerSend(originalSend, 'pre-existing-test')
+    const instrumentedSend = instrumentProducerSend(originalSend, { clientId: 'pre-existing-test' })
 
     const testRecord = {
       topic: 'test-topic',
