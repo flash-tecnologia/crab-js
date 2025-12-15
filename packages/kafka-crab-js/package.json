@@ -1,9 +1,9 @@
 {
   "name": "kafka-crab-js",
-  "version": "2.1.0",
+  "version": "3.0.0-alpha.1",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "exports": {
     ".": {
