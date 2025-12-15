@@ -54,7 +54,11 @@ export function instrumentProducerSend(
 
   return async function instrumentedSend(this: KafkaProducer, record: ProducerRecord) {
     // Fast path: if no subscribers, just call original
-    if (!producerSendStartChannel.hasSubscribers && !producerSendEndChannel.hasSubscribers) {
+    if (
+      !producerSendStartChannel.hasSubscribers &&
+      !producerSendEndChannel.hasSubscribers &&
+      !producerSendErrorChannel.hasSubscribers
+    ) {
       return originalSend.call(this, record)
     }
 
