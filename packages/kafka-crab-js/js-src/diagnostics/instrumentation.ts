@@ -319,6 +319,11 @@ export function instrumentBatchReceive(
 
         // Publish batch process start
         if (batchProcessStartChannel.hasSubscribers) {
+          // Surface headers from the first message for downstream context extraction
+          if (messages[0]?.headers) {
+            processContext.parentHeaders = messages[0].headers
+          }
+
           const processStartEvent: BatchProcessStartEvent = {
             timestamp: processStartTime,
             messages,

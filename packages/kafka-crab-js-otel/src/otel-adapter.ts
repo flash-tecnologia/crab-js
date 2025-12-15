@@ -631,7 +631,11 @@ export class OtelAdapter {
         }
 
         const [first] = instrumentedMessages
-        const parentContext = extractTraceContext(first.headers || {})
+        const headerCarrier = (event.context as { parentHeaders?: Record<string, unknown> }).parentHeaders
+        const parentContext = extractTraceContext((headerCarrier || first.headers || {}) as Record<
+          string,
+          Buffer | string | string[] | undefined
+        >)
 
         const batchSpan = createBatchSpan(this._tracer, instrumentedMessages.length, {
           topic: first.topic,
@@ -643,6 +647,7 @@ export class OtelAdapter {
         })
 
         const messageSpans: Span[] = []
+        const messageParentContext = batchSpan ? trace.setSpan(parentContext, batchSpan) : parentContext
 
         if (batchSpan) {
           if (event.groupId) {
@@ -654,7 +659,6 @@ export class OtelAdapter {
 
         for (const message of instrumentedMessages) {
           try {
-            const messageParentContext = extractTraceContext(message.headers || {})
             const messageSpan = createConsumerSpan(this._tracer, message, {
               operationName: KAFKA_OPERATION_NAMES.PROCESS,
               operationType: KAFKA_OPERATION_TYPES.PROCESS,
