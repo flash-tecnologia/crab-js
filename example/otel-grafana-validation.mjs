@@ -23,16 +23,17 @@
  *   GRAFANA_VALIDATE=true|false (default: true when exporter is not console)
  */
 
+import { KafkaClient } from 'kafka-crab-js'
+import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
 import { nanoid } from 'nanoid'
 import { Buffer } from 'node:buffer'
-import { endSpan, KafkaClient } from '../dist/index.js'
 
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc'
 import { resourceFromAttributes } from '@opentelemetry/resources'
 import { ConsoleMetricExporter, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
-import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node'
 import { NodeSDK } from '@opentelemetry/sdk-node'
+import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node'
 import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
 
 process.env.NAPI_RS_TOKIO_RUNTIME = '1'
@@ -242,22 +243,25 @@ async function produceAndConsume() {
   await sdk.start()
   console.log(`✅ OTEL SDK ready → exporter=${useConsoleExporter ? 'console' : endpoint}\n`)
 
+  // Enable OTEL instrumentation with the kafka-crab-js-otel package
+  enableOtelInstrumentation({
+    serviceName,
+    captureMessagePayload: true,
+    captureMessageHeaders: true,
+    enableBatchInstrumentation: true,
+    metrics: {
+      enabled: true,
+      includePartitionId: true,
+      serverAddress: brokers.split(',')[0]?.split(':')[0],
+      serverPort: Number(brokers.split(',')[0]?.split(':')[1]) || undefined,
+    },
+  })
+
   const clientId = `otel-grafana-client-${nanoid(6)}`
   const kafkaClient = new KafkaClient({
     brokers,
     clientId,
-    otel: {
-      serviceName,
-      captureMessagePayload: true,
-      captureMessageHeaders: true,
-      enableBatchInstrumentation: true,
-      metrics: {
-        enabled: true,
-        includePartitionId: true,
-        serverAddress: brokers.split(',')[0]?.split(':')[0],
-        serverPort: Number(brokers.split(',')[0]?.split(':')[1]) || undefined,
-      },
-    },
+    diagnostics: true, // Enable diagnostics channel (OTEL adapter subscribes to these)
   })
 
   const producer = kafkaClient.createProducer()
@@ -331,7 +335,9 @@ async function produceAndConsume() {
   console.log('     - messaging_client_sent_messages   (messages sent)')
   console.log('     - messaging_client_consumed_messages   (messages consumed)')
   console.log('     - messaging_process_duration_bucket / _sum / _count (processing latency)')
-  console.log(`  4) Expected: sent=${totalMessages}, consumed=${totalMessages}, with ~${delayedMessages} process spans ~${delayMs}ms`)
+  console.log(
+    `  4) Expected: sent=${totalMessages}, consumed=${totalMessages}, with ~${delayedMessages} process spans ~${delayMs}ms`,
+  )
   console.log('  5) If using console exporters, spans/metrics were printed above instead of Grafana.')
 
   if (validateGrafana) {

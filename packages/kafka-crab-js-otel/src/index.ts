@@ -13,8 +13,12 @@ export type {
   TopicFilterFn,
 } from './types.js'
 
-export { getKafkaInstrumentation, peekKafkaInstrumentation, KafkaCrabInstrumentation, resetKafkaInstrumentation } from
-  './instrumentation.js'
+export {
+  getKafkaInstrumentation,
+  KafkaCrabInstrumentation,
+  peekKafkaInstrumentation,
+  resetKafkaInstrumentation,
+} from './instrumentation.js'
 
 export { getKafkaMetrics, KafkaMetrics, resetKafkaMetrics } from './metrics.js'
 
@@ -44,3 +48,10 @@ export {
   setSpanStatus,
   shouldIgnoreTopic,
 } from './utils.js'
+
+export {
+  enableOtelInstrumentation,
+  getOtelAdapter,
+  OtelAdapter,
+  resetOtelAdapter,
+} from './otel-adapter.js'

@@ -5,39 +5,36 @@
  * OpenTelemetry spans and metrics. It provides backward-compatible OTEL
  * instrumentation while using the decoupled diagnostics_channel architecture.
  */
-import {
-  type Attributes,
-  context,
-  diag,
-  type Span,
-  SpanKind,
-  trace,
-  type Tracer,
-} from '@opentelemetry/api'
+import { type Attributes, context, diag, type Span, SpanKind, trace, type Tracer } from '@opentelemetry/api'
 
-import type { Message, ProducerRecord, RecordMetadata } from '../../js-binding.js'
+// Import types and channels from kafka-crab-js
 import {
-  type BatchProcessEndEvent,
-  type BatchProcessStartEvent,
-  type BatchReceiveEndEvent,
-  type BatchReceiveStartEvent,
   batchProcessEndChannel,
+  type BatchProcessEndEvent,
   batchProcessStartChannel,
+  type BatchProcessStartEvent,
   batchReceiveEndChannel,
+  type BatchReceiveEndEvent,
   batchReceiveStartChannel,
-  type ConsumerProcessEndEvent,
-  type ConsumerProcessStartEvent,
-  type ConsumerReceiveEndEvent,
-  type ConsumerReceiveStartEvent,
+  type BatchReceiveStartEvent,
   consumerProcessEndChannel,
+  type ConsumerProcessEndEvent,
   consumerProcessStartChannel,
+  type ConsumerProcessStartEvent,
   consumerReceiveEndChannel,
+  type ConsumerReceiveEndEvent,
   consumerReceiveStartChannel,
-  type ProducerSendEndEvent,
-  type ProducerSendStartEvent,
+  type ConsumerReceiveStartEvent,
+  type Message,
+  type ProducerRecord,
   producerSendEndChannel,
+  type ProducerSendEndEvent,
   producerSendStartChannel,
-} from './channels.js'
+  type ProducerSendStartEvent,
+  type RecordMetadata,
+} from 'kafka-crab-js'
+
+// Import local OTEL modules
 import {
   KAFKA_DEFAULTS,
   KAFKA_OPERATION_NAMES,
@@ -45,9 +42,9 @@ import {
   KAFKA_SEMANTIC_CONVENTIONS,
   KAFKA_SPAN_NAMES,
   PACKAGE_INFO,
-} from '../otel/constants.js'
-import type { KafkaMetricsConfig, TracerProvider } from '../otel/types.js'
-import { getKafkaMetrics, KafkaMetrics } from '../otel/metrics.js'
+} from './constants.js'
+import { getKafkaMetrics, KafkaMetrics } from './metrics.js'
+import type { KafkaMetricsConfig, TracerProvider } from './types.js'
 import {
   createBatchSpan,
   createConsumerSpan,
@@ -57,7 +54,7 @@ import {
   injectTraceContext,
   normalizeHeadersToBuffer,
   setSpanStatus,
-} from '../otel/utils.js'
+} from './utils.js'
 
 // Symbol key for storing span in event context
 const SPAN_KEY = Symbol('otel.span')
@@ -393,7 +390,9 @@ export class OtelAdapter {
           if (event.message && !ignoredTopic) {
             attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] = event.message.topic
             if (event.message.partition !== undefined) {
-              attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] = String(event.message.partition)
+              attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] = String(
+                event.message.partition,
+              )
             }
           }
 

@@ -1,5 +1,5 @@
 import { type Attributes, diag, metrics as otelMetrics } from '@opentelemetry/api'
-import type { Message, ProducerRecord, RecordMetadata } from '../../js-binding.js'
+import type { Message, ProducerRecord, RecordMetadata } from 'kafka-crab-js'
 import {
   ERROR_TYPES,
   KAFKA_DEFAULTS,
@@ -419,7 +419,7 @@ export class KafkaMetrics {
       if (index > 0 && bucket <= buckets[index - 1]) {
         throw new Error(
           `histogramBuckets must be in strictly ascending order. ` +
-          `Found ${bucket} at index ${index}, but previous value was ${buckets[index - 1]}`,
+            `Found ${bucket} at index ${index}, but previous value was ${buckets[index - 1]}`,
         )
       }
     }

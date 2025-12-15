@@ -10,7 +10,7 @@ import {
   trace,
   type Tracer,
 } from '@opentelemetry/api'
-import type { Message, ProducerRecord } from '../../js-binding.js'
+import type { Message, ProducerRecord } from 'kafka-crab-js'
 import {
   KAFKA_DEFAULTS,
   KAFKA_OPERATION_NAMES,

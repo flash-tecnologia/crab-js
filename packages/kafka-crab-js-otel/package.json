@@ -1,0 +1,61 @@
+{
+  "name": "kafka-crab-js-otel",
+  "version": "1.0.0",
+  "description": "OpenTelemetry instrumentation for kafka-crab-js",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "author": "inaiat@gmail.com",
+  "homepage": "https://github.com/flash-tecnologia/kafka-crab-js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flash-tecnologia/kafka-crab-js.git",
+    "directory": "packages/kafka-crab-js-otel"
+  },
+  "keywords": [
+    "kafka",
+    "opentelemetry",
+    "otel",
+    "tracing",
+    "metrics",
+    "observability",
+    "instrumentation"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit",
+    "prebuild": "rimraf dist",
+    "build": "node build.mjs",
+    "postbuild": "tsc -p tsconfig.json --emitDeclarationOnly --declaration --outDir dist",
+    "test": "node --test __test__/unit/*.test.*"
+  },
+  "peerDependencies": {
+    "kafka-crab-js": "^2.0.0",
+    "@opentelemetry/api": "^1.9.0"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/context-async-hooks": "^2.2.0",
+    "@opentelemetry/core": "^2.2.0",
+    "@opentelemetry/sdk-metrics": "^2.2.0",
+    "@opentelemetry/sdk-trace-base": "^2.2.0",
+    "@opentelemetry/sdk-trace-node": "^1.30.1",
+    "@opentelemetry/semantic-conventions": "^1.38.0",
+    "@types/node": "^25.0.1",
+    "esbuild": "^0.27.1",
+    "kafka-crab-js": "workspace:*",
+    "rimraf": "^6.1.2",
+    "typescript": "^5.9.3"
+  }
+}

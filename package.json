@@ -1,101 +1,23 @@
 {
-  "name": "kafka-crab-js",
-  "version": "2.1.0",
+  "name": "kafka-crab-monorepo",
+  "private": true,
   "type": "module",
   "engines": {
     "node": ">=20"
   },
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    }
-  },
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist",
-    "js-binding.js",
-    "js-binding.d.ts",
-    "js-binding.cjs"
-  ],
-  "napi": {
-    "binaryName": "kafka-crab-js",
-    "targets": [
-      "x86_64-apple-darwin",
-      "aarch64-apple-darwin",
-      "x86_64-unknown-linux-gnu",
-      "x86_64-unknown-linux-musl",
-      "aarch64-unknown-linux-gnu",
-      "aarch64-unknown-linux-musl"
-    ]
-  },
-  "license": "MIT",
-  "author": "inaiat@gmail.com",
-  "homepage": "https://github.com/flash-tecnologia/kafka-crab-js",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/flash-tecnologia/kafka-crab-js.git"
-  },
-  "keywords": [
-    "kafka",
-    "rust",
-    "napi",
-    "librdkafka",
-    "streaming",
-    "producer",
-    "consumer",
-    "napi-rs",
-    "N-API",
-    "node-addon",
-    "node-addon-api"
-  ],
+  "packageManager": "pnpm@10.25.0",
   "scripts": {
-    "typecheck": "tsc -p . --noEmit",
-    "artifacts": "napi artifacts",
-    "prebuild": "rimraf dist",
-    "build": "node build.mjs",
-    "postbuild": "tsc -p tsconfig.base.json --emitDeclarationOnly --declaration --outDir dist",
-    "build:debug": "napi build --platform",
-    "prepublishOnly": "napi prepublish -t npm",
-    "test": "node --test __test__/unit/*.test.*",
-    "test:integration": "__test__/integration/run-tests.sh",
-    "test:integration:manual": "node --test __test__/integration/*.test.*",
-    "test:integration:producer": "cd __test__/integration && node producer.test.mjs",
-    "test:integration:consumer": "cd __test__/integration && node consumer.test.mjs",
-    "test:integration:stream": "cd __test__/integration && node consumer-stream.test.mjs",
-    "test:integration:manual-commit": "cd __test__/integration && node consumer-manual-commit.test.mjs",
-    "test:integration:batch": "cd __test__/integration && node consumer-stream-batch.test.mjs",
-    "test:integration:limits": "cd __test__/integration && node batch-size-limits.test.mjs",
-    "kafka:up": "bash ./scripts/kafka-up.sh",
-    "kafka:down": "cd __test__/integration && (docker-compose down -v || podman-compose down -v)",
-    "kafka:logs": "cd __test__/integration && (docker-compose logs -f kafka || podman-compose logs -f kafka)",
-    "version": "napi version",
+    "build": "pnpm -r build",
+    "build:core": "pnpm --filter kafka-crab-js build",
+    "build:otel": "pnpm --filter kafka-crab-js-otel build",
+    "test": "pnpm -r test",
+    "test:unit": "pnpm --filter kafka-crab-js test",
+    "typecheck": "pnpm -r typecheck",
     "fmt": "dprint fmt",
     "lint": "oxlint ."
   },
-  "packageManager": "pnpm@10.25.0",
-  "dependencies": {
-    "@opentelemetry/api": "^1.9.0"
-  },
   "devDependencies": {
-    "@napi-rs/cli": "^3.5.0",
-    "@faker-js/faker": "^10.1.0",
-    "@opentelemetry/context-async-hooks": "^2.2.0",
-    "@opentelemetry/core": "^2.2.0",
-    "@opentelemetry/exporter-metrics-otlp-grpc": "^0.208.0",
-    "@opentelemetry/exporter-trace-otlp-grpc": "^0.208.0",
-    "@opentelemetry/resources": "^2.2.0",
-    "@opentelemetry/sdk-metrics": "^2.2.0",
-    "@opentelemetry/sdk-node": "^0.208.0",
-    "@opentelemetry/sdk-trace-base": "^2.2.0",
-    "@opentelemetry/sdk-trace-node": "^1.30.1",
-    "@opentelemetry/semantic-conventions": "^1.38.0",
-    "@types/node": "^25.0.1",
     "dprint": "^0.50.2",
-    "esbuild": "^0.27.1",
-    "nanoid": "^5.1.6",
-    "oxlint": "^1.32.0",
-    "rimraf": "^6.1.2",
-    "typescript": "^5.9.3"
+    "oxlint": "^1.32.0"
   }
 }

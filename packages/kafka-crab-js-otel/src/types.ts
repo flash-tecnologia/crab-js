@@ -1,5 +1,5 @@
 import type { Attributes, Context, Span, Tracer } from '@opentelemetry/api'
-import type { Message, ProducerRecord, RecordMetadata } from '../../js-binding.js'
+import type { Message, ProducerRecord, RecordMetadata } from 'kafka-crab-js'
 
 // InstrumentationConfig interface (simplified from @opentelemetry/instrumentation)
 export interface InstrumentationConfig {

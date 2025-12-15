@@ -16,9 +16,10 @@
  * Run: KAFKA_AVAILABLE=true node example/otel-tracing-example.mjs
  */
 
+import { KafkaClient } from 'kafka-crab-js'
+import { enableOtelInstrumentation, getKafkaInstrumentation } from 'kafka-crab-js-otel'
 import { nanoid } from 'nanoid'
 import { Buffer } from 'node:buffer'
-import { KafkaClient } from '../dist/index.js'
 
 // OpenTelemetry SDK imports (mix of ESM and CommonJS)
 import { context, SpanStatusCode, trace } from '@opentelemetry/api'
@@ -80,55 +81,56 @@ process.on('SIGTERM', () => {
 
 console.log('🔧 Creating Kafka client with OpenTelemetry enabled...\n')
 
+// Enable OTEL instrumentation with the kafka-crab-js-otel package
+enableOtelInstrumentation({
+  enabled: true, // Enable OTEL instrumentation (default: true)
+  serviceName: 'kafka-crab-otel-example', // Service name for traces
+
+  // Span configuration
+  captureMessagePayload: true, // Include message payload in spans (default: false)
+  maxPayloadSize: 1024, // Max payload size to capture in bytes (default: 1024)
+  captureMessageHeaders: true, // Include message headers in spans (default: true)
+  enableBatchInstrumentation: true, // Enable batch operation instrumentation (default: true)
+
+  // Topic filtering
+  ignoreTopics: ['__consumer_offsets'], // Topics to exclude from tracing
+
+  // Metrics configuration (disabled for this tracing-focused example)
+  metrics: {
+    enabled: false, // Metrics disabled - see otel-metrics-example.mjs for metrics
+  },
+
+  // Custom hooks for advanced scenarios
+  producerHook: (span, record, metadata) => {
+    // Add custom attributes to producer spans
+    span.setAttribute('custom.message_count', record.messages.length)
+    if (metadata) {
+      span.setAttribute('custom.broker_partition', metadata.partition)
+    }
+  },
+
+  messageHook: (span, message) => {
+    // Add custom attributes to consumer message spans
+    span.setAttribute('custom.message_size', message.payload.length)
+
+    // You can also extract business-level data
+    try {
+      const data = JSON.parse(message.payload.toString())
+      if (data.userId) {
+        span.setAttribute('custom.user_id', data.userId)
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  },
+})
+
 const kafkaClient = new KafkaClient({
   brokers: process.env.KAFKA_BROKERS || 'localhost:9092',
   clientId: 'otel-example-client',
   securityProtocol: 'Plaintext',
   logLevel: 'info',
-
-  // OpenTelemetry Configuration
-  otel: {
-    enabled: true, // Enable OTEL instrumentation (default: true)
-    serviceName: 'kafka-crab-otel-example', // Service name for traces
-
-    // Span configuration
-    captureMessagePayload: true, // Include message payload in spans (default: false)
-    maxPayloadSize: 1024, // Max payload size to capture in bytes (default: 1024)
-    captureMessageHeaders: true, // Include message headers in spans (default: true)
-    enableBatchInstrumentation: true, // Enable batch operation instrumentation (default: true)
-
-    // Topic filtering
-    ignoreTopics: ['__consumer_offsets'], // Topics to exclude from tracing
-
-    // Metrics configuration (disabled for this tracing-focused example)
-    metrics: {
-      enabled: false, // Metrics disabled - see otel-metrics-example.mjs for metrics
-    },
-
-    // Custom hooks for advanced scenarios
-    producerHook: (span, record, metadata) => {
-      // Add custom attributes to producer spans
-      span.setAttribute('custom.message_count', record.messages.length)
-      if (metadata) {
-        span.setAttribute('custom.broker_partition', metadata.partition)
-      }
-    },
-
-    messageHook: (span, message) => {
-      // Add custom attributes to consumer message spans
-      span.setAttribute('custom.message_size', message.payload.length)
-
-      // You can also extract business-level data
-      try {
-        const data = JSON.parse(message.payload.toString())
-        if (data.userId) {
-          span.setAttribute('custom.user_id', data.userId)
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    },
-  },
+  diagnostics: true, // Enable diagnostics channel (OTEL adapter subscribes to these)
 })
 
 console.log('✅ Kafka client created with OTEL enabled\n')
@@ -285,8 +287,9 @@ async function demonstrateManualOTELUsage() {
 
   const producer = kafkaClient.createProducer()
 
-  // Access the OTEL context directly
-  const otelContext = kafkaClient.otel
+  // Access the OTEL instrumentation instance directly
+  const instrumentation = getKafkaInstrumentation()
+  const otelContext = instrumentation.createOtelContext()
 
   console.log('OTEL Context properties:')
   console.log(`  - enabled: ${otelContext.enabled}`)

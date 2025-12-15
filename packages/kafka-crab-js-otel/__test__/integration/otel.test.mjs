@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid'
 import assert from 'node:assert'
-import * as net from 'node:net'
 import { createRequire } from 'node:module'
+import * as net from 'node:net'
 import { afterEach, beforeEach, describe, test } from 'node:test'
 
 // OpenTelemetry test infrastructure
@@ -144,11 +144,11 @@ function endOtelSpans(target) {
   }
 }
 
-const kafkaAvailable = process.env.KAFKA_AVAILABLE === 'true'
-  ? true
-  : process.env.KAFKA_AVAILABLE === 'false'
-    ? false
-    : await isKafkaReachable(KAFKA_BROKERS)
+const kafkaAvailable = await (async () => {
+  if (process.env.KAFKA_AVAILABLE === 'true') return true
+  if (process.env.KAFKA_AVAILABLE === 'false') return false
+  return isKafkaReachable(KAFKA_BROKERS)
+})()
 
 const describeKafka = kafkaAvailable ? describe : describe.skip
 
@@ -1359,7 +1359,8 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const producerSpans = spans.filter(s => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
 
     assert(producerSpans.length >= concurrentCount,
-      `Should have producer spans for all operations. Producer spans: ${producerSpans.length}, names: ${producerSpans.map(s => s.name).join(', ')
+      `Should have producer spans for all operations. Producer spans: ${producerSpans.length}, names: ${
+        producerSpans.map(s => s.name).join(', ')
       }`)
   })
 

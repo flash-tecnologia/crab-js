@@ -1,15 +1,7 @@
-import {
-  type Attributes,
-  type Context,
-  context,
-  diag,
-  type Span,
-  trace,
-  type Tracer,
-} from '@opentelemetry/api'
+import { type Attributes, type Context, context, diag, type Span, trace, type Tracer } from '@opentelemetry/api'
 
-import type { Message } from '../../js-binding.js'
-import { resetOtelAdapter } from '../diagnostics/otel-adapter.js'
+import type { Message } from 'kafka-crab-js'
+import { resetOtelAdapter } from './otel-adapter.js'
 
 import { PACKAGE_INFO } from './constants.js'
 import { resetKafkaMetrics } from './metrics.js'
@@ -278,7 +270,9 @@ export class KafkaCrabInstrumentation {
       },
       toInstrumentedMessage: message => cloneWithDescriptors(message) as InstrumentedMessage,
       toInstrumentedBatch: batch => {
-        const cloned = batch.map(message => cloneWithDescriptors(message) as InstrumentedMessage) as InstrumentedMessageBatch
+        const cloned = batch.map(message =>
+          cloneWithDescriptors(message) as InstrumentedMessage
+        ) as InstrumentedMessageBatch
 
         const spanDescriptor = Object.getOwnPropertyDescriptor(batch, 'span')
         if (spanDescriptor) {

@@ -72,6 +72,7 @@
     "coverage/",
     "report/",
     "**/dist/**",
+    "**/target/**",
     "js-binding*.*",
     "build.mjs",
     "index.js",

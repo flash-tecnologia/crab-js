@@ -8,7 +8,7 @@
  *
  * @see https://nodejs.org/api/diagnostics_channel.html
  */
-import { channel, type Channel } from 'node:diagnostics_channel'
+import { type Channel, channel } from 'node:diagnostics_channel'
 import type { Message, ProducerRecord, RecordMetadata } from '../../js-binding.js'
 
 // -----------------------------------------------------------------------------

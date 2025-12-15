@@ -59,10 +59,6 @@ async function execEsbuild() {
       '../js-binding.js',
       '../js-binding.d.ts',
       '../js-binding.cjs',
-      '@opentelemetry/api',
-      '@opentelemetry/core',
-      '@opentelemetry/instrumentation',
-      '@opentelemetry/semantic-conventions',
     ],
     outdir: './dist',
   }

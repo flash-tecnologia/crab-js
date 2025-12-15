@@ -1,0 +1,71 @@
+{
+  "name": "kafka-crab-js",
+  "version": "2.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "js-binding.js",
+    "js-binding.d.ts",
+    "js-binding.cjs"
+  ],
+  "napi": {
+    "binaryName": "kafka-crab-js",
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-gnu",
+      "aarch64-unknown-linux-musl"
+    ]
+  },
+  "license": "MIT",
+  "author": "inaiat@gmail.com",
+  "homepage": "https://github.com/flash-tecnologia/kafka-crab-js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flash-tecnologia/kafka-crab-js.git"
+  },
+  "keywords": [
+    "kafka",
+    "rust",
+    "napi",
+    "librdkafka",
+    "streaming",
+    "producer",
+    "consumer",
+    "napi-rs",
+    "N-API",
+    "node-addon",
+    "node-addon-api",
+    "diagnostics_channel"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit",
+    "artifacts": "napi artifacts",
+    "prebuild": "rimraf dist",
+    "build": "node build.mjs",
+    "postbuild": "tsc -p tsconfig.base.json --emitDeclarationOnly --declaration --outDir dist",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "node --test __test__/unit/*.test.*"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@napi-rs/cli": "^3.5.0",
+    "@types/node": "^25.0.1",
+    "esbuild": "^0.27.1",
+    "rimraf": "^6.1.2",
+    "typescript": "^5.9.3"
+  }
+}

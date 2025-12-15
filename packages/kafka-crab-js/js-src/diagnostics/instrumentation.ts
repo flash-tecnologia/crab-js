@@ -7,28 +7,28 @@
  */
 import type { KafkaConsumer, KafkaProducer, Message, ProducerRecord, RecordMetadata } from '../../js-binding.js'
 import {
-  type BatchProcessEndEvent,
-  type BatchProcessStartEvent,
-  type BatchReceiveEndEvent,
-  type BatchReceiveStartEvent,
   batchProcessEndChannel,
+  type BatchProcessEndEvent,
   batchProcessStartChannel,
+  type BatchProcessStartEvent,
   batchReceiveEndChannel,
+  type BatchReceiveEndEvent,
   batchReceiveStartChannel,
-  type ConsumerProcessEndEvent,
-  type ConsumerProcessStartEvent,
-  type ConsumerReceiveEndEvent,
-  type ConsumerReceiveStartEvent,
+  type BatchReceiveStartEvent,
   consumerProcessEndChannel,
+  type ConsumerProcessEndEvent,
   consumerProcessStartChannel,
+  type ConsumerProcessStartEvent,
   consumerReceiveEndChannel,
+  type ConsumerReceiveEndEvent,
   consumerReceiveStartChannel,
-  type ProducerSendErrorEvent,
-  type ProducerSendEndEvent,
-  type ProducerSendStartEvent,
+  type ConsumerReceiveStartEvent,
   producerSendEndChannel,
+  type ProducerSendEndEvent,
   producerSendErrorChannel,
+  type ProducerSendErrorEvent,
   producerSendStartChannel,
+  type ProducerSendStartEvent,
 } from './channels.js'
 
 /**
@@ -136,10 +136,8 @@ export function instrumentConsumerReceive(
 
   return async function instrumentedReceive(this: KafkaConsumer) {
     // Fast path: if no subscribers at all, just call original
-    const hasReceiveSubscribers =
-      consumerReceiveStartChannel.hasSubscribers || consumerReceiveEndChannel.hasSubscribers
-    const hasProcessSubscribers =
-      consumerProcessStartChannel.hasSubscribers || consumerProcessEndChannel.hasSubscribers
+    const hasReceiveSubscribers = consumerReceiveStartChannel.hasSubscribers || consumerReceiveEndChannel.hasSubscribers
+    const hasProcessSubscribers = consumerProcessStartChannel.hasSubscribers || consumerProcessEndChannel.hasSubscribers
 
     if (!hasReceiveSubscribers && !hasProcessSubscribers) {
       return originalReceive.call(this)
@@ -259,10 +257,8 @@ export function instrumentBatchReceive(
     timeoutMs: number,
   ) {
     // Fast path: if no subscribers, just call original
-    const hasReceiveSubscribers =
-      batchReceiveStartChannel.hasSubscribers || batchReceiveEndChannel.hasSubscribers
-    const hasProcessSubscribers =
-      batchProcessStartChannel.hasSubscribers || batchProcessEndChannel.hasSubscribers
+    const hasReceiveSubscribers = batchReceiveStartChannel.hasSubscribers || batchReceiveEndChannel.hasSubscribers
+    const hasProcessSubscribers = batchProcessStartChannel.hasSubscribers || batchProcessEndChannel.hasSubscribers
 
     if (!hasReceiveSubscribers && !hasProcessSubscribers) {
       return originalBatchReceive.call(this, size, timeoutMs)

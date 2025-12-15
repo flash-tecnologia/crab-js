@@ -1,4 +1,4 @@
-import type { Message } from '../../js-binding.js'
+import type { Message } from 'kafka-crab-js'
 import { peekKafkaInstrumentation } from './instrumentation.js'
 import type { InstrumentedMessage, InstrumentedMessageBatch } from './types.js'
 

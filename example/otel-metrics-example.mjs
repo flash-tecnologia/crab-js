@@ -21,9 +21,10 @@
  * Run: KAFKA_AVAILABLE=true node example/otel-metrics-example.mjs
  */
 
+import { KafkaClient } from 'kafka-crab-js'
+import { enableOtelInstrumentation } from 'kafka-crab-js-otel'
 import { nanoid } from 'nanoid'
 import { Buffer } from 'node:buffer'
-import { KafkaClient } from '../dist/index.js'
 
 // OpenTelemetry SDK imports (CommonJS modules, need default import)
 import otlpMetricsGrpcPkg from '@opentelemetry/exporter-metrics-otlp-grpc'
@@ -80,41 +81,42 @@ console.log(
 
 console.log('🔧 Creating Kafka client with metrics enabled...\n')
 
+// Enable OTEL instrumentation with the kafka-crab-js-otel package
+enableOtelInstrumentation({
+  enabled: true,
+  serviceName: 'kafka-crab-metrics-example',
+
+  // Metrics-specific configuration
+  metrics: {
+    enabled: true,
+    meterProvider: meterProvider, // Use our custom meter provider
+    includePartitionId: true, // Include partition in metric labels
+    serverAddress: 'localhost', // Broker address for attribution
+    serverPort: 9092, // Broker port for attribution
+
+    // Custom histogram buckets for duration metrics (in seconds)
+    // Default: [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]
+    // Customize based on your expected latencies:
+    histogramBuckets: [
+      0.001, // 1ms
+      0.005, // 5ms
+      0.01, // 10ms
+      0.05, // 50ms
+      0.1, // 100ms
+      0.5, // 500ms
+      1, // 1s
+      2, // 2s
+      5, // 5s
+    ],
+  },
+})
+
 const kafkaClient = new KafkaClient({
   brokers: process.env.KAFKA_BROKERS || 'localhost:9092',
   clientId: 'metrics-example-client',
   securityProtocol: 'Plaintext',
   logLevel: 'info',
-
-  // OpenTelemetry Configuration
-  otel: {
-    enabled: true,
-    serviceName: 'kafka-crab-metrics-example',
-
-    // Metrics-specific configuration
-    metrics: {
-      enabled: true,
-      meterProvider: meterProvider, // Use our custom meter provider
-      includePartitionId: true, // Include partition in metric labels
-      serverAddress: 'localhost', // Broker address for attribution
-      serverPort: 9092, // Broker port for attribution
-
-      // Custom histogram buckets for duration metrics (in seconds)
-      // Default: [0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]
-      // Customize based on your expected latencies:
-      histogramBuckets: [
-        0.001, // 1ms
-        0.005, // 5ms
-        0.01, // 10ms
-        0.05, // 50ms
-        0.1, // 100ms
-        0.5, // 500ms
-        1, // 1s
-        2, // 2s
-        5, // 5s
-      ],
-    },
-  },
+  diagnostics: true, // Enable diagnostics channel (OTEL adapter subscribes to these)
 })
 
 console.log('✅ Kafka client created with metrics enabled\n')
