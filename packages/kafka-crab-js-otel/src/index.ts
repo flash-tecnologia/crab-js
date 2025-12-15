@@ -49,9 +49,4 @@ export {
   shouldIgnoreTopic,
 } from './utils.js'
 
-export {
-  enableOtelInstrumentation,
-  getOtelAdapter,
-  OtelAdapter,
-  resetOtelAdapter,
-} from './otel-adapter.js'
+export { enableOtelInstrumentation, getOtelAdapter, OtelAdapter, resetOtelAdapter } from './otel-adapter.js'

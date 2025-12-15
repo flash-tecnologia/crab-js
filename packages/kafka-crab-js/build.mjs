@@ -51,10 +51,6 @@ async function execEsbuild() {
     platform: 'node',
     bundle: true,
     sourcemap: true,
-    define: {
-      __PACKAGE_NAME__: JSON.stringify(packageJson.name),
-      __PACKAGE_VERSION__: JSON.stringify(packageJson.version),
-    },
     external: [
       '../js-binding.js',
       '../js-binding.d.ts',

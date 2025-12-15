@@ -18,6 +18,6 @@
   },
   "devDependencies": {
     "dprint": "^0.50.2",
-    "oxlint": "^1.32.0"
+    "oxlint": "^1.33.0"
   }
 }

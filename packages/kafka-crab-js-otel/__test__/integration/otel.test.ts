@@ -568,8 +568,6 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     // Send multiple messages
     const producer = kafkaClient.createProducer()
     const batchSize = 3
-    const streamParent = trace.getTracer('test').startSpan('stream-batch-parent')
-    const streamParentContext = trace.setSpan(context.active(), streamParent)
 
     for (let i = 0; i < batchSize; i++) {
       await producer.send({
@@ -923,7 +921,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const producer = kafkaClient.createProducer()
     const batchSize = 3
     const streamParent = trace.getTracer('test').startSpan('stream-batch-parent')
-    const streamParentContext = trace.setSpan(context.active(), streamParent)
+    const streamParentContext = trace.setSpan(context.active(), streamParent) // bound to producer sends for trace linkage
 
     await context.with(streamParentContext, async () => {
       for (let i = 0; i < batchSize * 2; i++) {
