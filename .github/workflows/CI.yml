@@ -120,7 +120,7 @@ jobs:
         if: ${{ matrix.settings.setup }}
         shell: bash
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --filter kafka-crab-js
         working-directory: .
       - name: Setup node x86
         uses: actions/setup-node@v4
