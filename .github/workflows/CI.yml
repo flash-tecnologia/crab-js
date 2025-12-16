@@ -214,7 +214,7 @@ jobs:
           cache: pnpm
           architecture: ${{ matrix.settings.architecture }}
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --filter kafka-crab-js
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
