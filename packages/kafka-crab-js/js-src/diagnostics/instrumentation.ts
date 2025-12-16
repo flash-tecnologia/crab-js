@@ -316,6 +316,8 @@ export function instrumentBatchReceive(
       if (messages.length > 0 && hasProcessSubscribers) {
         const processContext: Record<PropertyKey, unknown> = {}
         const processStartTime = Date.now()
+        let firstProcessError: Error | undefined
+        let remainingMessages = messages.length
 
         // Publish batch process start
         if (batchProcessStartChannel.hasSubscribers) {
@@ -344,13 +346,17 @@ export function instrumentBatchReceive(
           }
           ended = true
 
+          if (!firstProcessError && processError) {
+            firstProcessError = processError
+          }
+
           if (batchProcessEndChannel.hasSubscribers) {
             const processEndEvent: BatchProcessEndEvent = {
               timestamp: Date.now(),
               messages,
               groupId,
               durationMs: Date.now() - processStartTime,
-              error: processError,
+              error: processError ?? firstProcessError,
               clientId,
               serverAddress,
               serverPort,
@@ -360,12 +366,38 @@ export function instrumentBatchReceive(
           }
         }
 
+        const makeMessageEnder = () => {
+          let messageEnded = false
+          return (processError?: Error) => {
+            if (messageEnded || ended) {
+              return
+            }
+            messageEnded = true
+            if (!firstProcessError && processError) {
+              firstProcessError = processError
+            }
+            remainingMessages -= 1
+            if (remainingMessages <= 0) {
+              endBatchProcessing(firstProcessError)
+            }
+          }
+        }
+
         Object.defineProperty(messages, 'endSpan', {
           value: endBatchProcessing,
           writable: false,
           configurable: true,
           enumerable: false,
         })
+
+        for (const message of messages) {
+          Object.defineProperty(message, 'endSpan', {
+            value: makeMessageEnder(),
+            writable: false,
+            configurable: true,
+            enumerable: false,
+          })
+        }
       }
     }
   }

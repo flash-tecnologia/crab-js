@@ -636,6 +636,11 @@ export class OtelAdapter {
           string,
           Buffer | string | string[] | undefined
         >)
+        // Re-inject parent context into messages to help stream/batch consumers stay on the producer trace
+        for (const message of instrumentedMessages) {
+          const headers = message.headers ?? {}
+          message.headers = normalizeHeadersToBuffer(injectTraceContext(headers, parentContext))
+        }
 
         const batchSpan = createBatchSpan(this._tracer, instrumentedMessages.length, {
           topic: first.topic,

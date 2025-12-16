@@ -660,7 +660,8 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     // Look for spans with error status
     const errorSpans = spans.filter(span => span.status.code === SpanStatusCode.ERROR)
     assert(errorSpans.length >= 1,
-      `Expected error spans to be recorded. Spans: ${spans.map(s => `${s.name}:${SpanStatusCode[s.status.code]}`).join(', ')
+      `Expected error spans to be recorded. Spans: ${
+        spans.map(s => `${s.name}:${SpanStatusCode[s.status.code]}`).join(', ')
       }`)
   })
 
@@ -923,9 +924,9 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const streamParent = trace.getTracer('test').startSpan('stream-batch-parent')
     const streamParentContext = trace.setSpan(context.active(), streamParent) // bound to producer sends for trace linkage
 
-    await context.with(streamParentContext, async () => {
-      for (let i = 0; i < batchSize * 2; i++) {
-        await producer.send({
+    for (let i = 0; i < batchSize * 2; i++) {
+      await context.with(streamParentContext, () =>
+        producer.send({
           topic: testTopic,
           messages: [
             {
@@ -933,9 +934,8 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
               key: Buffer.from(`batch-stream-key-${i}`),
             },
           ],
-        })
-      }
-    })
+        }))
+    }
     await producer.flush()
     streamParent.end()
 
@@ -946,6 +946,8 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const streamConsumer = kafkaClient.createStreamConsumer({
       groupId: `batch-stream-group-${nanoid()}`,
       enableAutoCommit: false,
+      batchSize,
+      batchTimeout: 1000,
       streamOptions: { objectMode: true },
     })
 
@@ -996,12 +998,9 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert(consumerSpans.length >= 1, `Should have consumer spans from stream batch mode, got ${consumerSpans.length}`)
     assert(receivedMessages.length >= batchSize, 'Should receive at least one batch worth of messages')
     const allOnParentTrace = consumerSpans.every(span =>
-      span.spanContext().traceId === streamParent.spanContext().traceId)
-    if (!allOnParentTrace) {
-      console.warn('Stream batch consumer spans did not stay on parent context trace; instrumentation may not propagate context yet')
-    } else {
-      assert(allOnParentTrace, 'Stream batch consumer spans should stay on parent context trace')
-    }
+      span.spanContext().traceId === streamParent.spanContext().traceId
+    )
+    assert(allOnParentTrace, 'Stream batch consumer spans should stay on parent context trace')
   })
 
   test('should handle producer send with delivery reports in spans', async () => {
@@ -1384,7 +1383,8 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const producerSpans = spans.filter(s => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
 
     assert(producerSpans.length >= concurrentCount,
-      `Should have producer spans for all operations. Producer spans: ${producerSpans.length}, names: ${producerSpans.map(s => s.name).join(', ')
+      `Should have producer spans for all operations. Producer spans: ${producerSpans.length}, names: ${
+        producerSpans.map(s => s.name).join(', ')
       }`)
 
     for (let i = 0; i < concurrentCount; i++) {
