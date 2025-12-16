@@ -1,6 +1,5 @@
 packages:
   - packages/*
-  - benchmark
 
 onlyBuiltDependencies:
   - '@platformatic/rdkafka'

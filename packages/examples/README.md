@@ -7,36 +7,35 @@ This directory contains example code demonstrating various features of kafka-cra
 ### simple.mjs
 Basic producer and consumer example showing fundamental Kafka operations.
 
-```bash
-KAFKA_AVAILABLE=true node example/simple.mjs
+KAFKA_AVAILABLE=true node simple.mjs
 ```
 
 ### stream-sample.mjs
 Demonstrates using Kafka consumers with Node.js streams.
 
 ```bash
-KAFKA_AVAILABLE=true node example/stream-sample.mjs
+KAFKA_AVAILABLE=true node stream-sample.mjs
 ```
 
 ### events.mjs
 Shows how to handle Kafka consumer events (rebalance, errors, etc.).
 
 ```bash
-KAFKA_AVAILABLE=true node example/events.mjs
+KAFKA_AVAILABLE=true node events.mjs
 ```
 
 ### kafka-consumer-with-retry.mjs
 Example of implementing retry logic for failed message processing.
 
 ```bash
-KAFKA_AVAILABLE=true node example/kafka-consumer-with-retry.mjs
+KAFKA_AVAILABLE=true node kafka-consumer-with-retry.mjs
 ```
 
 ### batch-usage-examples.mjs
 Demonstrates batch processing for higher throughput.
 
 ```bash
-KAFKA_AVAILABLE=true node example/batch-usage-examples.mjs
+KAFKA_AVAILABLE=true node batch-usage-examples.mjs
 ```
 
 ## OpenTelemetry Examples
@@ -65,7 +64,7 @@ docker run -d \
 
 **Run with console exporter (default):**
 ```bash
-KAFKA_AVAILABLE=true node example/otel-tracing-example.mjs
+KAFKA_AVAILABLE=true node otel-tracing-example.mjs
 ```
 
 **Run with OTLP exporter (Jaeger):**
@@ -73,7 +72,7 @@ KAFKA_AVAILABLE=true node example/otel-tracing-example.mjs
 KAFKA_AVAILABLE=true \
 OTEL_EXPORTER_TYPE=otlp \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
-node example/otel-tracing-example.mjs
+node otel-tracing-example.mjs
 ```
 
 Then open http://localhost:16686 to view traces in Jaeger UI.
@@ -94,7 +93,7 @@ Then open http://localhost:16686 to view traces in Jaeger UI.
 
 **Run:**
 ```bash
-KAFKA_AVAILABLE=true node example/otel-metrics-example.mjs
+KAFKA_AVAILABLE=true node otel-metrics-example.mjs
 ```
 
 **With Prometheus (optional):**
@@ -128,51 +127,53 @@ docker run -d \
 ### Complete OTEL Configuration Example
 
 ```javascript
+import { KafkaClient } from 'kafka-crab-js'
+import { enableOtelInstrumentation } from 'kafka-crab-js-otel'
+
+// Enable the OTEL adapter once at startup (subscribes to diagnostics channels)
+enableOtelInstrumentation({
+  serviceName: 'my-kafka-service',      // Service name for traces/metrics
+
+  // Tracing configuration
+  captureMessagePayload: true,          // Include payload in spans (default: false)
+  maxPayloadSize: 1024,                 // Max payload size in bytes (default: 1024)
+  captureMessageHeaders: true,          // Include headers in spans (default: true)
+  enableBatchInstrumentation: true,     // Enable batch spans (default: true)
+
+  // Topic filtering
+  ignoreTopics: ['__consumer_offsets'], // Array or function to ignore topics
+
+  // Metrics configuration
+  metrics: {
+    enabled: true,                      // Enable metrics (default: false in examples)
+    meterProvider: customMeterProvider, // Optional custom meter provider
+    includePartitionId: true,           // Include partition in labels (default: true)
+    serverAddress: 'localhost',         // Broker address for metrics
+    serverPort: 9092,                   // Broker port for metrics
+    histogramBuckets: [0.001, 0.01, 0.1, 1, 10], // Optional custom buckets (seconds)
+  },
+
+  // Custom hooks for advanced use cases
+  producerHook: (span, record, metadata) => {
+    span.setAttribute('custom.key', 'value')
+    if (metadata) span.setAttribute('custom.partition', metadata.partition)
+  },
+  messageHook: (span, message) => {
+    span.setAttribute('custom.key', 'value')
+    if (message.headers?.['user-id']) {
+      span.setAttribute('user.id', message.headers['user-id'].toString())
+    }
+  },
+})
+
 const kafkaClient = new KafkaClient({
   brokers: 'localhost:9092',
   clientId: 'my-client',
-  
-  otel: {
-    // Core settings
-    enabled: true,                        // Enable/disable OTEL (default: true)
-    serviceName: 'my-kafka-service',      // Service name for traces/metrics
-    
-    // Tracing configuration
-    captureMessagePayload: true,          // Include payload in spans (default: false)
-    maxPayloadSize: 1024,                 // Max payload size in bytes (default: 1024)
-    captureMessageHeaders: true,          // Include headers in spans (default: true)
-    enableBatchInstrumentation: true,     // Enable batch spans (default: true)
-    
-    // Topic filtering
-    ignoreTopics: ['__consumer_offsets'], // Array of topics to ignore
-    // OR use a function:
-    // ignoreTopics: (topic) => topic.startsWith('internal.'),
-    
-    // Metrics configuration
-    metrics: {
-      enabled: true,                      // Enable metrics (default: true)
-      meterProvider: customMeterProvider, // Custom meter provider (optional)
-      includePartitionId: true,           // Include partition in labels (default: true)
-      serverAddress: 'localhost',         // Broker address for metrics
-      serverPort: 9092,                   // Broker port for metrics
-      
-      // Custom histogram buckets (optional, in seconds)
-      histogramBuckets: [0.001, 0.01, 0.1, 1, 10],
-    },
-    
-    // Custom hooks for advanced use cases
-    producerHook: (span, record, metadata) => {
-      // Add custom attributes to producer spans
-      span.setAttribute('custom.key', 'value')
-    },
-    
-    messageHook: (span, message) => {
-      // Add custom attributes to consumer spans
-      span.setAttribute('custom.key', 'value')
-    },
-  },
+  diagnostics: true, // keep diagnostics on so the OTEL adapter receives events
 })
 ```
+
+Tip: When consuming via streams or batches, call `message.endSpan()` (or `batch.endSpan()` when provided) after processing to close the tracing span. The stream examples already do this for you.
 
 ### Semantic Conventions Compliance
 
@@ -203,7 +204,7 @@ All examples require a running Kafka broker. Use the included Docker Compose:
 docker-compose up -d
 
 # Run examples
-KAFKA_AVAILABLE=true node example/simple.mjs
+KAFKA_AVAILABLE=true node simple.mjs
 
 # Stop Kafka
 docker-compose down

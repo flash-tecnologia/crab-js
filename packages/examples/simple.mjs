@@ -1,6 +1,6 @@
+import { endSpan, KafkaClient } from 'kafka-crab-js'
 import { nanoid } from 'nanoid'
 import { Buffer } from 'node:buffer'
-import { endSpan, KafkaClient } from '../dist/index.js'
 
 // Minimal OTEL SDK bootstrap so spans are actually exported.
 // Configure with:

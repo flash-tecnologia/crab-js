@@ -1,11 +1,5 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "env": {
-    "node": true,
-    "builtin": true,
-    "es2024": true,
-    "shared-node-browser": true
-  },
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -93,7 +87,8 @@
       "files": [
         "**/example/**",
         "**/__test__/**",
-        "**/benchmark/**"
+        "**/benchmark/**",
+        "**/examples/**"
       ],
       "rules": {
         "no-process-exit": "allow",

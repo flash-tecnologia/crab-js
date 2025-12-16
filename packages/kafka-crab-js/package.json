@@ -62,10 +62,6 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@napi-rs/cli": "^3.5.0",
-    "@types/node": "^25.0.1",
-    "esbuild": "^0.27.1",
-    "rimraf": "^6.1.2",
-    "typescript": "^5.9.3"
+    "@napi-rs/cli": "^3.5.0"
   }
 }

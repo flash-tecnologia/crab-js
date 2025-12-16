@@ -1,11 +1,10 @@
 import { printResults, type Result, Tracker } from 'cronometro'
+import { KafkaClient, type Message } from 'kafka-crab-js'
 import { Kafka as KafkaJS, logLevel } from 'kafkajs'
 import RDKafka from 'node-rdkafka'
 import assert from 'node:assert'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { KafkaClient } from '../dist/index.js'
-import type { Message } from '../js-binding.js'
 import { brokers, topic } from './utils/definitions.ts'
 
 const iterations = 50_000

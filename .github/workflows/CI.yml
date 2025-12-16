@@ -176,12 +176,12 @@ jobs:
         working-directory: packages/kafka-crab-js
       - name: Build OTEL package
         run: pnpm build
-        working-directory: packages/kafka-crab-js-otel
+        working-directory: packages/otel
       - name: Upload OTEL dist
         uses: actions/upload-artifact@v4
         with:
           name: dist-kafka-crab-js-otel
-          path: 'packages/kafka-crab-js-otel/dist/**/*'
+          path: 'packages/otel/dist/**/*'
           if-no-files-found: error
 
   test-macOS-windows-binding:
@@ -382,12 +382,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist-kafka-crab-js-otel
-          path: packages/kafka-crab-js-otel/dist
+          path: packages/otel/dist
       - name: List artifacts
-        run: ls -R packages/kafka-crab-js-otel
+        run: ls -R packages/otel
         shell: bash
       - name: Publish kafka-crab-js-otel
-        working-directory: packages/kafka-crab-js-otel
+        working-directory: packages/otel
         run: |
           npm config set provenance true
           TAG_NAME=${GITHUB_REF#refs/tags/kafka-crab-js-otel@}

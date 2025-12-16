@@ -6,7 +6,7 @@
  * Produces test messages and demonstrates batch consumption.
  */
 
-import { KafkaClient } from '../dist/index.js'
+import { KafkaClient } from 'kafka-crab-js'
 
 // Configuration
 const config = {

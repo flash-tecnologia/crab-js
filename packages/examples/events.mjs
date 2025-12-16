@@ -1,4 +1,4 @@
-import { KafkaClient } from '../dist/index.js'
+import { KafkaClient } from 'kafka-crab-js'
 
 const TOPIC = 'foo'
 
@@ -34,7 +34,7 @@ consumer.onEvents((_err, event) => {
         event.name,
         event.payload.tpl
           .map(it =>
-            `Topic: ${it.topic}, 
+            `Topic: ${it.topic},
                     ${
               it.partitionOffset.map(po => `partition: ${po.partition}`)
                 .join(',')

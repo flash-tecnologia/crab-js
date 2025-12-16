@@ -1,7 +1,6 @@
+import { KafkaClient, type MessageProducer } from 'kafka-crab-js'
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
-import { KafkaClient } from '../../dist/index.js'
-import type { MessageProducer } from '../../js-binding.ts'
 import { brokers, topic } from './definitions.ts'
 
 const client = new KafkaClient({
