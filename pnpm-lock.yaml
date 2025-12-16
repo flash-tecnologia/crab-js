@@ -8,9 +8,6 @@ importers:
 
   .:
     devDependencies:
-      '@napi-rs/cli':
-        specifier: ^3.5.0
-        version: 3.5.0(@emnapi/runtime@1.7.1)(@types/node@25.0.2)
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.0
