@@ -11,7 +11,6 @@ permissions:
   push:
     tags:
       - 'kafka-crab-js@*'
-      - 'kafka-crab-js-otel@*'
     paths-ignore:
       - '**/*.md'
       - LICENSE
@@ -160,7 +159,6 @@ jobs:
   build-otel:
     name: Build OTEL Package
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/kafka-crab-js-otel@') || github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v6
       - name: setup pnpm

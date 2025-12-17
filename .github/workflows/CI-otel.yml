@@ -1,0 +1,48 @@
+name: CI OTEL
+
+permissions:
+  contents: write
+  id-token: write
+
+'on':
+  push:
+    tags:
+      - 'kafka-crab-js-otel@*'
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE
+      - '**/*.gitignore'
+      - .editorconfig
+      - docs/**
+
+jobs:
+  publish-otel:
+    name: Build and publish kafka-crab-js-otel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup pnpm
+        uses: pnpm/action-setup@v4
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install
+      - name: Build core package first
+        run: pnpm build
+        working-directory: packages/kafka-crab-js
+      - name: Build OTEL package
+        run: pnpm build
+        working-directory: packages/otel
+      - name: Publish kafka-crab-js-otel
+        working-directory: packages/otel
+        run: |
+          npm config set provenance true
+          TAG_NAME=${GITHUB_REF#refs/tags/kafka-crab-js-otel@}
+          echo "Publishing kafka-crab-js-otel version: $TAG_NAME"
+          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+          npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
