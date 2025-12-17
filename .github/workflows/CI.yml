@@ -324,7 +324,7 @@ jobs:
         run: pnpm napi create-npm-dirs
         working-directory: packages/kafka-crab-js
       - name: Move artifacts
-        run: pnpm napi artifacts --output-dir $GITHUB_WORKSPACE/artifacts
+        run: pnpm napi artifacts --output-dir ../../artifacts
         working-directory: packages/kafka-crab-js
       - name: Copy dist
         run: |
