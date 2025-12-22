@@ -8,6 +8,59 @@ A Node.js native binding for Apache Kafka using Rust, providing high performance
 pnpm install kafka-crab-js
 ```
 
+## What's New in Version 3.0.0
+
+### Breaking Changes
+
+**OpenTelemetry instrumentation has been moved to a separate package: `kafka-crab-js-otel`**
+
+This change reduces the core package size and makes OTEL an opt-in dependency.
+
+**Before (v2.x):**
+```typescript
+import { KafkaClient } from 'kafka-crab-js'
+
+const client = new KafkaClient({
+  brokers: 'localhost:9092',
+  clientId: 'my-app',
+  otel: {
+    serviceName: 'my-service',
+    metrics: { enabled: true },
+  },
+})
+```
+
+**After (v3.x):**
+```typescript
+import { KafkaClient } from 'kafka-crab-js'
+import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
+
+// 1. Enable OTEL instrumentation BEFORE creating client
+// Note: serviceName is set via OTEL SDK Resource, not here
+enableOtelInstrumentation({
+  metrics: { enabled: true },
+})
+
+// 2. Create client with diagnostics enabled
+const client = new KafkaClient({
+  brokers: 'localhost:9092',
+  clientId: 'my-app',
+  diagnostics: true, // Required for OTEL to receive events
+})
+
+// 3. For consumers, call endSpan() when processing is complete
+const message = await consumer.recv()
+// ... process message ...
+endSpan(message)
+```
+
+### Package Structure
+
+| Package | Description |
+|---------|-------------|
+| `kafka-crab-js` | Core Kafka client (producer, consumer, streams) |
+| `kafka-crab-js-otel` | OpenTelemetry instrumentation (separate install) |
+
 ## Basic Usage
 
 ### Creating a Kafka Client
@@ -24,9 +77,8 @@ const kafkaClient = new KafkaClient({
   configuration: {
     'auto.offset.reset': 'earliest',
   },
-  otel: {
-    serviceName: 'my-app-service',
-  },
+  // v3.0.0+: Enable for OTEL instrumentation
+  diagnostics: true,
 });
 ```
 
@@ -35,7 +87,6 @@ const kafkaClient = new KafkaClient({
 ```typescript
 async function produceMessages() {
   const producer = kafkaClient.createProducer({
-    topic: 'my-topic',
     configuration: {
       'message.timeout.ms': '5000'
     }
@@ -63,7 +114,6 @@ async function produceMessages() {
 ```typescript
 async function consumeMessages() {
   const consumer = kafkaClient.createConsumer({
-    topic: 'my-topic',
     groupId: 'my-group-id',
     configuration: {
       'auto.offset.reset': 'earliest',
@@ -127,37 +177,114 @@ async function streamConsumer() {
 
   kafkaStream.on('close', () => {
     console.log('Stream ended');
-    kafkaStream.unsubscribe();
+  });
+
+  // Proper cleanup - use destroy() for streams
+  // This ensures all async operations complete before the stream closes
+  // kafkaStream.destroy();
+}
+```
+
+### Batch Stream Consumer (v3.0.0+)
+
+```typescript
+async function batchStreamConsumer() {
+  // Create batch stream consumer with batch configuration
+  const batchStream = kafkaClient.createStreamConsumer({
+    groupId: 'my-batch-group',
+    enableAutoCommit: true,
+    batchSize: 10,        // Process up to 10 messages at a time
+    batchTimeout: 1000,   // Wait up to 1000ms for batch to fill
+  });
+
+  await batchStream.subscribe([{ topic: 'my-topic' }]);
+
+  // Get batch configuration
+  const config = batchStream.getBatchConfig();
+  console.log('Batch config:', config); // { batchSize: 10, batchTimeout: 1000 }
+
+  batchStream.on('data', (message) => {
+    // Messages are delivered individually but fetched in batches
+    console.log('Message received:', message.payload.toString());
+  });
+
+  batchStream.on('error', (error) => {
+    console.error('Stream error:', error);
+  });
+}
+```
+
+### Proper Stream Cleanup
+
+When working with stream consumers, always use `destroy()` for proper cleanup. This ensures all async operations complete before the stream closes and prevents errors after cleanup.
+
+```typescript
+/**
+ * Properly cleans up a stream consumer
+ */
+async function cleanupStreamConsumer(streamConsumer) {
+  if (!streamConsumer) return;
+
+  return new Promise((resolve) => {
+    // If already destroyed, resolve immediately
+    if (streamConsumer.destroyed) {
+      resolve();
+      return;
+    }
+
+    // Wait for close event which fires after destroy is complete
+    streamConsumer.once('close', () => {
+      resolve();
+    });
+
+    // Destroy the stream - this triggers _destroy() which handles
+    // unsubscribe and disconnect properly
+    streamConsumer.destroy();
   });
 }
 
-### Enabling OpenTelemetry Instrumentation
+// Usage
+const stream = kafkaClient.createStreamConsumer({ groupId: 'my-group' });
+await stream.subscribe('my-topic');
 
-Kafka Crab JS provides built-in OpenTelemetry support for producers, consumers, and stream consumers.
+// ... process messages ...
+
+// Cleanup
+await cleanupStreamConsumer(stream);
+```
+
+### Enabling OpenTelemetry Instrumentation (v3.0.0+)
+
+OpenTelemetry instrumentation is now in a separate package for reduced bundle size.
 
 ```typescript
+import { KafkaClient } from 'kafka-crab-js'
+import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { AsyncHooksContextManager } from '@opentelemetry/context-async-hooks'
 import { context } from '@opentelemetry/api'
 
+// Set up OpenTelemetry
 const provider = new NodeTracerProvider()
 provider.addSpanProcessor(new SimpleSpanProcessor(exporter))
 provider.register()
-
 context.setGlobalContextManager(new AsyncHooksContextManager().enable())
 
+// Enable kafka-crab-js instrumentation
+enableOtelInstrumentation({
+  captureMessagePayload: true,
+  captureMessageHeaders: true,
+})
+
+// Create client with diagnostics enabled
 const client = new KafkaClient({
   brokers: 'localhost:9092',
   clientId: 'otel-example',
-  otel: {
-    serviceName: 'otel-example-service',
-    messageHook: (span, message) => {
-      span.setAttribute('app.message.topic', message.topic)
-    },
-  },
+  diagnostics: true, // Required for OTEL
 })
 
+// Producer - spans are created automatically
 const producer = client.createProducer()
 await producer.send({
   topic: 'otel-topic',
@@ -167,60 +294,12 @@ await producer.send({
   }],
 })
 
-const consumer = client.createConsumer({ groupId: 'otel-group', enableAutoCommit: false })
-await consumer.subscribe([{ topic: 'otel-topic', allOffsets: { position: 'Beginning' } }])
+// Consumer - call endSpan() when done processing
+const consumer = client.createConsumer({ groupId: 'otel-group' })
+await consumer.subscribe('otel-topic')
 const message = await consumer.recv()
-
-console.log(message.headers?.['custom-header']?.toString()) // -> value
-```
-
-Instrumentation automatically injects trace context (`traceparent`/`tracestate`) while preserving custom headers (Buffer/string). Set `otel: false` if you need to turn tracing off.
-```
-
-### Consumer with Events Handling
-
-```typescript
-function consumerWithEvents() {
-  const consumer = kafkaClient.createConsumer({
-    topic: 'my-topic',
-    groupId: 'my-group-id',
-  });
-
-  consumer.onEvents((err, event) => {
-    if (err) {
-      console.error('Event error:', err);
-      return;
-    }
-
-    switch (event.name) {
-      case 'CommitCallback': {
-        const offsetCommitted = event.payload.tpl
-          .filter(it => it.partitionOffset.find(it => it.offset.offset))
-          .flatMap(p => p.partitionOffset.map(it => ({
-            topic: p.topic,
-            partition: it.partition,
-            offset: it.offset.offset
-          })));
-        console.log('Offset committed:', offsetCommitted);
-        break;
-      }
-      default: {
-        console.log(
-          'Event:',
-          event.name,
-          event.payload.tpl.map(it =>
-            `Topic: ${it.topic}, ${it.partitionOffset.map(po =>
-              `partition: ${po.partition}`).join(',')}`
-          ),
-        );
-      }
-    }
-  });
-
-  consumer.subscribe('my-topic');
-
-  // Continue with message consumption...
-}
+// ... process message ...
+endSpan(message) // End the processing span
 ```
 
 ### Consumer with Retry Logic
@@ -261,8 +340,9 @@ async function consumerWithRetry() {
   }
 
   async function setupConsumerWithRetry() {
+    let kafkaStream;
     try {
-      const kafkaStream = await createConsumer();
+      kafkaStream = await createConsumer();
       retryCount = 0; // Reset retry count on successful connection
 
       kafkaStream.on('data', (message) => {
@@ -274,21 +354,21 @@ async function consumerWithRetry() {
         });
       });
 
-      kafkaStream.on('error', (error) => {
+      kafkaStream.on('error', async (error) => {
         console.error('Stream error:', error);
+        // Use destroy() for proper cleanup before retry
+        kafkaStream.destroy();
         handleRetry();
       });
 
       kafkaStream.on('close', () => {
         console.log('Stream ended');
-        try {
-          kafkaStream.unsubscribe();
-        } catch (unsubError) {
-          console.error('Error unsubscribing:', unsubError);
-        }
       });
     } catch (error) {
       console.error('Error setting up consumer:', error);
+      if (kafkaStream) {
+        kafkaStream.destroy();
+      }
       handleRetry();
     }
   }
@@ -316,6 +396,7 @@ interface KafkaConfiguration {
   logLevel?: 'debug' | 'info' | 'warning' | 'error';  // Default: 'info'
   brokerAddressFamily?: 'v4' | 'v6'; // IP version, default: 'v4'
   securityProtocol?: string;      // Default: 'Plaintext'
+  diagnostics?: boolean;          // v3.0.0+: Enable diagnostics channel for OTEL
   configuration?: {               // Additional librdkafka configuration
     [key: string]: string;
   }
@@ -330,15 +411,14 @@ interface KafkaConfiguration {
 - **createConsumer(config: ConsumerConfiguration): KafkaConsumer**
   Creates a Kafka consumer
 
-- **createStreamConsumer(config: ConsumerConfiguration): KafkaStreamReadable**
-  Creates a stream-based Kafka consumer that implements Node.js Readable interface
+- **createStreamConsumer(config: StreamConsumerConfiguration): KafkaStreamReadable | KafkaBatchStreamReadable**
+  Creates a stream-based Kafka consumer. Returns `KafkaBatchStreamReadable` if `batchSize > 1` is specified.
 
 ### KafkaProducer
 
 #### Configuration
 ```typescript
 interface ProducerConfiguration {
-  topic?: string;             // Default topic (optional)
   configuration?: {           // Additional producer configuration
     [key: string]: string;
   }
@@ -366,7 +446,6 @@ interface ProducerRecord {
 #### Configuration
 ```typescript
 interface ConsumerConfiguration {
-  topic?: string;             // Topic to consume (can also be set with subscribe())
   groupId: string;            // Consumer group ID
   enableAutoCommit?: boolean; // Whether to auto-commit offsets
   configuration?: {           // Additional consumer configuration
@@ -384,32 +463,41 @@ interface ConsumerConfiguration {
 - **recv(): Promise<Message | null>**
   Receive next message (returns null when disconnected)
 
+- **recvBatch(maxMessages: number, timeoutMs: number): Promise<Message[]>**
+  Receive a batch of messages
+
 - **disconnect(): Promise<void>**
   Disconnect the consumer
 
-- **onEvents(callback: (error?: Error, event?: KafkaEvent) => void): void**
-  Register callback for consumer events
-
-- **seek(topic: string, partition: number, offsetModel: OffsetModel, timeout?: number): void**
-  Seek to a specific offset
-
-- **commit(topic: string, partition: number, offset: number, commit: CommitMode): void**
+- **commit(topic: string, partition: number, offset: number, commit: CommitMode): Promise<void>**
   Manually commit an offset
 
-### KafkaStreamReadable
+- **commitMessage(message: Message, commit: CommitMode): Promise<void>**
+  v2.1.0+: Simplified commit that automatically handles offset increment
+
+### KafkaStreamReadable / KafkaBatchStreamReadable
 
 Extends Node.js Readable stream interface for Kafka consumption.
+
+#### Stream Consumer Configuration
+```typescript
+interface StreamConsumerConfiguration extends ConsumerConfiguration {
+  batchSize?: number;     // If > 1, creates KafkaBatchStreamReadable
+  batchTimeout?: number;  // Timeout for batch collection (default: 1000ms)
+  streamOptions?: ReadableOptions;
+}
+```
 
 #### Methods
 
 - **subscribe(topics: string | TopicPartitionConfig[]): Promise<void>**
   Subscribe to Kafka topics
 
-- **seek(topic: string, partition: number, offsetModel: OffsetModel, timeout?: number): void**
-  Seek to a specific offset
-
-- **commit(topic: string, partition: number, offset: number, commit: CommitMode): void**
+- **commit(topic: string, partition: number, offset: number, commit: CommitMode): Promise<void>**
   Manually commit an offset
+
+- **commitMessage(message: Message, commit: CommitMode): Promise<void>**
+  Simplified commit
 
 - **unsubscribe(): void**
   Unsubscribe from topics
@@ -417,8 +505,11 @@ Extends Node.js Readable stream interface for Kafka consumption.
 - **disconnect(): Promise<void>**
   Disconnect the consumer
 
-- **rawConsumer(): KafkaConsumer**
-  Get the underlying KafkaConsumer instance
+- **destroy(): void**
+  Properly destroy the stream (recommended for cleanup)
+
+- **getBatchConfig(): { batchSize: number; batchTimeout: number }**
+  (KafkaBatchStreamReadable only) Get batch configuration
 
 #### Events
 
@@ -440,10 +531,28 @@ interface Message {
 }
 ```
 
+## Performance Benchmarks
+
+*Benchmarks run on macOS with Apple M1 chip processing 50,000 messages (December 2024)*
+
+| Client | Mode | Ops/sec |
+|--------|------|---------|
+| kafkajs | - | 834 |
+| node-rdkafka | evented | 24,923 |
+| kafka-crab-js | serial | 43,214 |
+| node-rdkafka | stream | 49,805 |
+| **kafka-crab-js** | **batch** | **205,985** |
+
+Performance characteristics:
+- **52x faster than kafkajs** in serial mode, **247x faster in batch mode**
+- **4.8x improvement** with batch processing over serial mode
+- Lock-free data structures minimize memory overhead
+- Zero-contention concurrent operations
+
 ## Best Practices
 
 1. **Resource Management**
-   - Always call `disconnect()` when done with a consumer
+   - Always use `destroy()` when done with a stream consumer
    - Use try/finally blocks to ensure proper cleanup
    - Handle process signals (SIGINT, etc.) to gracefully shut down
 
@@ -453,31 +562,16 @@ interface Message {
    - Check for null returns from `recv()` to detect disconnections
 
 3. **Performance Tuning**
-   - For high-throughput applications, use the stream-based consumer
+   - Use batch stream consumers for high-throughput applications
    - Configure batch sizes and commit intervals appropriately
    - Monitor memory usage, especially when processing large messages
 
 4. **Offset Management**
    - Use `enableAutoCommit: true` for simple use cases
    - For more control, set to false and manually commit offsets
-   - Be careful about commit frequency - too frequent commits can impact performance
+   - Use `commitMessage()` for simplified offset handling
 
-## Common Issues and Solutions
-
-1. **Connection Issues**
-   - Verify broker addresses and network connectivity
-   - Check security settings if using TLS/SSL
-   - Ensure the specified topics exist
-
-2. **Performance Issues**
-   - Increase batch size for better throughput
-   - Adjust commit frequency
-   - Consider using stream-based consumption for higher throughput
-
-3. **Message Ordering**
-   - Remember that ordering is only guaranteed within a partition
-   - Use appropriate partition strategies when producing messages that need ordering
-
-4. **Resource Leaks**
-   - Always disconnect consumers and producers when done
-   - Handle process termination signals properly
+5. **Stream Cleanup**
+   - Always call `destroy()` on stream consumers, not `disconnect()` directly
+   - Wait for the `close` event before considering cleanup complete
+   - This prevents async errors after the stream has ended

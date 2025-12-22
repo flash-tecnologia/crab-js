@@ -1,0 +1,51 @@
+{
+  "name": "kafka-crab-js-otel",
+  "version": "1.0.1",
+  "description": "OpenTelemetry instrumentation for kafka-crab-js",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "author": "inaiat@gmail.com",
+  "homepage": "https://github.com/flash-tecnologia/kafka-crab-js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flash-tecnologia/kafka-crab-js.git",
+    "directory": "packages/kafka-crab-js-otel"
+  },
+  "keywords": [
+    "kafka",
+    "opentelemetry",
+    "otel",
+    "tracing",
+    "metrics",
+    "observability",
+    "instrumentation"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p . --noEmit",
+    "prebuild": "rimraf dist",
+    "build": "node build.mjs",
+    "postbuild": "tsc -p tsconfig.json --emitDeclarationOnly --declaration --outDir dist",
+    "test": "node --test __test__/unit/*.test.*",
+    "test:integration": "node --test __test__/integration/*.test.*"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": ">=1.9",
+    "kafka-crab-js": ">=3"
+  },
+  "devDependencies": {
+    "kafka-crab-js": "workspace:*"
+  }
+}

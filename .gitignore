@@ -3,7 +3,7 @@
 
 example/lab/
 CLAUDE.md
-ai-tasks.md
+
 
 ### Node ###
 # Logs
@@ -189,6 +189,7 @@ $RECYCLE.BIN/
 #Added by cargo
 
 /target
+packages/kafka-crab-js/target
 
 .pnp.*
 .yarn/*

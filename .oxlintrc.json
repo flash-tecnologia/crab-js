@@ -1,11 +1,5 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "env": {
-    "node": true,
-    "builtin": true,
-    "es2024": true,
-    "shared-node-browser": true
-  },
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -42,6 +36,12 @@
         "ignoreConstructor": true
       }
     ],
+    "max-statements": [
+      "error",
+      {
+        "max": 40
+      }
+    ],
     "unicorn/filename-case": [
       "error",
       {
@@ -72,8 +72,11 @@
     "coverage/",
     "report/",
     "**/dist/**",
+    "**/target/**",
     "js-binding*.*",
-    "build.mjs"
+    "build.mjs",
+    "index.js",
+    "index.d.ts"
   ],
   "globals": {
     "__dirname": "off",
@@ -90,7 +93,8 @@
       "files": [
         "**/example/**",
         "**/__test__/**",
-        "**/benchmark/**"
+        "**/benchmark/**",
+        "**/examples/**"
       ],
       "rules": {
         "no-process-exit": "allow",
@@ -116,7 +120,8 @@
         "unicorn/prefer-array-index-of": "allow",
         "unicorn/no-console-spaces": "allow",
         "no-empty-function": "allow",
-        "no-async-promise-executor": "allow"
+        "no-async-promise-executor": "allow",
+        "max-statements": "allow"
       }
     }
   ]

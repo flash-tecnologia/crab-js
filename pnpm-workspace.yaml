@@ -1,8 +1,9 @@
 packages:
-  - 'benchmark'
+  - packages/*
 
 onlyBuiltDependencies:
   - '@platformatic/rdkafka'
   - dprint
   - esbuild
   - node-rdkafka
+  - protobufjs

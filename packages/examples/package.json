@@ -1,0 +1,26 @@
+{
+  "name": "kafka-crab-js-examples",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "otel:trace": "tsx otel-tracing-example.mjs",
+    "otel:metrics": "tsx otel-metrics-example.mjs",
+    "otel:batch": "tsx otel-batch-trace.ts",
+    "simple": "node simple.mjs"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10.1",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/exporter-metrics-otlp-grpc": "^0.57.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.57.0",
+    "@opentelemetry/resources": "^1.26.0",
+    "@opentelemetry/sdk-metrics": "^1.26.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/sdk-trace-node": "^1.26.0",
+    "@opentelemetry/semantic-conventions": "^1.28.0",
+    "kafka-crab-js": "workspace:*",
+    "kafka-crab-js-otel": "workspace:*",
+    "nanoid": "^5.0.0"
+  }
+}

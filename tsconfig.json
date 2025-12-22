@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.base.json",
-  "include": [
-    "benchmark/*.ts",
-    "js-src/*.ts",
-    "__test__/**/*.*",
-    "examples/**/*.ts"
-  ]
-}
