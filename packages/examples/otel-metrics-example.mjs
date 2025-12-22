@@ -32,7 +32,7 @@ import resourcesPkg from '@opentelemetry/resources'
 import metricsPkg from '@opentelemetry/sdk-metrics'
 import semconvPkg from '@opentelemetry/semantic-conventions'
 
-const { resourceFromAttributes } = resourcesPkg
+const { Resource } = resourcesPkg
 const { ConsoleMetricExporter, MeterProvider, PeriodicExportingMetricReader } = metricsPkg
 const { OTLPMetricExporter } = otlpMetricsGrpcPkg
 const { SEMRESATTRS_SERVICE_NAME } = semconvPkg
@@ -59,7 +59,7 @@ const metricExporter = process.env.OTEL_EXPORTER_TYPE === 'console'
   })
 
 const meterProvider = new MeterProvider({
-  resource: resourceFromAttributes({
+  resource: new Resource({
     [SEMRESATTRS_SERVICE_NAME]: 'kafka-crab-metrics-example',
   }),
   readers: [
@@ -84,7 +84,6 @@ console.log('🔧 Creating Kafka client with metrics enabled...\n')
 // Enable OTEL instrumentation with the kafka-crab-js-otel package
 enableOtelInstrumentation({
   enabled: true,
-  serviceName: 'kafka-crab-metrics-example',
 
   // Metrics-specific configuration
   metrics: {

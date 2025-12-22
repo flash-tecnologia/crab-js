@@ -76,7 +76,7 @@ async function isKafkaReachable(brokers: string, timeoutMs = 750): Promise<boole
         clientIdBytes.copy(header, offset)
 
         const frame = Buffer.alloc(4 + header.length)
-        frame.writeInt32BE(header.length, 0) // length prefix excludes itself
+        frame.writeInt32BE(header.length, 0) // Length prefix excludes itself
         header.copy(frame, 4)
 
         socket.write(frame)
@@ -903,7 +903,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
         reject(err)
       }
       streamConsumer.on('end', onEnd)
-      streamConsumer.on('close', onEnd) // destroy() triggers close, not end
+      streamConsumer.on('close', onEnd) // Destroy() triggers close, not end
       streamConsumer.on('error', onError)
     })
 
@@ -922,7 +922,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const producer = kafkaClient.createProducer()
     const batchSize = 3
     const streamParent = trace.getTracer('test').startSpan('stream-batch-parent')
-    const streamParentContext = trace.setSpan(context.active(), streamParent) // bound to producer sends for trace linkage
+    const streamParentContext = trace.setSpan(context.active(), streamParent) // Bound to producer sends for trace linkage
 
     for (let i = 0; i < batchSize * 2; i++) {
       await context.with(streamParentContext, () =>
@@ -963,7 +963,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       endOtelSpans(message)
       receivedMessages.push(message)
       receivedCount++
-      // stop after we see at least two batches worth of messages
+      // Stop after we see at least two batches worth of messages
       if (receivedCount >= batchSize * 2) {
         streamConsumer.destroy()
       }
@@ -1467,7 +1467,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
           reject(err)
         }
         streamConsumer.on('end', onEnd)
-        streamConsumer.on('close', onEnd) // destroy() triggers close, not end
+        streamConsumer.on('close', onEnd) // Destroy() triggers close, not end
         streamConsumer.on('error', onError)
       })
     })

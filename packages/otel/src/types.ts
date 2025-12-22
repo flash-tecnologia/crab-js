@@ -93,12 +93,6 @@ export interface KafkaMetricsConfig {
 
 // Configuration interface for Kafka OTEL instrumentation
 export interface KafkaOtelInstrumentationConfig extends InstrumentationConfig {
-  // Service name for telemetry (defaults to OTEL_SERVICE_NAME env var or 'kafka-client')
-  serviceName?: string
-
-  // Whether to register instrumentation automatically on initialization
-  registerOnInitialization?: boolean
-
   // Broker server address for span attributes (conditionally required by semantic conventions)
   serverAddress?: string
 
@@ -239,8 +233,6 @@ export type MetricsHookFn = (metricName: string, value: number, attributes: Attr
 
 // Configuration defaults - simplified type definition
 export interface DefaultOtelConfig {
-  serviceName: string
-  registerOnInitialization: boolean
   captureMessagePayload: boolean
   maxPayloadSize: number
   captureMessageHeaders: boolean
@@ -253,8 +245,6 @@ export interface DefaultOtelConfig {
 }
 
 export const DEFAULT_OTEL_CONFIG: DefaultOtelConfig = {
-  serviceName: process.env.OTEL_SERVICE_NAME || 'kafka-client',
-  registerOnInitialization: true,
   captureMessagePayload: false,
   maxPayloadSize: 1024,
   captureMessageHeaders: true,

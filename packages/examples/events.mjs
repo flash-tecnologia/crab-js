@@ -10,8 +10,7 @@ const kafkaClient = new KafkaClient({
 })
 
 const consumer = kafkaClient.createConsumer({
-  topic: TOPIC,
-  groupId: 'my-gropu-id',
+  groupId: 'my-group-id',
 })
 
 // If you want to consume events, you need call disconnect() to stop the consumer and release resources
@@ -45,7 +44,10 @@ consumer.onEvents((_err, event) => {
   }
 })
 
-consumer.subscribe(TOPIC)
+await consumer.subscribe([{
+  topic: TOPIC,
+  createTopic: true,
+}])
 
 const printMessage = async () => {
   let disconnect = false

@@ -80,10 +80,6 @@ export class KafkaCrabInstrumentation {
   public enable(): void {
     this._kafkaTracer = getTracer(PACKAGE_INFO.NAME, PACKAGE_INFO.VERSION)
     this._enabled = true
-
-    if (this._kafkaConfig?.registerOnInitialization && this._kafkaTracer) {
-      diag.debug('Kafka OTEL instrumentation enabled')
-    }
   }
 
   public disable(): void {
@@ -243,12 +239,12 @@ export class KafkaCrabInstrumentation {
       tracer: null,
       context: context.active(),
       inject: () => {
-        /* no-op */
+        /* No-op */
       },
       extract: () => context.active(),
       startSpan: () => null,
       endSpan: () => {
-        /* no-op */
+        /* No-op */
       },
       endMessageSpan: (message, error) => {
         if (!message) {

@@ -3,7 +3,6 @@ import test from 'node:test'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { KafkaClient } from '../../dist/index.js'
 import {
-  cleanupConsumer,
   cleanupProducer,
   createConsumerConfig,
   createProducerConfig,
@@ -11,6 +10,37 @@ import {
   isTestMessage,
   setupTestEnvironment,
 } from './utils.mjs'
+
+/**
+ * Properly cleans up a stream consumer by destroying it and waiting for the close event.
+ * This ensures all async operations complete before the test ends.
+ * @param {import('../../dist/index.js').KafkaStreamReadable | import('../../dist/index.js').KafkaBatchStreamReadable} streamConsumer
+ * @returns {Promise<void>}
+ */
+async function cleanupStreamConsumer(streamConsumer) {
+  if (!streamConsumer) return
+
+  return new Promise((resolve) => {
+    // If already destroyed, resolve immediately
+    if (streamConsumer.destroyed) {
+      resolve()
+      return
+    }
+
+    // Wait for close event which fires after destroy is complete
+    streamConsumer.once('close', () => {
+      resolve()
+    })
+
+    // Handle case where close doesn't fire (already closed)
+    streamConsumer.once('error', () => {
+      // Ignore errors during cleanup
+    })
+
+    // Destroy the stream - this will trigger _destroy() which handles unsubscribe and disconnect
+    streamConsumer.destroy()
+  })
+}
 
 await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
   let client
@@ -25,28 +55,17 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
   })
 
   await t.test('Stream Batch: Basic batch mode functionality', async () => {
-    const streamConsumer = client.createStreamConsumer(createConsumerConfig('batch-basic'))
+    const streamConsumer = client.createStreamConsumer({
+      ...createConsumerConfig('batch-basic'),
+      batchSize: 5,
+      batchTimeout: 1000,
+    })
 
-    // Test initial state
-    equal(streamConsumer.isBatchModeEnabled(), false, 'Batch mode should be disabled by default')
-
-    // Enable batch mode
-    const returnValue = streamConsumer.enableBatchMode(5, 1000)
-    equal(returnValue, streamConsumer, 'enableBatchMode should return the stream instance for chaining')
-    equal(streamConsumer.isBatchModeEnabled(), true, 'Batch mode should be enabled')
-
-    // Check batch configuration
     const config = streamConsumer.getBatchConfig()
-    equal(config.enabled, true, 'Config should show batch mode enabled')
     equal(config.batchSize, 5, 'Config should show correct batch size')
-    equal(config.batchTimeoutMs, 1000, 'Config should show correct timeout')
+    equal(config.batchTimeout, 1000, 'Config should show correct timeout')
 
-    // Disable batch mode
-    const disableReturn = streamConsumer.disableBatchMode()
-    equal(disableReturn, streamConsumer, 'disableBatchMode should return the stream instance for chaining')
-    equal(streamConsumer.isBatchModeEnabled(), false, 'Batch mode should be disabled')
-
-    await cleanupConsumer(streamConsumer)
+    await cleanupStreamConsumer(streamConsumer)
   })
 
   await t.test('Stream Batch: Default batch configuration', async () => {
@@ -60,27 +79,21 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     equal(config.batchSize, 10, 'Batch size should match what was set')
     equal(config.batchTimeout, 1000, 'Default timeout should be 1000ms')
 
-    await cleanupConsumer(streamConsumer)
+    await cleanupStreamConsumer(streamConsumer)
   })
 
-  await t.test('Stream Batch: Timeout validation', async () => {
-    const streamConsumer = client.createStreamConsumer(createConsumerConfig('batch-timeout-validation'))
+  await t.test('Stream Batch: Custom timeout configuration', async () => {
+    const streamConsumer = client.createStreamConsumer({
+      ...createConsumerConfig('batch-timeout-validation'),
+      batchSize: 10,
+      batchTimeout: 5000,
+    })
 
-    // Test invalid timeouts (should fall back to default)
-    streamConsumer.enableBatchMode(10, 0) // Too low
-    equal(streamConsumer.getBatchConfig().batchTimeoutMs, 100, 'Should use default for timeout too low')
+    const config = streamConsumer.getBatchConfig()
+    equal(config.batchSize, 10, 'Batch size should match what was set')
+    equal(config.batchTimeout, 5000, 'Timeout should match custom value')
 
-    streamConsumer.enableBatchMode(10, 50000) // Too high
-    equal(streamConsumer.getBatchConfig().batchTimeoutMs, 100, 'Should use default for timeout too high')
-
-    streamConsumer.enableBatchMode(10, -100) // Negative
-    equal(streamConsumer.getBatchConfig().batchTimeoutMs, 100, 'Should use default for negative timeout')
-
-    // Test valid timeout
-    streamConsumer.enableBatchMode(10, 5000)
-    equal(streamConsumer.getBatchConfig().batchTimeoutMs, 5000, 'Should accept valid timeout')
-
-    await cleanupConsumer(streamConsumer)
+    await cleanupStreamConsumer(streamConsumer)
   })
 
   await t.test('Stream Batch: Receive messages in batch mode', async () => {
@@ -91,8 +104,11 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     await sleep(1000)
 
     // Create stream consumer with batch mode
-    const streamConsumer = client.createStreamConsumer(createConsumerConfig(`batch-receive-${testId}`))
-    streamConsumer.enableBatchMode(3, 2000) // Small batch size for testing
+    const streamConsumer = client.createStreamConsumer({
+      ...createConsumerConfig(`batch-receive-${testId}`),
+      batchSize: 3,
+      batchTimeout: 2000, // Small batch size for testing
+    })
 
     await streamConsumer.subscribe([
       { topic, allOffsets: { position: 'Beginning' } },
@@ -121,7 +137,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     })
 
     await batchPromise
-    await cleanupConsumer(streamConsumer)
+    await cleanupStreamConsumer(streamConsumer)
 
     // Verify results
     equal(receivedMessages.length, messages.length, 'Should receive all messages in batch mode')
@@ -133,7 +149,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     }
   })
 
-  await t.test('Stream Batch: Switch between single and batch modes', async () => {
+  await t.test('Stream Batch: Single vs batch stream creation', async () => {
     const { topic, testId } = await setupTestEnvironment()
 
     // Send initial messages
@@ -143,34 +159,29 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     await producer.send({ topic, messages: initialMessages })
     await sleep(1000)
 
-    const streamConsumer = client.createStreamConsumer(createConsumerConfig(`mode-switch-${testId}`))
-    await streamConsumer.subscribe([
+    const singleConsumer = client.createStreamConsumer(createConsumerConfig(`mode-single-${testId}`))
+    await singleConsumer.subscribe([
       { topic, allOffsets: { position: 'Beginning' } },
     ])
 
-    // Start in single mode
-    equal(streamConsumer.isBatchModeEnabled(), false, 'Should start in single mode')
+    equal(typeof singleConsumer.getBatchConfig, 'undefined', 'Single mode stream should not expose getBatchConfig')
+    await cleanupStreamConsumer(singleConsumer)
 
-    // Switch to batch mode
-    streamConsumer.enableBatchMode(2, 1000)
-    equal(streamConsumer.isBatchModeEnabled(), true, 'Should be in batch mode after enable')
+    const batchConsumer = client.createStreamConsumer({
+      ...createConsumerConfig(`mode-batch-${testId}`),
+      batchSize: 2,
+      batchTimeout: 1000,
+    })
 
-    // Switch back to single mode
-    streamConsumer.disableBatchMode()
-    equal(streamConsumer.isBatchModeEnabled(), false, 'Should be back in single mode')
+    await batchConsumer.subscribe([
+      { topic, allOffsets: { position: 'Beginning' } },
+    ])
 
-    // Test that the methods work without actually processing messages to avoid timing issues
-    const config = streamConsumer.getBatchConfig()
-    equal(config.enabled, false, 'Config should reflect disabled state')
+    const config = batchConsumer.getBatchConfig()
+    equal(config.batchSize, 2, 'Batch size should match configured value')
+    equal(config.batchTimeout, 1000, 'Batch timeout should match configured value')
 
-    // Enable again with different settings
-    streamConsumer.enableBatchMode(5, 2000)
-    const newConfig = streamConsumer.getBatchConfig()
-    equal(newConfig.enabled, true, 'Should be enabled again')
-    equal(newConfig.batchSize, 5, 'Should have new batch size')
-    equal(newConfig.batchTimeoutMs, 2000, 'Should have new timeout')
-
-    await cleanupConsumer(streamConsumer)
+    await cleanupStreamConsumer(batchConsumer)
   })
 
   await t.test('Stream Batch: Performance comparison (batch vs single)', async () => {
@@ -208,11 +219,14 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
 
     await singleModePromise
     const singleModeDuration = Date.now() - singleModeStart
-    await cleanupConsumer(singleModeConsumer)
+    await cleanupStreamConsumer(singleModeConsumer)
 
     // Test batch mode performance
-    const batchModeConsumer = client.createStreamConsumer(createConsumerConfig(`batch-perf-${testId}`))
-    batchModeConsumer.enableBatchMode(10, 500) // Reasonable batch size
+    const batchModeConsumer = client.createStreamConsumer({
+      ...createConsumerConfig(`batch-perf-${testId}`),
+      batchSize: 10,
+      batchTimeout: 500, // Reasonable batch size
+    })
 
     await batchModeConsumer.subscribe([
       { topic, allOffsets: { position: 'Beginning' } },
@@ -234,7 +248,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
 
     await batchModePromise
     const batchModeDuration = Date.now() - batchModeStart
-    await cleanupConsumer(batchModeConsumer)
+    await cleanupStreamConsumer(batchModeConsumer)
 
     // Verify both modes received all messages
     equal(singleModeMessages.length, messageCount, 'Single mode should receive all messages')
@@ -270,8 +284,11 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     await sleep(3000)
 
     // Process with batch size within limits (max 10)
-    const streamConsumer = client.createStreamConsumer(createConsumerConfig(`large-batch-${testId}`))
-    streamConsumer.enableBatchMode(10, 2000) // Use max allowed batch size
+    const streamConsumer = client.createStreamConsumer({
+      ...createConsumerConfig(`large-batch-${testId}`),
+      batchSize: 10,
+      batchTimeout: 2000, // Use max allowed batch size
+    })
 
     await streamConsumer.subscribe([
       { topic, allOffsets: { position: 'Beginning' } },
@@ -300,7 +317,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     })
 
     await largeProcessingPromise
-    await cleanupConsumer(streamConsumer)
+    await cleanupStreamConsumer(streamConsumer)
 
     equal(receivedMessages.length, messageCount, 'Should process all messages in large batch')
   })
@@ -319,8 +336,11 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     await sleep(1000)
 
     // Set up batch mode with small timeout
-    const streamConsumer = client.createStreamConsumer(createConsumerConfig(`timeout-${testId}`))
-    streamConsumer.enableBatchMode(10, 500) // Large batch size, small timeout
+    const streamConsumer = client.createStreamConsumer({
+      ...createConsumerConfig(`timeout-${testId}`),
+      batchSize: 10,
+      batchTimeout: 500, // Large batch size, small timeout
+    })
 
     await streamConsumer.subscribe([
       { topic, allOffsets: { position: 'Beginning' } },
@@ -356,7 +376,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     await timeoutPromise
     const timeoutDuration = Date.now() - timeoutStart
 
-    await cleanupConsumer(streamConsumer)
+    await cleanupStreamConsumer(streamConsumer)
 
     // Should receive some messages (may not get all due to timing)
     console.log(

@@ -39,7 +39,11 @@ async function startConsumer(topic) {
     enableAutoCommit: true,
   })
 
-  await kafkaStream.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
+  await kafkaStream.subscribe([{
+    topic,
+    createTopic: true,
+    allOffsets: { position: 'Beginning' },
+  }])
 
   let counter = 0
   console.log('Starting consumer')
@@ -64,16 +68,30 @@ async function startConsumer(topic) {
   })
 }
 
+const usage = () => {
+  console.log('Usage:')
+  console.log('  node stream-sample.mjs send <topic> [count]')
+  console.log('  node stream-sample.mjs <topic>')
+}
+
 if (process.argv[2] === 'send') {
-  const topic = process.argv[3]
+  const topic = process.argv[3] || process.env.KAFKA_TOPIC
   const messages = process.argv[4] ? Number(process.argv[4]) : 1
+  if (!topic) {
+    usage()
+    process.exit(1)
+  }
   console.log('Sending', messages, 'messages to', topic)
   await produce(topic, messages)
 } else {
-  const topic = process.argv[2]
+  const topic = process.argv[2] || process.env.KAFKA_TOPIC
+  if (!topic) {
+    usage()
+    process.exit(1)
+  }
   await startConsumer(topic)
 }
 
 // Usage:
-// node stream-sample.mjs send foo 10 // send 10 messages on topic foo
-// node stream-sample.mjs foo // process messages on topic foo
+// Node stream-sample.mjs send foo 10 // send 10 messages on topic foo
+// Node stream-sample.mjs foo // process messages on topic foo

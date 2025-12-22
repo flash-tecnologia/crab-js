@@ -436,7 +436,7 @@ export class KafkaMetrics {
     // Use custom histogram buckets if provided, otherwise use defaults
     const buckets = this._config.histogramBuckets || MESSAGING_DURATION_BUCKETS
 
-    // messaging.client.operation.duration - Histogram
+    // Messaging.client.operation.duration - Histogram
     this._operationDuration = this._meter.createHistogram(KAFKA_METRICS.CLIENT_OPERATION_DURATION, {
       description: KAFKA_METRIC_DESCRIPTIONS[KAFKA_METRICS.CLIENT_OPERATION_DURATION],
       unit: KAFKA_METRIC_UNITS.SECONDS,
@@ -445,19 +445,19 @@ export class KafkaMetrics {
       },
     })
 
-    // messaging.client.sent.messages - Counter
+    // Messaging.client.sent.messages - Counter
     this._sentMessages = this._meter.createCounter(KAFKA_METRICS.CLIENT_SENT_MESSAGES, {
       description: KAFKA_METRIC_DESCRIPTIONS[KAFKA_METRICS.CLIENT_SENT_MESSAGES],
       unit: KAFKA_METRIC_UNITS.MESSAGES,
     })
 
-    // messaging.client.consumed.messages - Counter
+    // Messaging.client.consumed.messages - Counter
     this._consumedMessages = this._meter.createCounter(KAFKA_METRICS.CLIENT_CONSUMED_MESSAGES, {
       description: KAFKA_METRIC_DESCRIPTIONS[KAFKA_METRICS.CLIENT_CONSUMED_MESSAGES],
       unit: KAFKA_METRIC_UNITS.MESSAGES,
     })
 
-    // messaging.process.duration - Histogram
+    // Messaging.process.duration - Histogram
     this._processDuration = this._meter.createHistogram(KAFKA_METRICS.PROCESS_DURATION, {
       description: KAFKA_METRIC_DESCRIPTIONS[KAFKA_METRICS.PROCESS_DURATION],
       unit: KAFKA_METRIC_UNITS.SECONDS,

@@ -326,7 +326,7 @@ await test('Consumer Integration Tests', async (t) => {
     // Test with createTopic enabled (default behavior)
     const consumerConfigEnabled = {
       groupId: `topic-creation-enabled-${Date.now()}`,
-      createTopic: true, // explicitly enabled
+      createTopic: true, // Explicitly enabled
       enableAutoCommit: true,
     }
 

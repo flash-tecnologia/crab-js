@@ -36,6 +36,12 @@
         "ignoreConstructor": true
       }
     ],
+    "max-statements": [
+      "error",
+      {
+        "max": 40
+      }
+    ],
     "unicorn/filename-case": [
       "error",
       {
@@ -114,7 +120,8 @@
         "unicorn/prefer-array-index-of": "allow",
         "unicorn/no-console-spaces": "allow",
         "no-empty-function": "allow",
-        "no-async-promise-executor": "allow"
+        "no-async-promise-executor": "allow",
+        "max-statements": "allow"
       }
     }
   ]

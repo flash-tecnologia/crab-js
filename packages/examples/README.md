@@ -132,8 +132,6 @@ import { enableOtelInstrumentation } from 'kafka-crab-js-otel'
 
 // Enable the OTEL adapter once at startup (subscribes to diagnostics channels)
 enableOtelInstrumentation({
-  serviceName: 'my-kafka-service',      // Service name for traces/metrics
-
   // Tracing configuration
   captureMessagePayload: true,          // Include payload in spans (default: false)
   maxPayloadSize: 1024,                 // Max payload size in bytes (default: 1024)

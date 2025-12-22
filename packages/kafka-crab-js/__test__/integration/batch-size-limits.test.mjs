@@ -277,7 +277,7 @@ await test('Batch Size Limits Integration Tests', async (t) => {
     })
 
     // Zero batch size should return single-mode stream (KafkaStreamReadable)
-    // which doesn't have getBatchConfig method
+    // Which doesn't have getBatchConfig method
     equal(
       typeof streamConsumer.getBatchConfig,
       'undefined',

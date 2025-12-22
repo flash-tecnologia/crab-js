@@ -40,8 +40,8 @@ import { KafkaClient } from 'kafka-crab-js'
 import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
 
 // 1. Enable OTEL instrumentation BEFORE creating client
+// Note: serviceName is set via OTEL SDK Resource, not here
 enableOtelInstrumentation({
-  serviceName: 'my-service',
   metrics: { enabled: true },
 })
 
@@ -578,8 +578,8 @@ import { KafkaClient } from 'kafka-crab-js'
 import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
 
 // Enable instrumentation before creating client
+// Note: serviceName is configured via OTEL SDK Resource
 enableOtelInstrumentation({
-  serviceName: 'my-service',
   metrics: { enabled: true },
 })
 
@@ -622,33 +622,33 @@ node benchmark/consumer.ts
 
 ### Benchmark Results
 
-*Benchmarks run on macOS with Apple M1 chip processing 50,000 messages*
+*Benchmarks run on macOS with Apple M1 chip processing 50,000 messages (December 2024)*
 
 ```
 ╔════════════════════════╤═════════╤══════════════════╤═══════════╤══════════════════════════╗
 ║ Slower tests           │ Samples │           Result │ Tolerance │ Difference with previous ║
 ╟────────────────────────┼─────────┼──────────────────┼───────────┼──────────────────────────╢
-║ kafkajs                │   50000 │   2316.67 op/sec │ ±  1.12 % │                          ║
-║ kafka-crab-js (serial) │   50000 │  38414.57 op/sec │ ±  2.97 % │ + 1558.18 %              ║
-║ node-rdkafka (stream)  │   50000 │  43681.44 op/sec │ ± 13.98 % │ + 13.71 %                ║
-║ node-rdkafka (evented) │   53841 │  74137.97 op/sec │ ± 69.30 % │ + 69.72 %                ║
+║ kafkajs                │   50000 │    834.12 op/sec │ ±  0.22 % │                          ║
+║ node-rdkafka (evented) │   84115 │  24922.67 op/sec │ ± 74.82 % │ + 2887.91 %              ║
+║ kafka-crab-js (serial) │   50000 │  43213.86 op/sec │ ±  3.46 % │ + 73.39 %                ║
+║ node-rdkafka (stream)  │   50000 │  49805.32 op/sec │ ± 27.10 % │ + 15.25 %                ║
 ╟────────────────────────┼─────────┼──────────────────┼───────────┼──────────────────────────╢
 ║ Fastest test           │ Samples │           Result │ Tolerance │ Difference with previous ║
 ╟────────────────────────┼─────────┼──────────────────┼───────────┼──────────────────────────╢
-║ kafka-crab-js (batch)  │   50000 │ 153533.53 op/sec │ ± 15.98 % │ + 107.09 %               ║
+║ kafka-crab-js (batch)  │   50000 │ 205985.31 op/sec │ ± 16.53 % │ + 313.58 %               ║
 ╚════════════════════════╧═════════╧══════════════════╧═══════════╧══════════════════════════╝
 ```
 
 The benchmark suite compares:
-- **kafka-crab-js (serial)**: Single message processing - **38,415 ops/sec**
-- **kafka-crab-js (batch)**: Batch message processing - **153,534 ops/sec** (fastest)
-- **node-rdkafka (evented)**: Event-based processing - **74,138 ops/sec**
-- **node-rdkafka (stream)**: Stream-based processing - **43,681 ops/sec**
-- **kafkajs**: Official KafkaJS client - **2,317 ops/sec**
+- **kafka-crab-js (serial)**: Single message processing - **43,214 ops/sec**
+- **kafka-crab-js (batch)**: Batch message processing - **205,985 ops/sec** (fastest)
+- **node-rdkafka (evented)**: Event-based processing - **24,923 ops/sec**
+- **node-rdkafka (stream)**: Stream-based processing - **49,805 ops/sec**
+- **kafkajs**: Official KafkaJS client - **834 ops/sec**
 
 Performance characteristics:
-- **17x faster than kafkajs** in serial mode, **66x faster in batch mode**
-- **High throughput**: Batch processing provides 4x performance improvement over serial mode
+- **52x faster than kafkajs** in serial mode, **247x faster in batch mode**
+- **High throughput**: Batch processing provides 4.8x performance improvement over serial mode
 - **Low latency**: Optimized for both single and batch message processing
 - **Memory efficient**: Lock-free data structures minimize memory overhead
 - **Concurrent processing**: Zero-contention concurrent operations
@@ -732,33 +732,31 @@ npx tsx benchmark/consumer.ts
 
 ## OpenTelemetry Instrumentation
 
+> **Note:** Starting with v3.0.0, OpenTelemetry instrumentation has been moved to a separate package: [`kafka-crab-js-otel`](https://www.npmjs.com/package/kafka-crab-js-otel)
+
 Kafka Crab JS offers turnkey tracing for Kafka workloads:
 
 - **Seamless propagation** – Producer instrumentation injects `traceparent`/`tracestate` into Kafka headers while retaining any existing headers (including `Buffer` values) so downstream systems continue to see custom metadata.
 - **Consumer & stream coverage** – Standard consumers, batch consumers, and `createStreamConsumer` streams emit spans that include consumer group, topic, partition, offset, and batch size semantics.
 - **Hook-friendly spans** – Both `messageHook` and `producerHook` callbacks run inside the active span context, simplifying attribute decoration or error handling.
-- **Header normalization helpers** – The runtime automatically normalizes mixed header carriers to Buffers when talking to the native binding, removing the need for manual conversions.
+- **Zero overhead when disabled** – Uses Node.js `diagnostics_channel` for near-zero cost when OTEL is not active.
 
 ### Consumer span lifecycle (important)
 
 Kafka Crab JS creates consumer `process <topic>` spans, but only your application knows when processing is complete.
 
-- For single-message consumers, call `message.endSpan()` when you're done processing the message.
-- For batch consumers, call `batch.endSpan()` (the returned array is augmented) when you're done processing the batch.
-- To avoid optional chaining in user code, use the helper `endSpan(message)` (or `EndSpan(message)`).
-- For automatic end + error capture, wrap your handler with `await client.otel.processMessage(message, async (msg) => { ... })` (or `processBatch`).
+- For single-message consumers, call `endSpan(message)` when you're done processing the message.
+- For batch consumers, call `endSpan(batch)` when you're done processing the batch.
+- The `endSpan()` helper is exported from `kafka-crab-js-otel`.
 
 This closes the span(s) and (when metrics are enabled) records `messaging.process.duration`.
 
-If you prefer not to mutate the native `Message` objects, set `otel.decorateMessages=false`. In that mode,
-`recv()`/`recvBatch()` return shallow clones augmented with the same OTEL helper fields.
-
 ### Global instrumentation (singleton)
 
-`kafka-crab-js` uses a process-wide OpenTelemetry instrumentation singleton.
+`kafka-crab-js-otel` uses a process-wide OpenTelemetry instrumentation singleton.
 
-- Creating multiple `KafkaClient` instances shares the same instrumentation and configuration.
-- Passing different `otel` configs to different clients updates the same singleton (the latest config wins).
+- Call `enableOtelInstrumentation()` **before** creating any `KafkaClient` instances.
+- Creating multiple `KafkaClient` instances shares the same instrumentation.
 - For tests, use `resetKafkaInstrumentation()` to clear the singleton between runs.
 
 ### Minimal Setup Example
@@ -766,27 +764,34 @@ If you prefer not to mutate the native `Message` objects, set `otel.decorateMess
 When using stream consumers, the easiest pattern is calling `endSpan()` in a `finally` block:
 
 ```ts
-import { KafkaClient, endSpan } from 'kafka-crab-js'
+import { KafkaClient } from 'kafka-crab-js'
+import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { AsyncHooksContextManager } from '@opentelemetry/context-async-hooks'
 import { context } from '@opentelemetry/api'
 
+// 1. Set up OpenTelemetry SDK
 const provider = new NodeTracerProvider()
 provider.addSpanProcessor(new SimpleSpanProcessor(exporter))
 provider.register()
-
 context.setGlobalContextManager(new AsyncHooksContextManager().enable())
 
+// 2. Enable kafka-crab-js instrumentation BEFORE creating client
+enableOtelInstrumentation({
+  captureMessagePayload: true,
+  captureMessageHeaders: true,
+  producerHook: span => span.setAttribute('messaging.client.kind', 'producer'),
+})
+
+// 3. Create client with diagnostics enabled
 const client = new KafkaClient({
   brokers: 'localhost:29092',
   clientId: 'orders-api',
-  otel: {
-    serviceName: 'orders-service',
-    producerHook: span => span.setAttribute('messaging.client.kind', 'producer'),
-  },
+  diagnostics: true, // Required for OTEL to receive events
 })
 
+// 4. Use producer - spans are created automatically
 const producer = client.createProducer()
 await producer.send({
   topic: 'orders',
@@ -796,10 +801,13 @@ await producer.send({
   }],
 })
 
+// 5. Use stream consumer with proper cleanup
 const consumer = client.createStreamConsumer({
   groupId: 'orders-consumer',
   enableAutoCommit: false,
 })
+
+await consumer.subscribe('orders')
 
 consumer.on('data', message => {
   try {
@@ -809,9 +817,13 @@ consumer.on('data', message => {
     endSpan(message)
   }
 })
+
+// Proper cleanup for stream consumers - use destroy() not disconnect()
+consumer.on('close', () => console.log('Consumer closed'))
+// consumer.destroy()
 ```
 
-Set `otel: false` in the client configuration to opt-out.
+To disable OTEL, simply don't call `enableOtelInstrumentation()` or set `diagnostics: false` in the client config.
 
 ## License
 

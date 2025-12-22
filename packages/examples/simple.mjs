@@ -1,4 +1,5 @@
-import { endSpan, KafkaClient } from 'kafka-crab-js'
+import { KafkaClient } from 'kafka-crab-js'
+import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
 import { nanoid } from 'nanoid'
 import { Buffer } from 'node:buffer'
 
@@ -6,35 +7,53 @@ import { Buffer } from 'node:buffer'
 // Configure with:
 //   OTEL_EXPORTER_OTLP_ENDPOINT (default: http://localhost:4317)
 //   OTEL_SERVICE_NAME (default: kafka-crab-js-example)
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc'
-import { resourceFromAttributes } from '@opentelemetry/resources'
-import { NodeSDK } from '@opentelemetry/sdk-node'
-import { SEMRESATTRS_SERVICE_NAME } from '@opentelemetry/semantic-conventions'
+import otlpTraceGrpcPkg from '@opentelemetry/exporter-trace-otlp-grpc'
+import resourcesPkg from '@opentelemetry/resources'
+import sdkNodePkg from '@opentelemetry/sdk-node'
+import semconvPkg from '@opentelemetry/semantic-conventions'
+
+const { OTLPTraceExporter } = otlpTraceGrpcPkg
+const { Resource, resourceFromAttributes } = resourcesPkg
+const { NodeSDK } = sdkNodePkg
+const { SEMRESATTRS_SERVICE_NAME } = semconvPkg
 
 process.env.NAPI_RS_TOKIO_RUNTIME = '1'
 
+if (process.env.KAFKA_AVAILABLE !== 'true') {
+  console.error('Set KAFKA_AVAILABLE=true to run this example.')
+  process.exit(1)
+}
+
 const otelEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317'
 const otelServiceName = process.env.OTEL_SERVICE_NAME || 'kafka-crab-js-example'
+
+const resource = typeof resourceFromAttributes === 'function'
+  ? resourceFromAttributes({ [SEMRESATTRS_SERVICE_NAME]: otelServiceName })
+  : new Resource({ [SEMRESATTRS_SERVICE_NAME]: otelServiceName })
+
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({ url: otelEndpoint }),
-  resource: resourceFromAttributes({
-    [SEMRESATTRS_SERVICE_NAME]: otelServiceName,
-  }),
+  resource,
 })
-await sdk.start()
+sdk.start()
+
+enableOtelInstrumentation({
+  captureMessageHeaders: true,
+  captureMessagePayload: true,
+})
 
 const kafkaClient = new KafkaClient({
-  brokers: 'localhost:9092',
+  brokers: process.env.KAFKA_BROKERS || 'localhost:9092',
   clientId: 'my-js-group',
   securityProtocol: 'Plaintext',
   logLevel: 'debug',
-  brokerAddressFamily: 'v4',
+  brokerAddressFamily: 'v6',
 })
 const topic = `topic-${nanoid()}`
 
-async function produce() {
-  const producer = kafkaClient.createProducer({ topic, configuration: { 'message.timeout.ms': '5000' } })
-  for (let i = 0; i < 10; i++) {
+async function produce(count) {
+  const producer = kafkaClient.createProducer({ configuration: { 'message.timeout.ms': '5000' } })
+  for (let i = 0; i < count; i++) {
     try {
       const result = await producer.send(
         {
@@ -51,9 +70,11 @@ async function produce() {
       console.error('Js Error on send', error)
     }
   }
+
+  await producer.flush()
 }
 
-async function startConsumer() {
+async function startConsumer(expectedMessages) {
   const consumer = kafkaClient.createConsumer({
     topic,
     groupId: 'my-js-group2',
@@ -61,23 +82,47 @@ async function startConsumer() {
       'auto.offset.reset': 'earliest',
     },
   })
+  process.once('SIGINT', () => consumer.disconnect())
+  process.once('SIGTERM', () => consumer.disconnect())
+
   await consumer.subscribe(topic)
-  while (true) {
+
+  let received = 0
+  while (received < expectedMessages) {
     const message = await consumer.recv()
-    const { partition, offset, headers, payload } = message
-    console.log(
-      'Message received! Partition:',
-      partition,
-      'Offset:',
-      offset,
-      'headers:',
-      Object.entries(headers).map(([k, v]) => ({ [k]: v.toString() })),
-      'Message => ',
-      payload.toString(),
-    )
-    endSpan(message)
+    if (!message) {
+      break
+    }
+
+    let processingError
+    try {
+      const { partition, offset, headers, payload } = message
+      console.log(
+        'Message received! Partition:',
+        partition,
+        'Offset:',
+        offset,
+        'headers:',
+        Object.entries(headers ?? {}).map(([k, v]) => ({ [k]: v.toString() })),
+        'Message => ',
+        payload.toString(),
+      )
+      received++
+    } catch (error) {
+      processingError = error
+      throw error
+    } finally {
+      endSpan(message, processingError instanceof Error ? processingError : undefined)
+    }
   }
+
+  await consumer.disconnect()
 }
 
-await produce()
-await startConsumer()
+try {
+  const messageCount = 10
+  await produce(messageCount)
+  await startConsumer(messageCount)
+} finally {
+  await sdk.shutdown()
+}

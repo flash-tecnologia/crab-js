@@ -30,7 +30,7 @@ import { Buffer } from 'node:buffer'
 
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc'
-import { resourceFromAttributes } from '@opentelemetry/resources'
+import resourcesPkg from '@opentelemetry/resources'
 import { ConsoleMetricExporter, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import { NodeSDK } from '@opentelemetry/sdk-node'
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node'
@@ -71,7 +71,7 @@ const metricReader = new PeriodicExportingMetricReader({
 })
 
 const sdk = new NodeSDK({
-  resource: resourceFromAttributes({
+  resource: new resourcesPkg.Resource({
     [SEMRESATTRS_SERVICE_NAME]: serviceName,
   }),
   traceExporter,
@@ -232,7 +232,7 @@ async function validateGrafanaData({ topic }) {
         }
         console.log(`✅ Prometheus ${metric}: sum=${sum} (series=${matched}, mode=${mode})`)
       } catch {
-        // ignore unknown metric names / query errors and try the next one
+        // Ignore unknown metric names / query errors and try the next one
       }
     }
   }

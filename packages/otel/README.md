@@ -2,6 +2,8 @@
 
 OpenTelemetry instrumentation for [kafka-crab-js](https://www.npmjs.com/package/kafka-crab-js) - a high-performance Kafka client for Node.js built with Rust.
 
+> **Note:** This package is required for OpenTelemetry support starting with kafka-crab-js v3.0.0. OTEL instrumentation was moved from the core package to reduce bundle size and make it opt-in.
+
 ## Features
 
 - 🔭 **Distributed Tracing** - Automatic span creation for producer and consumer operations
@@ -40,9 +42,8 @@ npm install @opentelemetry/sdk-node @opentelemetry/sdk-trace-node @opentelemetry
 import { KafkaClient } from 'kafka-crab-js'
 import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
 
-// 1. Enable OTEL instrumentation (call this before creating KafkaClient)
+// 1. Enable OTEL instrumentation (call this BEFORE creating KafkaClient)
 enableOtelInstrumentation({
-  serviceName: 'my-kafka-service',
   captureMessagePayload: true,
   captureMessageHeaders: true,
 })
@@ -68,6 +69,21 @@ await consumer.subscribe('my-topic')
 const message = await consumer.recv()
 // ... process message ...
 endSpan(message) // End the processing span
+
+// 5. For stream consumers, call endSpan() in event handler and use destroy() for cleanup
+const stream = client.createStreamConsumer({ groupId: 'my-stream-group' })
+await stream.subscribe('my-topic')
+
+stream.on('data', (message) => {
+  try {
+    // ... process message ...
+  } finally {
+    endSpan(message)
+  }
+})
+
+// Proper cleanup for streams
+stream.destroy()
 ```
 
 ## Configuration
@@ -78,9 +94,6 @@ Enable OTEL instrumentation with the given configuration:
 
 ```typescript
 enableOtelInstrumentation({
-  // Service identification
-  serviceName: 'my-kafka-service',
-  
   // Tracing options
   tracerProvider: myTracerProvider,     // Optional: custom tracer provider
   captureMessagePayload: false,         // Include message payload in spans (default: false)
@@ -191,7 +204,7 @@ const sdk = new NodeSDK({
 })
 sdk.start()
 
-enableOtelInstrumentation({ serviceName: 'my-service' })
+enableOtelInstrumentation()
 ```
 
 ### With OTLP Exporter (Production)
@@ -212,10 +225,73 @@ const sdk = new NodeSDK({
 sdk.start()
 
 enableOtelInstrumentation({
-  serviceName: 'my-service',
   metrics: { enabled: true },
 })
 ```
+
+## Stream Consumer Best Practices
+
+When using stream consumers with OTEL instrumentation:
+
+```javascript
+import { KafkaClient } from 'kafka-crab-js'
+import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
+
+enableOtelInstrumentation()
+
+const client = new KafkaClient({
+  brokers: 'localhost:9092',
+  clientId: 'my-client',
+  diagnostics: true,
+})
+
+// Batch stream consumer for high-throughput
+const batchStream = client.createStreamConsumer({
+  groupId: 'my-batch-group',
+  batchSize: 10,
+  batchTimeout: 500,
+})
+
+await batchStream.subscribe('my-topic')
+
+batchStream.on('data', (message) => {
+  try {
+    console.log(message.payload.toString())
+  } finally {
+    endSpan(message)
+  }
+})
+
+// Proper cleanup - use destroy() for streams
+async function cleanup() {
+  return new Promise((resolve) => {
+    if (batchStream.destroyed) {
+      resolve()
+      return
+    }
+    batchStream.once('close', resolve)
+    batchStream.destroy()
+  })
+}
+
+// Handle shutdown
+process.on('SIGINT', async () => {
+  await cleanup()
+  process.exit(0)
+})
+```
+
+## Performance
+
+kafka-crab-js with OTEL instrumentation maintains excellent performance:
+
+| Mode | Ops/sec | Notes |
+|------|---------|-------|
+| Serial (no OTEL) | 43,214 | Baseline |
+| Batch (no OTEL) | 205,985 | 4.8x improvement |
+| With OTEL | Near-zero overhead | Uses diagnostics_channel |
+
+*Benchmarks run on macOS with Apple M1 chip (December 2024)*
 
 ## Examples
 
@@ -224,6 +300,39 @@ See the [example](https://github.com/inaiat/kafka-crab-js/tree/main/example) dir
 - `otel-tracing-example.mjs` - Tracing with custom spans
 - `otel-metrics-example.mjs` - Metrics collection setup
 - `otel-grafana-validation.mjs` - Full Grafana/Tempo/Prometheus integration
+
+## Migration from v2.x
+
+If you're migrating from kafka-crab-js v2.x where OTEL was built-in:
+
+**Before (v2.x):**
+```javascript
+const client = new KafkaClient({
+  brokers: 'localhost:9092',
+  otel: {
+    serviceName: 'my-service',
+    metrics: { enabled: true },
+  },
+})
+```
+
+**After (v3.x):**
+```javascript
+import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
+
+enableOtelInstrumentation({
+  metrics: { enabled: true },
+})
+
+const client = new KafkaClient({
+  brokers: 'localhost:9092',
+  diagnostics: true,
+})
+
+// Don't forget to call endSpan() for consumers!
+const message = await consumer.recv()
+endSpan(message)
+```
 
 ## License
 

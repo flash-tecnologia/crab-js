@@ -30,7 +30,7 @@ import traceNodePkg from '@opentelemetry/sdk-trace-node'
 import semconvPkg from '@opentelemetry/semantic-conventions'
 
 const { OTLPTraceExporter } = otlpTraceGrpcPkg
-const { resourceFromAttributes } = resourcesPkg
+const { Resource } = resourcesPkg
 const { NodeSDK } = sdkNodePkg
 const { ConsoleSpanExporter } = traceNodePkg
 const { SEMRESATTRS_SERVICE_NAME } = semconvPkg
@@ -57,7 +57,7 @@ const traceExporter = process.env.OTEL_EXPORTER_TYPE === 'console'
   })
 
 const sdk = new NodeSDK({
-  resource: resourceFromAttributes({
+  resource: new Resource({
     [SEMRESATTRS_SERVICE_NAME]: 'kafka-crab-otel-example',
   }),
   traceExporter,
@@ -84,7 +84,6 @@ console.log('🔧 Creating Kafka client with OpenTelemetry enabled...\n')
 // Enable OTEL instrumentation with the kafka-crab-js-otel package
 enableOtelInstrumentation({
   enabled: true, // Enable OTEL instrumentation (default: true)
-  serviceName: 'kafka-crab-otel-example', // Service name for traces
 
   // Span configuration
   captureMessagePayload: true, // Include message payload in spans (default: false)
@@ -218,7 +217,7 @@ async function consumeMessagesWithTracing() {
   const maxMessages = 5
 
   while (messageCount < maxMessages) {
-    // recv() automatically creates spans with trace context extracted from headers
+    // Recv() automatically creates spans with trace context extracted from headers
     const message = await consumer.recv()
 
     if (!message) {

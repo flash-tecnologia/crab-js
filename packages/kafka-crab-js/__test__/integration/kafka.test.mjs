@@ -203,7 +203,7 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
       streamConsumer.on('data', (message) => {
         try {
           // Log raw received message details
-          // console.log(`Stream raw message: Topic ${message.topic}, Partition ${message.partition}, Offset ${message.offset}`);
+          // Console.log(`Stream raw message: Topic ${message.topic}, Partition ${message.partition}, Offset ${message.offset}`);
 
           const payload = JSON.parse(message.payload.toString())
 
@@ -225,7 +225,7 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
         } catch (err) {
           console.error('Error processing stream message:', err, message.payload?.toString())
           // Decide if an error here should reject the promise
-          // reject(err); // uncomment if processing errors should fail the test immediately
+          // Reject(err); // Uncomment if processing errors should fail the test immediately
         }
       })
 
@@ -345,7 +345,7 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
   await t.test('Events: Consumer general events', async () => {
     // This test verifies the onEvents API receives *some* event
     const consumer = kafkaClient.createConsumer({
-      // topic: TEST_TOPIC, // Subscribe below
+      // Topic: TEST_TOPIC, // Subscribe below
       groupId: `test-group-events-${TEST_ID}`,
       configuration: {
         'auto.offset.reset': 'earliest',
@@ -548,7 +548,7 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
 
     // Consume and verify
     const consumer = kafkaClient.createConsumer({
-      // topic: HEADER_TOPIC, // Subscribe below
+      // Topic: HEADER_TOPIC, // Subscribe below
       groupId: `header-test-${TEST_ID}`,
       configuration: { 'auto.offset.reset': 'earliest' },
     })

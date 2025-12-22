@@ -1,6 +1,6 @@
 {
   "name": "kafka-crab-js-otel",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "OpenTelemetry instrumentation for kafka-crab-js",
   "type": "module",
   "engines": {
@@ -42,8 +42,8 @@
     "test:integration": "node --test __test__/integration/*.test.*"
   },
   "peerDependencies": {
-    "@opentelemetry/api": "^1.9.0",
-    "kafka-crab-js": "^2.0.0"
+    "@opentelemetry/api": ">=1.9",
+    "kafka-crab-js": ">=3"
   },
   "devDependencies": {
     "kafka-crab-js": "workspace:*"
