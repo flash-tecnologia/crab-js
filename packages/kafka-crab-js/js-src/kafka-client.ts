@@ -6,6 +6,7 @@ import {
   type KafkaConsumer,
   type KafkaProducer,
   type ProducerConfiguration,
+  type TopicPartitionConfig,
 } from '../js-binding.js'
 
 import {
@@ -20,6 +21,23 @@ export interface StreamConsumerConfiguration extends ConsumerConfiguration {
   batchSize?: number // Default 1 (single mode), > 1 enables batch mode
   batchTimeout?: number // Default 100ms, only used when batchSize > 1
   streamOptions?: ReadableOptions
+}
+
+/**
+ * Configuration for subscribing a consumer to topics in parallel
+ */
+export interface SubscribeAllItem {
+  consumer: KafkaConsumer
+  topics: string | TopicPartitionConfig[]
+}
+
+/**
+ * Result of a single subscribe operation in subscribeAll
+ */
+export interface SubscribeAllResult {
+  consumer: KafkaConsumer
+  success: boolean
+  error?: Error
 }
 
 export interface KafkaClientConfiguration extends Omit<KafkaConfiguration, 'clientId'> {
@@ -137,6 +155,51 @@ export class KafkaClient {
     }
 
     return new KafkaStreamReadable({ kafkaConsumer: instrumentedConsumer, ...opts })
+  }
+
+  /**
+   * Subscribes multiple consumers to their topics in parallel.
+   * This is useful when you have many consumers to register and want to avoid
+   * sequential timeouts from metadata fetching operations.
+   *
+   * @param items - Array of consumer and topics configurations
+   * @returns Promise resolving to array of results with success/error status for each consumer
+   *
+   * @example
+   * ```typescript
+   * const consumer1 = client.createConsumer({ groupId: 'group-1' })
+   * const consumer2 = client.createConsumer({ groupId: 'group-2' })
+   * const consumer3 = client.createConsumer({ groupId: 'group-3' })
+   *
+   * const results = await client.subscribeAll([
+   *   { consumer: consumer1, topics: 'topic-a' },
+   *   { consumer: consumer2, topics: 'topic-b' },
+   *   { consumer: consumer3, topics: [{ topic: 'topic-c', createTopic: true }] },
+   * ])
+   *
+   * // Check results
+   * for (const result of results) {
+   *   if (!result.success) {
+   *     console.error('Failed to subscribe:', result.error)
+   *   }
+   * }
+   * ```
+   */
+  async subscribeAll(items: SubscribeAllItem[]): Promise<SubscribeAllResult[]> {
+    const promises = items.map(async ({ consumer, topics }): Promise<SubscribeAllResult> => {
+      try {
+        await consumer.subscribe(topics)
+        return { consumer, success: true }
+      } catch (error) {
+        return {
+          consumer,
+          success: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        }
+      }
+    })
+
+    return Promise.all(promises)
   }
 
   private _instrumentProducer(producer: KafkaProducer) {

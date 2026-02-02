@@ -29,7 +29,12 @@ export { BaseKafkaStreamReadable } from './streams/base-kafka-stream-readable.js
 export { KafkaBatchStreamReadable } from './streams/kafka-batch-stream-readable.js'
 export { KafkaStreamReadable } from './streams/kafka-stream-readable.js'
 
-export type { KafkaClientConfiguration, StreamConsumerConfiguration } from './kafka-client.js'
+export type {
+  KafkaClientConfiguration,
+  StreamConsumerConfiguration,
+  SubscribeAllItem,
+  SubscribeAllResult,
+} from './kafka-client.js'
 
 // Diagnostic Channels exports
 export {
