@@ -33,6 +33,7 @@ export type {
   KafkaClientConfiguration,
   StreamConsumerConfiguration,
   SubscribeAllItem,
+  SubscribeAllOptions,
   SubscribeAllResult,
 } from './kafka-client.js'
 

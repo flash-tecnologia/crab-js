@@ -40,6 +40,17 @@ export interface SubscribeAllResult {
   error?: Error
 }
 
+/**
+ * Options for subscribeAll method
+ */
+export interface SubscribeAllOptions {
+  /**
+   * Number of consumers to subscribe in parallel per batch.
+   * @default 5
+   */
+  batchSize?: number
+}
+
 export interface KafkaClientConfiguration extends Omit<KafkaConfiguration, 'clientId'> {
   /**
    * Optional client id; defaults to librdkafka's default (`rdkafka`).
@@ -158,11 +169,14 @@ export class KafkaClient {
   }
 
   /**
-   * Subscribes multiple consumers to their topics in parallel.
+   * Subscribes multiple consumers to their topics in parallel batches.
    * This is useful when you have many consumers to register and want to avoid
-   * sequential timeouts from metadata fetching operations.
+   * sequential timeouts from metadata fetching operations while also preventing
+   * overloading the broker with too many concurrent subscriptions.
    *
    * @param items - Array of consumer and topics configurations
+   * @param options - Optional configuration for batch processing
+   * @param options.batchSize - Number of consumers to subscribe in parallel per batch (default: 5)
    * @returns Promise resolving to array of results with success/error status for each consumer
    *
    * @example
@@ -183,23 +197,35 @@ export class KafkaClient {
    *     console.error('Failed to subscribe:', result.error)
    *   }
    * }
+   *
+   * // With custom batch size
+   * const results = await client.subscribeAll(items, { batchSize: 10 })
    * ```
    */
-  async subscribeAll(items: SubscribeAllItem[]): Promise<SubscribeAllResult[]> {
-    const promises = items.map(async ({ consumer, topics }): Promise<SubscribeAllResult> => {
-      try {
-        await consumer.subscribe(topics)
-        return { consumer, success: true }
-      } catch (error) {
-        return {
-          consumer,
-          success: false,
-          error: error instanceof Error ? error : new Error(String(error)),
-        }
-      }
-    })
+  async subscribeAll(items: SubscribeAllItem[], options?: SubscribeAllOptions): Promise<SubscribeAllResult[]> {
+    const batchSize = options?.batchSize ?? 5
+    const results: SubscribeAllResult[] = []
 
-    return Promise.all(promises)
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize)
+      const batchPromises = batch.map(async ({ consumer, topics }): Promise<SubscribeAllResult> => {
+        try {
+          await consumer.subscribe(topics)
+          return { consumer, success: true }
+        } catch (error) {
+          return {
+            consumer,
+            success: false,
+            error: error instanceof Error ? error : new Error(String(error)),
+          }
+        }
+      })
+
+      const batchResults = await Promise.all(batchPromises)
+      results.push(...batchResults)
+    }
+
+    return results
   }
 
   private _instrumentProducer(producer: KafkaProducer) {
