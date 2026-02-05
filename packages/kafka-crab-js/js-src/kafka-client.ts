@@ -178,29 +178,6 @@ export class KafkaClient {
    * @param options - Optional configuration for batch processing
    * @param options.batchSize - Number of consumers to subscribe in parallel per batch (default: 5)
    * @returns Promise resolving to array of results with success/error status for each consumer
-   *
-   * @example
-   * ```typescript
-   * const consumer1 = client.createConsumer({ groupId: 'group-1' })
-   * const consumer2 = client.createConsumer({ groupId: 'group-2' })
-   * const consumer3 = client.createConsumer({ groupId: 'group-3' })
-   *
-   * const results = await client.subscribeAll([
-   *   { consumer: consumer1, topics: 'topic-a' },
-   *   { consumer: consumer2, topics: 'topic-b' },
-   *   { consumer: consumer3, topics: [{ topic: 'topic-c', createTopic: true }] },
-   * ])
-   *
-   * // Check results
-   * for (const result of results) {
-   *   if (!result.success) {
-   *     console.error('Failed to subscribe:', result.error)
-   *   }
-   * }
-   *
-   * // With custom batch size
-   * const results = await client.subscribeAll(items, { batchSize: 10 })
-   * ```
    */
   async subscribeAll(items: SubscribeAllItem[], options?: SubscribeAllOptions): Promise<SubscribeAllResult[]> {
     const batchSize = options?.batchSize ?? 5
