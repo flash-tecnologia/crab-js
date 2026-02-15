@@ -32,8 +32,7 @@
     "max-params": [
       "error",
       {
-        "max": 6,
-        "ignoreConstructor": true
+        "max": 6
       }
     ],
     "max-statements": [

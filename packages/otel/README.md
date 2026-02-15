@@ -136,6 +136,8 @@ enableOtelInstrumentation({
 | `getOtelAdapter()` | Get the singleton OtelAdapter instance |
 | `resetOtelAdapter()` | Reset the adapter (for testing) |
 | `endSpan(message)` | End the processing span for a consumed message |
+| `withMessageContext(message, fn)` | Run framework code under the message OTEL context |
+| `withBatchContext(batch, fn)` | Run framework code under the batch OTEL context |
 
 ### Instrumentation Functions
 

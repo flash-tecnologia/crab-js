@@ -564,6 +564,120 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     )
   })
 
+  test('should create a new consumer trace when message has no traceparent and ambient span exists', async () => {
+    // Use a producer without diagnostics instrumentation so headers are not auto-injected.
+    const rawKafkaClient = new KafkaClient({
+      brokers: KAFKA_BROKERS,
+      clientId: `raw-producer-${nanoid()}`,
+      diagnostics: false,
+    })
+    const rawProducer = rawKafkaClient.createProducer()
+
+    await rawProducer.send({
+      topic: testTopic,
+      messages: [
+        {
+          payload: Buffer.from('message-without-traceparent'),
+          headers: {},
+        },
+      ],
+    })
+    await rawProducer.flush()
+
+    memoryExporter.reset()
+
+    const consumer = kafkaClient.createConsumer({
+      groupId: `no-traceparent-group-${nanoid()}`,
+      enableAutoCommit: false,
+    })
+
+    await consumer.subscribe([{
+      topic: testTopic,
+      allOffsets: { position: 'Beginning' },
+    }])
+
+    const ambientSpan = trace.getTracer('test').startSpan('ambient-consumer-parent')
+    let receivedMessage: MessageWithEndSpan | null = null
+    try {
+      await context.with(trace.setSpan(context.active(), ambientSpan), async () => {
+        receivedMessage = await consumer.recv() as MessageWithEndSpan
+      })
+    } finally {
+      ambientSpan.end()
+    }
+
+    endOtelSpans(receivedMessage)
+    await consumer.disconnect()
+
+    const spans = await flushSpans()
+    const consumerSpan = spans.find(span =>
+      span.kind === SpanKind.CONSUMER &&
+      span.name === `process ${testTopic}`
+    )
+
+    assert(consumerSpan, 'Should have consumer span for no-traceparent message')
+    assert.notEqual(
+      consumerSpan.spanContext().traceId,
+      ambientSpan.spanContext().traceId,
+      'consumer span should not inherit ambient trace when traceparent is absent',
+    )
+  })
+
+  test('should continue trace when consumer receives mixed-case TraceParent header', async () => {
+    // Use a producer without diagnostics instrumentation and set a mixed-case TraceParent header manually.
+    const rawKafkaClient = new KafkaClient({
+      brokers: KAFKA_BROKERS,
+      clientId: `raw-producer-mixed-${nanoid()}`,
+      diagnostics: false,
+    })
+    const rawProducer = rawKafkaClient.createProducer()
+
+    const upstreamSpan = trace.getTracer('test').startSpan('upstream-mixed-case-parent')
+    const upstreamContext = upstreamSpan.spanContext()
+    const traceparent = `00-${upstreamContext.traceId}-${upstreamContext.spanId}-01`
+
+    await rawProducer.send({
+      topic: testTopic,
+      messages: [
+        {
+          payload: Buffer.from('message-with-mixed-case-traceparent'),
+          headers: { TraceParent: Buffer.from(traceparent) } as Record<string, Buffer>,
+        },
+      ],
+    })
+    await rawProducer.flush()
+    upstreamSpan.end()
+
+    memoryExporter.reset()
+
+    const consumer = kafkaClient.createConsumer({
+      groupId: `mixed-traceparent-group-${nanoid()}`,
+      enableAutoCommit: false,
+    })
+
+    await consumer.subscribe([{
+      topic: testTopic,
+      allOffsets: { position: 'Beginning' },
+    }])
+
+    const receivedMessage = await consumer.recv() as MessageWithEndSpan
+    endOtelSpans(receivedMessage)
+    await consumer.disconnect()
+
+    const spans = await flushSpans()
+    const consumerSpan = spans.find(span =>
+      span.kind === SpanKind.CONSUMER &&
+      span.name === `process ${testTopic}`
+    )
+
+    assert(consumerSpan, 'Should have consumer span for mixed-case TraceParent message')
+    assert.equal(
+      consumerSpan.spanContext().traceId,
+      upstreamContext.traceId,
+      'consumer span should continue upstream trace from mixed-case TraceParent header',
+    )
+  })
+
   test('should create batch spans for batch processing', async () => {
     // Send multiple messages
     const producer = kafkaClient.createProducer()

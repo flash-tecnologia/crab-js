@@ -4,6 +4,7 @@ import {
   context,
   diag,
   propagation,
+  ROOT_CONTEXT,
   type Span,
   SpanKind,
   SpanStatusCode,
@@ -36,6 +37,75 @@ export function setSpanStatus(span: Span, error?: Error): void {
   }
 }
 
+function isDefined<TValue>(value: TValue | null | undefined): value is TValue {
+  return value !== undefined && value !== null
+}
+
+function setClientAndServerAttributes(
+  attributes: Attributes,
+  options: {
+    clientId?: string
+    serverAddress?: string
+    serverPort?: number
+  },
+): void {
+  if (options.clientId) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID] = options.clientId
+  }
+
+  if (options.serverAddress) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_ADDRESS] = options.serverAddress
+  }
+
+  if (isDefined(options.serverPort)) {
+    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_PORT] = options.serverPort
+  }
+}
+
+function getPayloadSize(payload: unknown): number | undefined {
+  if (Buffer.isBuffer(payload)) {
+    return payload.length
+  }
+
+  if (typeof payload === 'string') {
+    return Buffer.byteLength(payload, 'utf8')
+  }
+
+  if (!isDefined(payload)) {
+    return undefined
+  }
+
+  try {
+    return JSON.stringify(payload).length
+  } catch {
+    return undefined
+  }
+}
+
+function setPayloadSizeAttribute(
+  attributes: Attributes,
+  payload: unknown,
+  options: {
+    capturePayload?: boolean
+    maxPayloadSize?: number
+  },
+): void {
+  if (!options.capturePayload || !isDefined(payload)) {
+    return
+  }
+
+  const payloadSize = getPayloadSize(payload)
+  if (!isDefined(payloadSize)) {
+    return
+  }
+
+  if (isDefined(options.maxPayloadSize) && payloadSize > options.maxPayloadSize) {
+    return
+  }
+
+  attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE] = payloadSize
+}
+
 // Extract common Kafka attributes from message for consumer spans
 // https://opentelemetry.io/docs/specs/semconv/messaging/kafka/
 export function getMessageAttributes(
@@ -66,31 +136,20 @@ export function getMessageAttributes(
     [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME]: message.topic,
   }
 
-  // Recommended: client ID
-  if (clientId) {
-    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID] = clientId
-  }
-
-  // Conditionally Required: server address and port (when available)
-  if (serverAddress) {
-    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_ADDRESS] = serverAddress
-  }
-  if (serverPort !== undefined && serverPort !== null) {
-    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_PORT] = serverPort
-  }
+  setClientAndServerAttributes(attributes, { clientId, serverAddress, serverPort })
 
   // Recommended: partition ID as string
-  if (message.partition !== undefined && message.partition !== null) {
+  if (isDefined(message.partition)) {
     attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] = String(message.partition)
   }
 
   // Recommended: offset (for single message operations)
-  if (message.offset !== undefined && message.offset !== null) {
+  if (isDefined(message.offset)) {
     attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET] = message.offset
   }
 
   // Recommended: message key (for single message operations)
-  if (message.key !== null && message.key !== undefined) {
+  if (isDefined(message.key)) {
     if (Buffer.isBuffer(message.key)) {
       attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY] = message.key.toString('utf8')
     } else {
@@ -99,28 +158,12 @@ export function getMessageAttributes(
   }
 
   // Conditionally Required: tombstone detection
-  if (message.payload === null || message.payload === undefined) {
+  if (!isDefined(message.payload)) {
     attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_TOMBSTONE] = true
   }
 
   // Opt-In: message body size (for single message operations)
-  if (capturePayload && message.payload) {
-    let payloadSize: number
-    if (Buffer.isBuffer(message.payload)) {
-      payloadSize = message.payload.length
-    } else if (typeof message.payload === 'string') {
-      payloadSize = Buffer.byteLength(message.payload, 'utf8')
-    } else {
-      try {
-        payloadSize = JSON.stringify(message.payload).length
-      } catch {
-        payloadSize = undefined as unknown as number
-      }
-    }
-    if (payloadSize !== undefined && (maxPayloadSize === undefined || payloadSize <= maxPayloadSize)) {
-      attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE] = payloadSize
-    }
-  }
+  setPayloadSizeAttribute(attributes, message.payload, { capturePayload, maxPayloadSize })
 
   return attributes
 }
@@ -155,58 +198,31 @@ export function getProducerRecordAttributes(
     [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME]: record.topic,
   }
 
-  // Recommended: client ID
-  if (clientId) {
-    attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID] = clientId
-  }
-
-  // Conditionally Required: server address and port (when available)
-  if (serverAddress) {
-    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_ADDRESS] = serverAddress
-  }
-  if (serverPort !== undefined && serverPort !== null) {
-    attributes[KAFKA_SEMANTIC_CONVENTIONS.SERVER_PORT] = serverPort
-  }
+  setClientAndServerAttributes(attributes, { clientId, serverAddress, serverPort })
 
   // Add batch message count (always for producer spans per semantic conventions)
-  if (record.messages && record.messages.length > 0) {
+  if (record.messages.length > 0) {
     attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] = record.messages.length
   }
 
   // For single message, add message-specific attributes
-  if (record.messages && record.messages.length === 1) {
+  if (record.messages.length === 1) {
     const [firstMessage] = record.messages
 
     // Recommended: message key
-    if (firstMessage.key !== null && firstMessage.key !== undefined) {
+    if (isDefined(firstMessage.key)) {
       attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY] = Buffer.isBuffer(firstMessage.key)
         ? firstMessage.key.toString()
         : String(firstMessage.key)
     }
 
     // Conditionally Required: tombstone detection
-    if (firstMessage.payload === null || firstMessage.payload === undefined) {
+    if (!isDefined(firstMessage.payload)) {
       attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_TOMBSTONE] = true
     }
 
     // Opt-In: message body size
-    if (capturePayload && firstMessage.payload) {
-      let payloadSize: number
-      if (Buffer.isBuffer(firstMessage.payload)) {
-        payloadSize = firstMessage.payload.length
-      } else if (typeof firstMessage.payload === 'string') {
-        payloadSize = Buffer.byteLength(firstMessage.payload, 'utf8')
-      } else {
-        try {
-          payloadSize = JSON.stringify(firstMessage.payload).length
-        } catch {
-          payloadSize = undefined as unknown as number
-        }
-      }
-      if (payloadSize !== undefined && (maxPayloadSize === undefined || payloadSize <= maxPayloadSize)) {
-        attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE] = payloadSize
-      }
-    }
+    setPayloadSizeAttribute(attributes, firstMessage.payload, { capturePayload, maxPayloadSize })
   }
 
   return attributes
@@ -316,14 +332,45 @@ export function getCapturedHeaderAttributes(
 }
 
 // Extract trace context from Kafka headers (supports both Buffer and string headers)
-// Returns active context if extraction fails to prevent instrumentation from breaking
+// Returns root context when traceparent is missing to avoid inheriting unrelated ambient spans
 export function extractTraceContext(
   headers: Record<string, Buffer | string | string[] | undefined> = {},
 ): Context {
+  const hasTraceparent = Object.entries(headers).some(([key, value]) => {
+    if (key.toLowerCase() !== 'traceparent') {
+      return false
+    }
+
+    if (Array.isArray(value)) {
+      return value.some(headerValue => String(headerValue).trim().length > 0)
+    }
+
+    if (Buffer.isBuffer(value)) {
+      return value.toString('utf8').trim().length > 0
+    }
+
+    if (value === undefined || value === null) {
+      return false
+    }
+
+    return String(value).trim().length > 0
+  })
+
+  const extractionBase = hasTraceparent ? context.active() : ROOT_CONTEXT
+
   try {
-    return propagation.extract(context.active(), headers, {
+    return propagation.extract(extractionBase, headers, {
       get: (carrier: Record<string, Buffer | string | string[] | undefined>, key: string) => {
-        const value = carrier[key]
+        let value = carrier[key]
+        if (value === undefined) {
+          const normalizedKey = key.toLowerCase()
+          for (const [headerKey, headerValue] of Object.entries(carrier)) {
+            if (headerKey.toLowerCase() === normalizedKey) {
+              value = headerValue
+              break
+            }
+          }
+        }
         const singleValue = Array.isArray(value) ? value[0] : value
 
         if (Buffer.isBuffer(singleValue)) {
@@ -335,8 +382,11 @@ export function extractTraceContext(
       keys: (carrier: Record<string, Buffer | string | string[] | undefined>) => Object.keys(carrier),
     })
   } catch (error) {
-    diag.warn('Failed to extract trace context from headers, using active context:', error)
-    return context.active()
+    diag.warn(
+      `Failed to extract trace context from headers, using ${hasTraceparent ? 'active' : 'root'} context:`,
+      error,
+    )
+    return extractionBase
   }
 }
 

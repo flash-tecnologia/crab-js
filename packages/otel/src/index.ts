@@ -22,7 +22,14 @@ export {
 
 export { getKafkaMetrics, KafkaMetrics, resetKafkaMetrics } from './metrics.js'
 
-export { EndSpan, endSpan } from './helpers.js'
+export {
+  EndSpan,
+  endSpan,
+  getBatchContext,
+  getMessageContext,
+  withBatchContext,
+  withMessageContext,
+} from './helpers.js'
 
 export {
   ERROR_TYPES,

@@ -195,6 +195,7 @@ export interface InstrumentedMessage extends Message {
 
 // Enhanced batch (Message[]) interface with OTEL helpers
 export interface InstrumentedMessageBatch extends Array<InstrumentedMessage> {
+  otelContext?: Context
   span?: Span
   endSpan?: (error?: Error) => void
 }
