@@ -67,7 +67,7 @@ const isMuslFromChildProcess = () => {
 function requireNative() {
   if (process.env.NAPI_RS_NATIVE_LIBRARY_PATH) {
     try {
-      return require(process.env.NAPI_RS_NATIVE_LIBRARY_PATH);
+      return require(process.env.NAPI_RS_NATIVE_LIBRARY_PATH)
     } catch (err) {
       loadErrors.push(err)
     }
@@ -81,8 +81,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-android-arm64')
         const bindingPackageVersion = require('kafka-crab-js-android-arm64/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -97,8 +102,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-android-arm-eabi')
         const bindingPackageVersion = require('kafka-crab-js-android-arm-eabi/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -109,38 +119,51 @@ function requireNative() {
     }
   } else if (process.platform === 'win32') {
     if (process.arch === 'x64') {
-      if (process.config?.variables?.shlib_suffix === 'dll.a' || process.config?.variables?.node_target_type === 'shared_library') {
+      if (
+        process.config?.variables?.shlib_suffix === 'dll.a' ||
+        process.config?.variables?.node_target_type === 'shared_library'
+      ) {
         try {
-        return require('./kafka-crab-js.win32-x64-gnu.node')
-      } catch (e) {
-        loadErrors.push(e)
-      }
-      try {
-        const binding = require('kafka-crab-js-win32-x64-gnu')
-        const bindingPackageVersion = require('kafka-crab-js-win32-x64-gnu/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          return require('./kafka-crab-js.win32-x64-gnu.node')
+        } catch (e) {
+          loadErrors.push(e)
         }
-        return binding
-      } catch (e) {
-        loadErrors.push(e)
-      }
+        try {
+          const binding = require('kafka-crab-js-win32-x64-gnu')
+          const bindingPackageVersion = require('kafka-crab-js-win32-x64-gnu/package.json').version
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
+          }
+          return binding
+        } catch (e) {
+          loadErrors.push(e)
+        }
       } else {
         try {
-        return require('./kafka-crab-js.win32-x64-msvc.node')
-      } catch (e) {
-        loadErrors.push(e)
-      }
-      try {
-        const binding = require('kafka-crab-js-win32-x64-msvc')
-        const bindingPackageVersion = require('kafka-crab-js-win32-x64-msvc/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          return require('./kafka-crab-js.win32-x64-msvc.node')
+        } catch (e) {
+          loadErrors.push(e)
         }
-        return binding
-      } catch (e) {
-        loadErrors.push(e)
-      }
+        try {
+          const binding = require('kafka-crab-js-win32-x64-msvc')
+          const bindingPackageVersion = require('kafka-crab-js-win32-x64-msvc/package.json').version
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
+          }
+          return binding
+        } catch (e) {
+          loadErrors.push(e)
+        }
       }
     } else if (process.arch === 'ia32') {
       try {
@@ -151,8 +174,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-win32-ia32-msvc')
         const bindingPackageVersion = require('kafka-crab-js-win32-ia32-msvc/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -167,8 +195,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-win32-arm64-msvc')
         const bindingPackageVersion = require('kafka-crab-js-win32-arm64-msvc/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -186,8 +219,13 @@ function requireNative() {
     try {
       const binding = require('kafka-crab-js-darwin-universal')
       const bindingPackageVersion = require('kafka-crab-js-darwin-universal/package.json').version
-      if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-        throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+      if (
+        bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+        process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+      ) {
+        throw new Error(
+          `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+        )
       }
       return binding
     } catch (e) {
@@ -202,8 +240,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-darwin-x64')
         const bindingPackageVersion = require('kafka-crab-js-darwin-x64/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -218,8 +261,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-darwin-arm64')
         const bindingPackageVersion = require('kafka-crab-js-darwin-arm64/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -238,8 +286,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-freebsd-x64')
         const bindingPackageVersion = require('kafka-crab-js-freebsd-x64/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -254,8 +307,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-freebsd-arm64')
         const bindingPackageVersion = require('kafka-crab-js-freebsd-arm64/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -275,8 +333,13 @@ function requireNative() {
         try {
           const binding = require('kafka-crab-js-linux-x64-musl')
           const bindingPackageVersion = require('kafka-crab-js-linux-x64-musl/package.json').version
-          if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
           }
           return binding
         } catch (e) {
@@ -291,8 +354,13 @@ function requireNative() {
         try {
           const binding = require('kafka-crab-js-linux-x64-gnu')
           const bindingPackageVersion = require('kafka-crab-js-linux-x64-gnu/package.json').version
-          if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
           }
           return binding
         } catch (e) {
@@ -309,8 +377,13 @@ function requireNative() {
         try {
           const binding = require('kafka-crab-js-linux-arm64-musl')
           const bindingPackageVersion = require('kafka-crab-js-linux-arm64-musl/package.json').version
-          if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
           }
           return binding
         } catch (e) {
@@ -325,8 +398,13 @@ function requireNative() {
         try {
           const binding = require('kafka-crab-js-linux-arm64-gnu')
           const bindingPackageVersion = require('kafka-crab-js-linux-arm64-gnu/package.json').version
-          if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
           }
           return binding
         } catch (e) {
@@ -343,8 +421,13 @@ function requireNative() {
         try {
           const binding = require('kafka-crab-js-linux-arm-musleabihf')
           const bindingPackageVersion = require('kafka-crab-js-linux-arm-musleabihf/package.json').version
-          if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
           }
           return binding
         } catch (e) {
@@ -359,8 +442,13 @@ function requireNative() {
         try {
           const binding = require('kafka-crab-js-linux-arm-gnueabihf')
           const bindingPackageVersion = require('kafka-crab-js-linux-arm-gnueabihf/package.json').version
-          if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
           }
           return binding
         } catch (e) {
@@ -377,8 +465,13 @@ function requireNative() {
         try {
           const binding = require('kafka-crab-js-linux-loong64-musl')
           const bindingPackageVersion = require('kafka-crab-js-linux-loong64-musl/package.json').version
-          if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
           }
           return binding
         } catch (e) {
@@ -393,8 +486,13 @@ function requireNative() {
         try {
           const binding = require('kafka-crab-js-linux-loong64-gnu')
           const bindingPackageVersion = require('kafka-crab-js-linux-loong64-gnu/package.json').version
-          if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
           }
           return binding
         } catch (e) {
@@ -411,8 +509,13 @@ function requireNative() {
         try {
           const binding = require('kafka-crab-js-linux-riscv64-musl')
           const bindingPackageVersion = require('kafka-crab-js-linux-riscv64-musl/package.json').version
-          if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
           }
           return binding
         } catch (e) {
@@ -427,8 +530,13 @@ function requireNative() {
         try {
           const binding = require('kafka-crab-js-linux-riscv64-gnu')
           const bindingPackageVersion = require('kafka-crab-js-linux-riscv64-gnu/package.json').version
-          if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          if (
+            bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+            process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+          ) {
+            throw new Error(
+              `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+            )
           }
           return binding
         } catch (e) {
@@ -444,8 +552,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-linux-ppc64-gnu')
         const bindingPackageVersion = require('kafka-crab-js-linux-ppc64-gnu/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -460,8 +573,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-linux-s390x-gnu')
         const bindingPackageVersion = require('kafka-crab-js-linux-s390x-gnu/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -480,8 +598,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-openharmony-arm64')
         const bindingPackageVersion = require('kafka-crab-js-openharmony-arm64/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -496,8 +619,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-openharmony-x64')
         const bindingPackageVersion = require('kafka-crab-js-openharmony-x64/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -512,8 +640,13 @@ function requireNative() {
       try {
         const binding = require('kafka-crab-js-openharmony-arm')
         const bindingPackageVersion = require('kafka-crab-js-openharmony-arm/package.json').version
-        if (bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        if (
+          bindingPackageVersion !== '3.0.0' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+          process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+        ) {
+          throw new Error(
+            `Native binding package version mismatch, expected 3.0.0 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+          )
         }
         return binding
       } catch (e) {
@@ -579,7 +712,15 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { KafkaClientConfig, KafkaConsumer, KafkaProducer, CommitMode, KafkaEventName, PartitionPosition, SecurityProtocol } = nativeBinding
+const {
+  KafkaClientConfig,
+  KafkaConsumer,
+  KafkaProducer,
+  CommitMode,
+  KafkaEventName,
+  PartitionPosition,
+  SecurityProtocol,
+} = nativeBinding
 export { KafkaClientConfig }
 export { KafkaConsumer }
 export { KafkaProducer }

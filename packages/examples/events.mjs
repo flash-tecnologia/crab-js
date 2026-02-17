@@ -17,7 +17,7 @@ const consumer = kafkaClient.createConsumer({
 consumer.onEvents((_err, event) => {
   switch (event.name) {
     case 'CommitCallback': {
-      const offsetCommitted = event.payload.tpl.filter(it => it.partitionOffset.find(it => it.offset.offset)) // Filter only committed offsets
+      const offsetCommitted = event.payload.tpl.filter(topicPartition => topicPartition.partitionOffset.find(partitionOffset => partitionOffset.offset.offset)) // Filter only committed offsets
         .flatMap(p =>
           p.partitionOffset.map(it => ({ topic: p.topic, partition: it.partition, offset: it.offset.offset }))
         )

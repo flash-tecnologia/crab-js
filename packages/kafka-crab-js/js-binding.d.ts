@@ -137,8 +137,9 @@ export declare class KafkaProducer {
   send(producerRecord: ProducerRecord): Promise<Array<RecordMetadata>>
 }
 
-export type CommitMode =  'Sync'|
-'Async';
+export type CommitMode =
+  | 'Sync'
+  | 'Async'
 
 export interface ConsumerConfiguration {
   groupId: string
@@ -166,9 +167,10 @@ export interface KafkaEvent {
   payload: KafkaEventPayload
 }
 
-export type KafkaEventName =  'PreRebalance'|
-'PostRebalance'|
-'CommitCallback';
+export type KafkaEventName =
+  | 'PreRebalance'
+  | 'PostRebalance'
+  | 'CommitCallback'
 
 export interface KafkaEventPayload {
   action?: string
@@ -201,10 +203,11 @@ export interface PartitionOffset {
   offset: OffsetModel
 }
 
-export type PartitionPosition =  'Beginning'|
-'End'|
-'Stored'|
-'Invalid';
+export type PartitionPosition =
+  | 'Beginning'
+  | 'End'
+  | 'Stored'
+  | 'Invalid'
 
 export interface ProducerConfiguration {
   queueTimeout?: number
@@ -224,10 +227,11 @@ export interface RecordMetadata {
   error?: KafkaCrabError
 }
 
-export type SecurityProtocol =  'Plaintext'|
-'Ssl'|
-'SaslPlaintext'|
-'SaslSsl';
+export type SecurityProtocol =
+  | 'Plaintext'
+  | 'Ssl'
+  | 'SaslPlaintext'
+  | 'SaslSsl'
 
 export interface TopicPartition {
   topic: string

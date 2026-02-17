@@ -1002,23 +1002,27 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     // Wait for all messages to be processed
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Stream timeout')), 15000)
+      const handlers: { onEnd: () => void, onError: (err: Error) => void } = {
+        onEnd: () => {},
+        onError: () => {},
+      }
       const cleanup = () => {
         clearTimeout(timer)
-        streamConsumer.removeListener('error', onError)
-        streamConsumer.removeListener('end', onEnd)
-        streamConsumer.removeListener('close', onEnd)
+        streamConsumer.removeListener('error', handlers.onError)
+        streamConsumer.removeListener('end', handlers.onEnd)
+        streamConsumer.removeListener('close', handlers.onEnd)
       }
-      const onEnd = () => {
+      handlers.onEnd = () => {
         cleanup()
         resolve()
       }
-      const onError = (err: Error) => {
+      handlers.onError = (err: Error) => {
         cleanup()
         reject(err)
       }
-      streamConsumer.on('end', onEnd)
-      streamConsumer.on('close', onEnd) // Destroy() triggers close, not end
-      streamConsumer.on('error', onError)
+      streamConsumer.on('end', handlers.onEnd)
+      streamConsumer.on('close', handlers.onEnd) // Destroy() triggers close, not end
+      streamConsumer.on('error', handlers.onError)
     })
 
     const spans = await flushSpans()
@@ -1086,23 +1090,27 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     // Wait for messages to be processed
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Batch stream timeout')), 15000)
+      const handlers: { onEnd: () => void, onError: (err: Error) => void } = {
+        onEnd: () => {},
+        onError: () => {},
+      }
       const cleanup = () => {
         clearTimeout(timer)
-        streamConsumer.removeListener('error', onError)
-        streamConsumer.removeListener('end', onEnd)
-        streamConsumer.removeListener('close', onEnd)
+        streamConsumer.removeListener('error', handlers.onError)
+        streamConsumer.removeListener('end', handlers.onEnd)
+        streamConsumer.removeListener('close', handlers.onEnd)
       }
-      const onEnd = () => {
+      handlers.onEnd = () => {
         cleanup()
         resolve()
       }
-      const onError = (err: Error) => {
+      handlers.onError = (err: Error) => {
         cleanup()
         reject(err)
       }
-      streamConsumer.on('end', onEnd)
-      streamConsumer.on('close', onEnd)
-      streamConsumer.on('error', onError)
+      streamConsumer.on('end', handlers.onEnd)
+      streamConsumer.on('close', handlers.onEnd)
+      streamConsumer.on('error', handlers.onError)
     })
 
     const spans = await flushSpans()
@@ -1566,23 +1574,27 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('Stream context timeout')), 5000)
+        const handlers: { onEnd: () => void, onError: (err: Error) => void } = {
+          onEnd: () => {},
+          onError: () => {},
+        }
         const cleanup = () => {
           clearTimeout(timer)
-          streamConsumer.removeListener('end', onEnd)
-          streamConsumer.removeListener('close', onEnd)
-          streamConsumer.removeListener('error', onError)
+          streamConsumer.removeListener('end', handlers.onEnd)
+          streamConsumer.removeListener('close', handlers.onEnd)
+          streamConsumer.removeListener('error', handlers.onError)
         }
-        const onEnd = () => {
+        handlers.onEnd = () => {
           cleanup()
           resolve()
         }
-        const onError = (err: Error) => {
+        handlers.onError = (err: Error) => {
           cleanup()
           reject(err)
         }
-        streamConsumer.on('end', onEnd)
-        streamConsumer.on('close', onEnd) // Destroy() triggers close, not end
-        streamConsumer.on('error', onError)
+        streamConsumer.on('end', handlers.onEnd)
+        streamConsumer.on('close', handlers.onEnd) // Destroy() triggers close, not end
+        streamConsumer.on('error', handlers.onError)
       })
     })
 

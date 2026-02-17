@@ -172,7 +172,7 @@ function sumVectorResultByTopic(result, topicValue) {
   return { sum, matched: series.length, mode: 'all-series' }
 }
 
-async function validateGrafanaData({ topic }) {
+async function validateGrafanaData({ topic: targetTopic }) {
   console.log(`🔎 Validating in Grafana via HTTP API (${grafanaUrl})...`)
 
   const tempoUid = await getDatasourceUid('tempo')
@@ -201,9 +201,9 @@ async function validateGrafanaData({ topic }) {
 
       if (traceId) {
         const raw = await grafanaGetText(`/api/datasources/proxy/uid/${tempoUid}/api/traces/${traceId}`)
-        const hasSend = raw.includes(`send ${topic}`)
-        const hasPoll = raw.includes(`poll ${topic}`)
-        const hasProcess = raw.includes(`process ${topic}`)
+        const hasSend = raw.includes(`send ${targetTopic}`)
+        const hasPoll = raw.includes(`poll ${targetTopic}`)
+        const hasProcess = raw.includes(`process ${targetTopic}`)
         console.log(`✅ Trace ${traceId}: send=${hasSend} poll=${hasPoll} process=${hasProcess}`)
       } else {
         console.warn('⚠️ Tempo search did not include a trace id; skipping trace detail check.')
@@ -226,7 +226,7 @@ async function validateGrafanaData({ topic }) {
     for (const metric of metricCandidates) {
       try {
         const res = await prometheusQuery(promUid, metric)
-        const { sum, matched, mode } = sumVectorResultByTopic(res, topic)
+        const { sum, matched, mode } = sumVectorResultByTopic(res, targetTopic)
         if (matched === 0) {
           continue
         }
