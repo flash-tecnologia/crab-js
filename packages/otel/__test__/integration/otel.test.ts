@@ -1002,7 +1002,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     // Wait for all messages to be processed
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Stream timeout')), 15000)
-      const handlers: { onEnd: () => void, onError: (err: Error) => void } = {
+      const handlers: { onEnd: () => void; onError: (err: Error) => void } = {
         onEnd: () => {},
         onError: () => {},
       }
@@ -1090,7 +1090,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     // Wait for messages to be processed
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Batch stream timeout')), 15000)
-      const handlers: { onEnd: () => void, onError: (err: Error) => void } = {
+      const handlers: { onEnd: () => void; onError: (err: Error) => void } = {
         onEnd: () => {},
         onError: () => {},
       }
@@ -1574,7 +1574,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('Stream context timeout')), 5000)
-        const handlers: { onEnd: () => void, onError: (err: Error) => void } = {
+        const handlers: { onEnd: () => void; onError: (err: Error) => void } = {
           onEnd: () => {},
           onError: () => {},
         }
