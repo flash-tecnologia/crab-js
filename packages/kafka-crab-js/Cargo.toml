@@ -14,11 +14,12 @@ napi-derive = "3.5.2"
 anyhow = { version = "1.0", features = ["backtrace"] }
 dashmap = "6.1"
 
-rdkafka = { version = "0.39", features = [
+rdkafka = { version = "0.39", default-features = false, features = [
     "libz-static",
     "cmake-build",
     "tokio",
-    "ssl-vendored"
+    "ssl-vendored",
+    "curl-static"
 ] }
 tokio = { version = "1.49", features = ["full"] }
 
