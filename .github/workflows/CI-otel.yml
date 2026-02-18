@@ -36,7 +36,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --filter kafka-crab-js-otel...
       - name: Build OTEL package
         run: pnpm build
         working-directory: packages/otel
