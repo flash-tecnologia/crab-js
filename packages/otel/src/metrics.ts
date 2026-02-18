@@ -14,6 +14,16 @@ import {
 } from './constants.js'
 import type { Counter, Histogram, KafkaMetricsConfig, Meter } from './types.js'
 
+const ERROR_MESSAGE_PATTERNS = [
+  { type: 'KAFKA_TIMEOUT', terms: ['TIMEOUT'] },
+  { type: 'KAFKA_NETWORK_ERROR', terms: ['NETWORK', 'CONNECTION'] },
+  { type: 'KAFKA_AUTHORIZATION_ERROR', terms: ['AUTHORIZATION', 'AUTH'] },
+  { type: 'KAFKA_STORAGE_ERROR', terms: ['STORAGE', 'DISK'] },
+  { type: 'KAFKA_REBALANCE_ERROR', terms: ['REBALANCE'] },
+  { type: 'KAFKA_OFFSET_ERROR', terms: ['OFFSET'] },
+  { type: 'KAFKA_SERIALIZATION_ERROR', terms: ['SERIALIZATION', 'DESERIALIZ'] },
+] as const
+
 /**
  * Get error type for metrics attribution
  * Uses low-cardinality error types as per semantic conventions
@@ -30,28 +40,9 @@ function getErrorType(error: Error | unknown): string {
   // Check for Kafka-specific error codes in the message
   if (err?.message) {
     const message = err.message.toUpperCase()
-
-    // Common Kafka error patterns
-    if (message.includes('TIMEOUT')) {
-      return 'KAFKA_TIMEOUT'
-    }
-    if (message.includes('NETWORK') || message.includes('CONNECTION')) {
-      return 'KAFKA_NETWORK_ERROR'
-    }
-    if (message.includes('AUTHORIZATION') || message.includes('AUTH')) {
-      return 'KAFKA_AUTHORIZATION_ERROR'
-    }
-    if (message.includes('STORAGE') || message.includes('DISK')) {
-      return 'KAFKA_STORAGE_ERROR'
-    }
-    if (message.includes('REBALANCE')) {
-      return 'KAFKA_REBALANCE_ERROR'
-    }
-    if (message.includes('OFFSET')) {
-      return 'KAFKA_OFFSET_ERROR'
-    }
-    if (message.includes('SERIALIZATION') || message.includes('DESERIALIZ')) {
-      return 'KAFKA_SERIALIZATION_ERROR'
+    const matchedPattern = ERROR_MESSAGE_PATTERNS.find(({ terms }) => terms.some(term => message.includes(term)))
+    if (matchedPattern) {
+      return matchedPattern.type
     }
   }
 

@@ -17,6 +17,13 @@ permissions:
       - '**/*.gitignore'
       - .editorconfig
       - docs/**
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE
+      - '**/*.gitignore'
+      - .editorconfig
+      - docs/**
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -261,11 +268,12 @@ jobs:
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
         if: ${{ contains(matrix.target, 'armv7') }}
       - name: Test bindings
-        uses: addnab/docker-run-action@v3
+        uses: tj-actions/docker-run@v2.2.1
         with:
           image: ${{ steps.docker.outputs.IMAGE }}
+          name: kafka-crab-js-test-${{ matrix.target }}-node${{ matrix.node }}
           options: -v ${{ steps.docker.outputs.PNPM_STORE_PATH }}:${{ steps.docker.outputs.PNPM_STORE_PATH }} -v ${{ github.workspace }}:${{ github.workspace }} -w ${{ github.workspace }}/packages/kafka-crab-js --platform ${{ steps.docker.outputs.PLATFORM }}
-          run: npm run test
+          args: npm run test
 
   publish-kafka-crab-js:
     name: Publish kafka-crab-js

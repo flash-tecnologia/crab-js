@@ -5,7 +5,7 @@
   "engines": {
     "node": ">=22"
   },
-  "packageManager": "pnpm@10.26.1",
+  "packageManager": "pnpm@10.30.0",
   "scripts": {
     "build": "pnpm -r build",
     "build:core": "pnpm --filter kafka-crab-js build",
@@ -18,26 +18,26 @@
     "trace:batch-example": "pnpm tsx example/otel-batch-trace.ts"
   },
   "devDependencies": {
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/context-async-hooks": "^2.2.0",
-    "@opentelemetry/core": "^2.2.0",
-    "@opentelemetry/exporter-metrics-otlp-grpc": "^0.57.0",
-    "@opentelemetry/exporter-trace-otlp-grpc": "^0.57.0",
-    "@opentelemetry/resources": "^1.26.0",
-    "@opentelemetry/sdk-metrics": "^1.26.0",
-    "@opentelemetry/sdk-node": "^0.57.0",
-    "@opentelemetry/sdk-trace-base": "^1.26.0",
-    "@opentelemetry/sdk-trace-node": "^1.26.0",
-    "@opentelemetry/semantic-conventions": "^1.28.0",
-    "@types/node": "25.0.3",
-    "dprint": "^0.50.2",
-    "esbuild": "^0.27.2",
+    "@opentelemetry/api": "catalog:",
+    "@opentelemetry/context-async-hooks": "catalog:",
+    "@opentelemetry/core": "catalog:",
+    "@opentelemetry/exporter-metrics-otlp-grpc": "catalog:",
+    "@opentelemetry/exporter-trace-otlp-grpc": "catalog:",
+    "@opentelemetry/resources": "catalog:",
+    "@opentelemetry/sdk-metrics": "catalog:",
+    "@opentelemetry/sdk-node": "catalog:",
+    "@opentelemetry/sdk-trace-base": "catalog:",
+    "@opentelemetry/sdk-trace-node": "catalog:",
+    "@opentelemetry/semantic-conventions": "catalog:",
+    "@types/node": "25.2.3",
+    "dprint": "^0.51.1",
+    "esbuild": "^0.27.3",
     "kafka-crab-js": "workspace:*",
     "kafka-crab-js-otel": "workspace:*",
     "nanoid": "^5.1.6",
-    "oxlint": "^1.35.0",
-    "rimraf": "^6.1.2",
-    "tsx": "^4.19.1",
+    "oxlint": "^1.48.0",
+    "rimraf": "^6.1.3",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
 }

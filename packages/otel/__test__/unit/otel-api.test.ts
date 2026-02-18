@@ -2,21 +2,33 @@ import assert from 'node:assert'
 import { afterEach, beforeEach, describe, test } from 'node:test'
 
 // OpenTelemetry test infrastructure
-import { context } from '@opentelemetry/api'
+import { context, propagation, trace } from '@opentelemetry/api'
 import { AsyncHooksContextManager } from '@opentelemetry/context-async-hooks'
 import { AlwaysOnSampler, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
+import {
+  batchProcessEndChannel,
+  batchProcessStartChannel,
+  consumerProcessEndChannel,
+  consumerProcessStartChannel,
+  type Message,
+} from 'kafka-crab-js'
 
 // Import from the built package
 import {
   enableOtelInstrumentation,
   endSpan,
+  extractTraceContext,
+  getBatchContext,
   getKafkaInstrumentation,
+  getMessageContext,
   getOtelAdapter,
   KAFKA_OPERATION_TYPES,
   KAFKA_SEMANTIC_CONVENTIONS,
   resetKafkaInstrumentation,
   resetOtelAdapter,
+  withBatchContext,
+  withMessageContext,
 } from '../../dist/index.js'
 
 describe('kafka-crab-js-otel Public API Tests', () => {
@@ -216,6 +228,340 @@ describe('kafka-crab-js-otel Public API Tests', () => {
 
       // Should not throw
       endSpan(message)
+    })
+  })
+
+  describe('extractTraceContext()', () => {
+    test('should use root context when traceparent header is missing', () => {
+      const tracer = provider.getTracer('kafka-crab-js-otel-test')
+      const activeParent = tracer.startSpan('active-parent')
+
+      try {
+        let childTraceId = ''
+
+        context.with(trace.setSpan(context.active(), activeParent), () => {
+          const extractedContext = extractTraceContext({})
+          const childSpan = tracer.startSpan('child-no-traceparent', undefined, extractedContext)
+          childTraceId = childSpan.spanContext().traceId
+          childSpan.end()
+        })
+
+        assert.notEqual(
+          childTraceId,
+          activeParent.spanContext().traceId,
+          'child span should not inherit active trace id when traceparent is missing',
+        )
+      } finally {
+        activeParent.end()
+      }
+    })
+
+    test('should continue existing trace when traceparent header is present', () => {
+      const tracer = provider.getTracer('kafka-crab-js-otel-test')
+      const parentSpan = tracer.startSpan('upstream-parent')
+      const parentContext = parentSpan.spanContext()
+      const traceparent = `00-${parentContext.traceId}-${parentContext.spanId}-01`
+
+      const extractedContext = extractTraceContext({ traceparent })
+      const childSpan = tracer.startSpan('child-with-traceparent', undefined, extractedContext)
+
+      assert.equal(
+        childSpan.spanContext().traceId,
+        parentContext.traceId,
+        'child span should continue upstream trace id when traceparent is provided',
+      )
+
+      childSpan.end()
+      parentSpan.end()
+    })
+
+    test('should extract traceparent from mixed-case array header', () => {
+      const tracer = provider.getTracer('kafka-crab-js-otel-test')
+      const parentSpan = tracer.startSpan('upstream-parent-mixed-case')
+      const parentContext = parentSpan.spanContext()
+      const traceparent = `00-${parentContext.traceId}-${parentContext.spanId}-01`
+
+      const extractedContext = extractTraceContext({
+        TraceParent: [traceparent],
+      } as unknown as Record<string, Buffer | string | string[] | undefined>)
+      const childSpan = tracer.startSpan('child-with-mixed-case-traceparent', undefined, extractedContext)
+
+      assert.equal(
+        childSpan.spanContext().traceId,
+        parentContext.traceId,
+        'child span should continue upstream trace id from mixed-case traceparent header',
+      )
+
+      childSpan.end()
+      parentSpan.end()
+    })
+
+    test('should fallback to root context when extraction throws and traceparent is missing', () => {
+      const tracer = provider.getTracer('kafka-crab-js-otel-test')
+      const ambientSpan = tracer.startSpan('ambient-parent-no-traceparent')
+
+      const throwingPropagator = {
+        inject: () => undefined,
+        extract: () => {
+          throw new Error('extract failed')
+        },
+        fields: () => ['traceparent', 'tracestate'],
+      }
+
+      let childTraceId = ''
+
+      propagation.setGlobalPropagator(throwingPropagator)
+      try {
+        context.with(trace.setSpan(context.active(), ambientSpan), () => {
+          const extractedContext = extractTraceContext({})
+          const childSpan = tracer.startSpan('child-fallback-root', undefined, extractedContext)
+          childTraceId = childSpan.spanContext().traceId
+          childSpan.end()
+        })
+      } finally {
+        propagation.disable()
+        ambientSpan.end()
+      }
+
+      assert.notEqual(
+        childTraceId,
+        ambientSpan.spanContext().traceId,
+        'child span should use root fallback context when traceparent is missing and extraction throws',
+      )
+    })
+
+    test('should fallback to active context when extraction throws and traceparent is present', () => {
+      const tracer = provider.getTracer('kafka-crab-js-otel-test')
+      const ambientSpan = tracer.startSpan('ambient-parent-with-traceparent')
+      const traceparent = `00-${ambientSpan.spanContext().traceId}-${ambientSpan.spanContext().spanId}-01`
+
+      const throwingPropagator = {
+        inject: () => undefined,
+        extract: () => {
+          throw new Error('extract failed')
+        },
+        fields: () => ['traceparent', 'tracestate'],
+      }
+
+      let childTraceId = ''
+
+      propagation.setGlobalPropagator(throwingPropagator)
+      try {
+        context.with(trace.setSpan(context.active(), ambientSpan), () => {
+          const extractedContext = extractTraceContext({ traceparent })
+          const childSpan = tracer.startSpan('child-fallback-active', undefined, extractedContext)
+          childTraceId = childSpan.spanContext().traceId
+          childSpan.end()
+        })
+      } finally {
+        propagation.disable()
+        ambientSpan.end()
+      }
+
+      assert.equal(
+        childTraceId,
+        ambientSpan.spanContext().traceId,
+        'child span should use active fallback context when traceparent exists and extraction throws',
+      )
+    })
+  })
+
+  describe('message/batch context helpers', () => {
+    test('withMessageContext should use decorated message span when available', () => {
+      const tracer = provider.getTracer('kafka-crab-js-otel-test')
+      const parentSpan = tracer.startSpan('decorated-message-parent')
+      const message = {
+        topic: 'test-topic',
+        partition: 0,
+        offset: '0',
+        payload: Buffer.from('test'),
+        span: parentSpan,
+      } as const
+
+      let childTraceId = ''
+      withMessageContext(message, () => {
+        const childSpan = tracer.startSpan('child-from-decorated-message')
+        childTraceId = childSpan.spanContext().traceId
+        childSpan.end()
+      })
+
+      assert.equal(childTraceId, parentSpan.spanContext().traceId)
+      parentSpan.end()
+    })
+
+    test('withMessageContext should create a new trace when traceparent is missing', () => {
+      const tracer = provider.getTracer('kafka-crab-js-otel-test')
+      const ambientSpan = tracer.startSpan('ambient-parent')
+      const message = {
+        topic: 'test-topic',
+        partition: 0,
+        offset: '1',
+        payload: Buffer.from('test'),
+      } as const
+
+      let childTraceId = ''
+
+      context.with(trace.setSpan(context.active(), ambientSpan), () => {
+        withMessageContext(message, () => {
+          const childSpan = tracer.startSpan('child-without-traceparent')
+          childTraceId = childSpan.spanContext().traceId
+          childSpan.end()
+        })
+      })
+
+      assert.notEqual(childTraceId, ambientSpan.spanContext().traceId)
+      ambientSpan.end()
+    })
+
+    test('withBatchContext should use decorated batch span when available', () => {
+      const tracer = provider.getTracer('kafka-crab-js-otel-test')
+      const batchSpan = tracer.startSpan('decorated-batch-parent')
+      const batch = [{
+        topic: 'test-topic',
+        partition: 0,
+        offset: '0',
+        payload: Buffer.from('test'),
+      }] as unknown as Record<string, unknown>[]
+      Object.defineProperty(batch, 'span', {
+        value: batchSpan,
+        enumerable: false,
+        configurable: true,
+      })
+
+      let childTraceId = ''
+      withBatchContext(batch as unknown as Message[], () => {
+        const childSpan = tracer.startSpan('child-from-decorated-batch')
+        childTraceId = childSpan.spanContext().traceId
+        childSpan.end()
+      })
+
+      assert.equal(childTraceId, batchSpan.spanContext().traceId)
+      batchSpan.end()
+    })
+
+    test('getMessageContext/getBatchContext should be callable', () => {
+      const message = {
+        topic: 'test-topic',
+        partition: 0,
+        offset: '0',
+        payload: Buffer.from('test'),
+      } as const
+
+      const messageContext = getMessageContext(message)
+      const batchContext = getBatchContext([message])
+
+      assert(messageContext, 'getMessageContext should return a context')
+      assert(batchContext, 'getBatchContext should return a context')
+    })
+
+    test('adapter should decorate process-start message with non-enumerable span and otelContext', () => {
+      enableOtelInstrumentation()
+
+      const message = {
+        topic: 'test-topic',
+        partition: 0,
+        offset: '0',
+        payload: Buffer.from('test'),
+        headers: {},
+      }
+      const eventContext: Record<PropertyKey, unknown> = {}
+
+      consumerProcessStartChannel.publish({
+        timestamp: Date.now(),
+        message,
+        context: eventContext,
+      })
+
+      const decoratedMessage = message as {
+        span?: unknown
+        otelContext?: unknown
+      }
+
+      assert(decoratedMessage.span, 'message should have span decoration')
+      assert(decoratedMessage.otelContext, 'message should have otelContext decoration')
+      assert.equal(Object.prototype.propertyIsEnumerable.call(message, 'span'), false)
+      assert.equal(Object.prototype.propertyIsEnumerable.call(message, 'otelContext'), false)
+      assert.equal(trace.getSpan(decoratedMessage.otelContext as Parameters<typeof trace.getSpan>[0]),
+        decoratedMessage.span)
+
+      consumerProcessEndChannel.publish({
+        timestamp: Date.now(),
+        message,
+        durationMs: 1,
+        context: eventContext,
+      })
+    })
+
+    test('adapter should decorate batch and contained messages with non-enumerable span and otelContext', () => {
+      enableOtelInstrumentation()
+
+      const messages = [{
+        topic: 'test-topic',
+        partition: 0,
+        offset: '1',
+        payload: Buffer.from('batch-1'),
+        headers: {},
+      }, {
+        topic: 'test-topic',
+        partition: 0,
+        offset: '2',
+        payload: Buffer.from('batch-2'),
+        headers: {},
+      }]
+      const eventContext: Record<PropertyKey, unknown> = {}
+
+      batchProcessStartChannel.publish({
+        timestamp: Date.now(),
+        messages,
+        context: eventContext,
+      })
+
+      const decoratedBatch = Object
+        .getOwnPropertySymbols(eventContext)
+        .map(symbolKey => eventContext[symbolKey])
+        .find(value => (
+          Array.isArray(value) &&
+          value.length === messages.length &&
+          value[0] === messages[0] &&
+          value[1] === messages[1]
+        )) as (
+          & {
+            span?: unknown
+            otelContext?: unknown
+          }
+          & {
+            span?: unknown
+            otelContext?: unknown
+          }[]
+        )
+
+      assert(decoratedBatch, 'event context should include instrumented batch array')
+      assert.notEqual(decoratedBatch, messages, 'instrumented batch should be a filtered array instance')
+      assert(decoratedBatch.span, 'batch should have span decoration')
+      assert(decoratedBatch.otelContext, 'batch should have otelContext decoration')
+      assert.equal(Object.prototype.propertyIsEnumerable.call(decoratedBatch, 'span'), false)
+      assert.equal(Object.prototype.propertyIsEnumerable.call(decoratedBatch, 'otelContext'), false)
+      assert.equal(trace.getSpan(decoratedBatch.otelContext as Parameters<typeof trace.getSpan>[0]),
+        decoratedBatch.span)
+
+      const decoratedMessages = decoratedBatch as {
+        span?: unknown
+        otelContext?: unknown
+      }[]
+      for (const message of decoratedMessages) {
+        assert(message.span, 'message in batch should have span decoration')
+        assert(message.otelContext, 'message in batch should have otelContext decoration')
+        assert.equal(Object.prototype.propertyIsEnumerable.call(message, 'span'), false)
+        assert.equal(Object.prototype.propertyIsEnumerable.call(message, 'otelContext'), false)
+        assert.equal(trace.getSpan(message.otelContext as Parameters<typeof trace.getSpan>[0]), message.span)
+      }
+
+      batchProcessEndChannel.publish({
+        timestamp: Date.now(),
+        messages,
+        durationMs: 1,
+        context: eventContext,
+      })
     })
   })
 

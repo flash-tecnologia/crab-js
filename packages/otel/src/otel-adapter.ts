@@ -5,7 +5,16 @@
  * OpenTelemetry spans and metrics. It provides backward-compatible OTEL
  * instrumentation while using the decoupled diagnostics_channel architecture.
  */
-import { type Attributes, context, diag, type Span, SpanKind, trace, type Tracer } from '@opentelemetry/api'
+import {
+  type Attributes,
+  type Context,
+  context,
+  diag,
+  type Span,
+  SpanKind,
+  trace,
+  type Tracer,
+} from '@opentelemetry/api'
 
 // Import types and channels from kafka-crab-js
 import {
@@ -61,6 +70,16 @@ const SPAN_KEY = Symbol('otel.span')
 const TIMER_KEY = Symbol('otel.timer')
 const MESSAGE_SPANS_KEY = Symbol('otel.messageSpans')
 const INSTRUMENTED_MESSAGES_KEY = Symbol('otel.instrumentedMessages')
+
+type MessageWithOtelFields = Message & {
+  span?: Span
+  otelContext?: Context
+}
+
+type BatchWithOtelFields = Message[] & {
+  span?: Span
+  otelContext?: Context
+}
 
 /**
  * Configuration options for the OTEL adapter
@@ -469,6 +488,8 @@ export class OtelAdapter {
           span.setAttributes(getCapturedHeaderAttributes(event.message.headers))
         }
 
+        const spanContext = OtelAdapter._attachMessageSpan(event.message, span, parentContext)
+
         // Store span in event context
         event.context[SPAN_KEY] = span
 
@@ -479,7 +500,6 @@ export class OtelAdapter {
 
         // Call message hook if configured
         if (this._config.messageHook) {
-          const spanContext = trace.setSpan(parentContext, span)
           try {
             context.with(spanContext, () => {
               this._config.messageHook?.(span, event.message)
@@ -660,6 +680,7 @@ export class OtelAdapter {
           }
 
           event.context[SPAN_KEY] = batchSpan
+          OtelAdapter._attachBatchSpan(instrumentedMessages, batchSpan, parentContext)
         }
 
         for (const message of instrumentedMessages) {
@@ -687,8 +708,9 @@ export class OtelAdapter {
                 messageSpan.setAttributes(getCapturedHeaderAttributes(message.headers))
               }
 
+              const messageSpanContext = OtelAdapter._attachMessageSpan(message, messageSpan, messageParentContext)
+
               if (this._config.messageHook) {
-                const messageSpanContext = trace.setSpan(messageParentContext, messageSpan)
                 try {
                   context.with(messageSpanContext, () => {
                     this._config.messageHook?.(messageSpan, message)
@@ -771,6 +793,43 @@ export class OtelAdapter {
   // ---------------------------------------------------------------------------
   // Helper Methods
   // ---------------------------------------------------------------------------
+
+  private static _attachMessageSpan(message: Message, span: Span, parentContext: Context): Context {
+    const spanContext = trace.setSpan(parentContext, span)
+    OtelAdapter._defineHiddenOtelField(message as MessageWithOtelFields, 'span', span)
+    OtelAdapter._defineHiddenOtelField(message as MessageWithOtelFields, 'otelContext', spanContext)
+    return spanContext
+  }
+
+  private static _attachBatchSpan(messages: Message[], span: Span, parentContext: Context): void {
+    const spanContext = trace.setSpan(parentContext, span)
+    OtelAdapter._defineHiddenOtelField(messages as BatchWithOtelFields, 'span', span)
+    OtelAdapter._defineHiddenOtelField(messages as BatchWithOtelFields, 'otelContext', spanContext)
+  }
+
+  private static _defineHiddenOtelField(
+    target: MessageWithOtelFields | BatchWithOtelFields,
+    key: 'span' | 'otelContext',
+    value: Span | Context,
+  ): void {
+    try {
+      Object.defineProperty(target, key, {
+        value,
+        writable: true,
+        configurable: true,
+        enumerable: false,
+      })
+      return
+    } catch {
+      // Fall back to assignment for exotic objects where defineProperty is restricted.
+    }
+
+    try {
+      target[key] = value as never
+    } catch {
+      // Ignore decoration failures to preserve backward compatibility.
+    }
+  }
 
   private _shouldIgnoreTopic(topic: string): boolean {
     const { ignoreTopics } = this._config
