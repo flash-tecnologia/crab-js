@@ -43,6 +43,21 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/kafka-crab-js-otel@}
           echo "Publishing kafka-crab-js-otel version: $TAG_NAME"
           echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
-          npm publish --access public
+          if [[ $TAG_NAME =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Stable release detected"
+            npm publish --access public
+          elif [[ $TAG_NAME =~ alpha ]]; then
+            echo "Alpha release detected"
+            npm publish --tag alpha --access public
+          elif [[ $TAG_NAME =~ beta ]]; then
+            echo "Beta release detected"
+            npm publish --tag beta --access public
+          elif [[ $TAG_NAME =~ rc ]]; then
+            echo "Release candidate detected"
+            npm publish --tag rc --access public
+          else
+            echo "Pre-release detected"
+            npm publish --tag next --access public
+          fi
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
