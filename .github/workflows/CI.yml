@@ -17,6 +17,13 @@ permissions:
       - '**/*.gitignore'
       - .editorconfig
       - docs/**
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE
+      - '**/*.gitignore'
+      - .editorconfig
+      - docs/**
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -38,6 +45,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Install dependencies
         run: pnpm install
@@ -117,6 +129,11 @@ jobs:
         run: ${{ matrix.settings.setup }}
         if: ${{ matrix.settings.setup }}
         shell: bash
+      - name: Install native build dependencies
+        if: contains(matrix.settings.target, 'unknown-linux-gnu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev
       - name: Install dependencies
         run: pnpm install --filter kafka-crab-js
         working-directory: .
