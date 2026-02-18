@@ -1,6 +1,6 @@
 {
   "name": "kafka-crab-js-otel",
-  "version": "1.1.0-beta.1",
+  "version": "1.1.0",
   "description": "OpenTelemetry instrumentation for kafka-crab-js",
   "type": "module",
   "engines": {
