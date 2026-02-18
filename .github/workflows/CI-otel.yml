@@ -37,6 +37,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --filter kafka-crab-js-otel...
+      - name: Generate kafka-crab-js type declarations
+        run: pnpm --filter kafka-crab-js postbuild
       - name: Build OTEL package
         run: pnpm --filter kafka-crab-js-otel build
       - name: Publish kafka-crab-js-otel
