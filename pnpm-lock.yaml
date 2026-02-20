@@ -116,6 +116,9 @@ importers:
       kafka-crab-js:
         specifier: workspace:*
         version: link:../kafka-crab-js
+      kafka-crab-js-v3:
+        specifier: npm:kafka-crab-js@3.1.0
+        version: kafka-crab-js@3.1.0
       kafkajs:
         specifier: ^2.2.4
         version: 2.2.4
@@ -1506,6 +1509,50 @@ packages:
   json-schema-traverse@1.0.0:
     resolution: {integrity: sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==}
 
+  kafka-crab-js-darwin-arm64@3.1.0:
+    resolution: {integrity: sha512-Av7dHobc9Yc6yGdeFSeNgrAxOyiPEbfWWVSddM5kUeMN0y4lW/AM1G2N9riwZmj99pUm9LtLGBPz90TZGAuk+w==}
+    engines: {node: '>=22'}
+    cpu: [arm64]
+    os: [darwin]
+
+  kafka-crab-js-darwin-x64@3.1.0:
+    resolution: {integrity: sha512-qd1dEkDTLwkGWokgrKMw40UPpOGyNIDaKdba9TDmHzL8Q+QbPUa6/MhNEhfYmPAQCFXtf61LNC2l1iNF1wvf7g==}
+    engines: {node: '>=22'}
+    cpu: [x64]
+    os: [darwin]
+
+  kafka-crab-js-linux-arm64-gnu@3.1.0:
+    resolution: {integrity: sha512-xXpP4+UFRCTLxEH0KPDoNycV3pGISIfTxpV87zd24VNREOGmHW+o7uDK4U+x+sj1WEx52NTqfyDV2xrL0ec2lg==}
+    engines: {node: '>=22'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  kafka-crab-js-linux-arm64-musl@3.1.0:
+    resolution: {integrity: sha512-uMXLGMv8Lqbzo4GQ0Pg8yPy1mm620EVyTfamRka0A36TKTvXG8qX8iT25M2n5kU4S4/xFoDi4610TuaEPUIDFg==}
+    engines: {node: '>=22'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  kafka-crab-js-linux-x64-gnu@3.1.0:
+    resolution: {integrity: sha512-v6/5Z/2nEUM2UYjJicne9YYvCkeksJPZ8sus6Lg4ztAYtcl9od07SU7B/pbPN05yDZCl5SJcJJWxyKu4tJoq5Q==}
+    engines: {node: '>=22'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  kafka-crab-js-linux-x64-musl@3.1.0:
+    resolution: {integrity: sha512-iE3mYeLBWSQ/2kNuUZtA8sjuJALfKoKYzmfYFF+rlTwhLDFfVTCSQQFJ0RHm7A4yA01GVgSQUZfbsCuGt0s0Iw==}
+    engines: {node: '>=22'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  kafka-crab-js@3.1.0:
+    resolution: {integrity: sha512-p1fyu4YqzmtqDV2SLzfi306gvoTWKKU7/ay4EP/zfB9yBhJyv6aL+O4J4Gm99GkgeOqHmEGABy1nl+1m+tMQng==}
+    engines: {node: '>=22'}
+
   kafkajs@2.2.4:
     resolution: {integrity: sha512-j/YeapB1vfPT2iOIUn/vxdyKEuhuY2PxMBvf5JWux6iSaukAccrMtXEY/Lb7OvavDhOWME589bpLrEdnVHjfjA==}
     engines: {node: '>=14.0.0'}
@@ -2796,6 +2843,33 @@ snapshots:
       argparse: 2.0.1
 
   json-schema-traverse@1.0.0: {}
+
+  kafka-crab-js-darwin-arm64@3.1.0:
+    optional: true
+
+  kafka-crab-js-darwin-x64@3.1.0:
+    optional: true
+
+  kafka-crab-js-linux-arm64-gnu@3.1.0:
+    optional: true
+
+  kafka-crab-js-linux-arm64-musl@3.1.0:
+    optional: true
+
+  kafka-crab-js-linux-x64-gnu@3.1.0:
+    optional: true
+
+  kafka-crab-js-linux-x64-musl@3.1.0:
+    optional: true
+
+  kafka-crab-js@3.1.0:
+    optionalDependencies:
+      kafka-crab-js-darwin-arm64: 3.1.0
+      kafka-crab-js-darwin-x64: 3.1.0
+      kafka-crab-js-linux-arm64-gnu: 3.1.0
+      kafka-crab-js-linux-arm64-musl: 3.1.0
+      kafka-crab-js-linux-x64-gnu: 3.1.0
+      kafka-crab-js-linux-x64-musl: 3.1.0
 
   kafkajs@2.2.4: {}
 

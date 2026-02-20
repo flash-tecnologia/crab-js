@@ -1,9 +1,15 @@
-use std::{sync::Arc, time::Duration, vec};
+use std::{
+  collections::VecDeque,
+  sync::Arc,
+  time::Duration,
+};
 use tokio::sync::watch::{self};
+use futures_util::{stream, StreamExt};
 
 use napi::{
+  bindgen_prelude::ReadableStream,
   threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode},
-  Either, Error, Result, Status,
+  Either, Env, Error, Result, Status,
 };
 
 use rdkafka::{
@@ -39,6 +45,11 @@ use tokio::select;
 pub const DEFAULT_SEEK_TIMEOUT: i64 = 1500;
 const MAX_SEEK_TIMEOUT: i64 = 300000; // 5 minutes max
 const DEFAULT_BATCH_TIMEOUT: i64 = 1000;
+const MAX_BATCH_TIMEOUT_MS: i64 = 60_000;
+const MAX_BATCH_SIZE: u32 = 16_384;
+const SERIAL_STREAM_PREFETCH_SIZE: u32 = 64;
+const SERIAL_STREAM_PREFETCH_TIMEOUT_MS: i64 = 1;
+const CONSUMER_DISCONNECTED_REASON: &str = "Consumer disconnected";
 
 /// Validates and bounds-checks timeout values
 #[inline]
@@ -64,6 +75,204 @@ fn validate_seek_timeout(timeout: Option<i64>) -> i64 {
 }
 
 type DisconnectSignal = (watch::Sender<()>, watch::Receiver<()>);
+
+struct BatchCollection {
+  messages: Vec<Message>,
+  disconnected: bool,
+}
+
+struct SerialStreamState {
+  stream_consumer: Arc<StreamConsumer<KafkaCrabContext>>,
+  disconnect_signal: watch::Receiver<()>,
+  pending_messages: VecDeque<Message>,
+  prefetch_size: u32,
+  prefetch_timeout_ms: i64,
+  closed: bool,
+}
+
+struct BatchStreamState {
+  stream_consumer: Arc<StreamConsumer<KafkaCrabContext>>,
+  disconnect_signal: watch::Receiver<()>,
+  batch_size: u32,
+  batch_timeout_ms: i64,
+  closed: bool,
+}
+
+#[inline]
+fn normalize_batch_size(size: u32) -> u32 {
+  if size == 0 {
+    warn!("size cannot be 0, using 1");
+    return 1;
+  }
+
+  if size > MAX_BATCH_SIZE {
+    warn!(
+      "size cannot be greater than {}, clamping to {}",
+      MAX_BATCH_SIZE, MAX_BATCH_SIZE
+    );
+    return MAX_BATCH_SIZE;
+  }
+
+  size
+}
+
+#[inline]
+fn normalize_batch_timeout(timeout_ms: i64) -> i64 {
+  if timeout_ms < 1 {
+    warn!(
+      "timeout_ms must be at least 1ms, using default: {}ms",
+      DEFAULT_BATCH_TIMEOUT
+    );
+    return DEFAULT_BATCH_TIMEOUT;
+  }
+
+  if timeout_ms > MAX_BATCH_TIMEOUT_MS {
+    warn!(
+      "timeout_ms cannot be greater than {}ms, clamping to {}ms",
+      MAX_BATCH_TIMEOUT_MS, MAX_BATCH_TIMEOUT_MS
+    );
+    return MAX_BATCH_TIMEOUT_MS;
+  }
+
+  timeout_ms
+}
+
+async fn collect_batch_messages(
+  stream_consumer: &Arc<StreamConsumer<KafkaCrabContext>>,
+  disconnect_signal: &mut watch::Receiver<()>,
+  size: u32,
+  timeout_ms: i64,
+) -> Result<BatchCollection> {
+  let batch_timeout = Duration::from_millis(timeout_ms as u64);
+  let deadline = tokio::time::Instant::now() + batch_timeout;
+  let mut messages = Vec::with_capacity(size as usize);
+  let mut disconnected = false;
+  let sleep_until_deadline = tokio::time::sleep_until(deadline);
+  tokio::pin!(sleep_until_deadline);
+
+  for _ in 0..size {
+    if disconnect_signal.has_changed().unwrap_or(false) {
+      debug!("Disconnect signal received during batch receive");
+      disconnected = true;
+      break;
+    }
+
+    select! {
+      biased;
+      _ = disconnect_signal.changed() => {
+        debug!("Disconnect signal received during batch receive");
+        disconnected = true;
+        break;
+      }
+      message = stream_consumer.recv() => {
+        match message {
+          Ok(kafka_message) => {
+            let message = create_message(&kafka_message, kafka_message.payload().unwrap_or(&[]));
+            messages.push(message);
+          }
+          Err(error) => {
+            let receive_error = error.into_napi_error("Failed to receive message from consumer");
+            if messages.is_empty() {
+              return Err(receive_error);
+            }
+            break;
+          }
+        }
+      }
+      _ = &mut sleep_until_deadline => {
+        break;
+      }
+    }
+  }
+
+  Ok(BatchCollection {
+    messages,
+    disconnected,
+  })
+}
+
+async fn next_serial_stream_item(
+  mut state: SerialStreamState,
+) -> Option<(Result<Message>, SerialStreamState)> {
+  loop {
+    if let Some(message) = state.pending_messages.pop_front() {
+      return Some((Ok(message), state));
+    }
+
+    if state.closed {
+      return None;
+    }
+
+    match collect_batch_messages(
+      &state.stream_consumer,
+      &mut state.disconnect_signal,
+      state.prefetch_size,
+      state.prefetch_timeout_ms,
+    )
+    .await
+    {
+      Ok(batch) => {
+        if batch.messages.is_empty() {
+          if batch.disconnected {
+            state.closed = true;
+            return None;
+          }
+
+          continue;
+        }
+
+        state.pending_messages = VecDeque::from(batch.messages);
+        if batch.disconnected {
+          state.closed = true;
+        }
+      }
+      Err(error) => {
+        state.closed = true;
+        return Some((Err(error), state));
+      }
+    }
+  }
+}
+
+async fn next_batch_stream_item(
+  mut state: BatchStreamState,
+) -> Option<(Result<Vec<Message>>, BatchStreamState)> {
+  loop {
+    if state.closed {
+      return None;
+    }
+
+    match collect_batch_messages(
+      &state.stream_consumer,
+      &mut state.disconnect_signal,
+      state.batch_size,
+      state.batch_timeout_ms,
+    )
+    .await
+    {
+      Ok(batch) => {
+        if batch.messages.is_empty() {
+          if batch.disconnected {
+            state.closed = true;
+            return None;
+          }
+
+          continue;
+        }
+
+        if batch.disconnected {
+          state.closed = true;
+        }
+
+        return Some((Ok(batch.messages), state));
+      }
+      Err(error) => {
+        state.closed = true;
+        return Some((Err(error), state));
+      }
+    }
+  }
+}
 
 #[napi]
 pub struct KafkaConsumer {
@@ -393,76 +602,60 @@ impl KafkaConsumer {
   /// @returns Array of messages (may be fewer than size)
   #[napi]
   pub async fn recv_batch(&self, size: u32, timeout_ms: i64) -> Result<Vec<Message>> {
-    // Validate input parameters
-    let size = if size == 0 {
-      warn!("size cannot be 0, using 1");
-      1
-    } else {
-      size
-    };
+    let normalized_size = normalize_batch_size(size);
+    let normalized_timeout_ms = normalize_batch_timeout(timeout_ms);
 
-    let timeout_ms = if timeout_ms < 1 {
-      warn!(
-        "timeout_ms must be at least 1ms, using default: {}ms",
-        DEFAULT_BATCH_TIMEOUT
-      );
-      DEFAULT_BATCH_TIMEOUT
-    } else {
-      timeout_ms
-    };
-    let batch_timeout = std::time::Duration::from_millis(timeout_ms as u64);
+    let mut disconnect_signal = self.disconnect_signal.1.clone();
+    let collection = collect_batch_messages(
+      &self.stream_consumer,
+      &mut disconnect_signal,
+      normalized_size,
+      normalized_timeout_ms,
+    )
+    .await?;
 
-    let mut messages = Vec::with_capacity(size as usize);
-    let mut rx = self.disconnect_signal.1.clone();
-    let start_time = std::time::Instant::now();
-
-    // Try to collect messages up to size or timeout
-    for _ in 0..size {
-      // Check if we've exceeded our timeout
-      if start_time.elapsed() >= batch_timeout {
-        break;
-      }
-
-      // Calculate remaining timeout
-      let remaining_timeout = batch_timeout.saturating_sub(start_time.elapsed());
-      if remaining_timeout.is_zero() {
-        break;
-      }
-
-      // Try to receive a message with remaining timeout
-      let recv_result = tokio::time::timeout(remaining_timeout, async {
-        select! {
-          message = self.stream_consumer.recv() => {
-            message.map_err(|e| e.into_napi_error("Failed to receive message from consumer"))
-          }
-          _ = rx.changed() => {
-            debug!("Disconnect signal received during batch receive");
-            Err(Error::new(Status::GenericFailure, "Consumer disconnected"))
-          }
-        }
-      })
-      .await;
-
-      match recv_result {
-        Ok(Ok(kafka_message)) => {
-          let message = create_message(&kafka_message, kafka_message.payload().unwrap_or(&[]));
-          messages.push(message);
-        }
-        Ok(Err(e)) => {
-          // Error receiving message, return what we have so far
-          if messages.is_empty() {
-            return Err(e);
-          }
-          break;
-        }
-        Err(_) => {
-          // Timeout occurred, return what we have so far
-          break;
-        }
-      }
+    if collection.disconnected && collection.messages.is_empty() {
+      return Err(Error::new(Status::GenericFailure, CONSUMER_DISCONNECTED_REASON));
     }
 
-    Ok(messages)
+    Ok(collection.messages)
+  }
+
+  /// Receives messages as a native Web `ReadableStream`.
+  /// Uses a small internal batch prefetch to reduce native boundary crossings.
+  #[napi]
+  pub fn recv_stream<'env>(&self, env: Env) -> Result<ReadableStream<'env, Message>> {
+    let stream_state = SerialStreamState {
+      stream_consumer: self.stream_consumer.clone(),
+      disconnect_signal: self.disconnect_signal.1.clone(),
+      pending_messages: VecDeque::with_capacity(SERIAL_STREAM_PREFETCH_SIZE as usize),
+      prefetch_size: SERIAL_STREAM_PREFETCH_SIZE,
+      prefetch_timeout_ms: SERIAL_STREAM_PREFETCH_TIMEOUT_MS,
+      closed: false,
+    };
+
+    let inner = stream::unfold(stream_state, next_serial_stream_item).boxed();
+    ReadableStream::new(&env, inner)
+  }
+
+  /// Receives batches of messages as a native Web `ReadableStream`.
+  #[napi]
+  pub fn recv_batch_stream<'env>(
+    &self,
+    env: Env,
+    size: u32,
+    timeout_ms: i64,
+  ) -> Result<ReadableStream<'env, Vec<Message>>> {
+    let stream_state = BatchStreamState {
+      stream_consumer: self.stream_consumer.clone(),
+      disconnect_signal: self.disconnect_signal.1.clone(),
+      batch_size: normalize_batch_size(size),
+      batch_timeout_ms: normalize_batch_timeout(timeout_ms),
+      closed: false,
+    };
+
+    let inner = stream::unfold(stream_state, next_batch_stream_item).boxed();
+    ReadableStream::new(&env, inner)
   }
 
   /// Commits an offset for a specific topic partition.

@@ -402,3 +402,104 @@ export function instrumentBatchReceive(
     }
   }
 }
+
+/**
+ * Instruments a ReadableStream of single messages with consumer diagnostic events.
+ */
+export function instrumentConsumerReadableStream(
+  originalStream: ReadableStream<Message>,
+  groupId?: string,
+  config: DiagnosticInstrumentationConfig = {},
+): ReadableStream<Message> {
+  const reader = originalStream.getReader()
+  let done = false
+
+  const instrumentedReceive = instrumentConsumerReceive(
+    async () => {
+      if (done) {
+        return null
+      }
+
+      const chunk = await reader.read()
+      if (chunk.done) {
+        done = true
+        return null
+      }
+
+      return chunk.value ?? null
+    },
+    groupId,
+    config,
+  ).bind({} as KafkaConsumer)
+
+  return new ReadableStream<Message>({
+    async pull(controller) {
+      const message = await instrumentedReceive()
+      if (!message) {
+        controller.close()
+        return
+      }
+
+      controller.enqueue(message)
+    },
+    async cancel(reason) {
+      done = true
+      await reader.cancel(reason)
+    },
+  })
+}
+
+/**
+ * Instruments a ReadableStream of message batches with batch diagnostic events.
+ */
+export function instrumentBatchReadableStream(
+  originalStream: ReadableStream<Message[]>,
+  groupId: string | undefined,
+  size: number,
+  timeoutMs: number,
+  config: DiagnosticInstrumentationConfig = {},
+): ReadableStream<Message[]> {
+  const reader = originalStream.getReader()
+  let done = false
+
+  const instrumentedBatchReceive = instrumentBatchReceive(
+    async () => {
+      if (done) {
+        return []
+      }
+
+      const chunk = await reader.read()
+      if (chunk.done) {
+        done = true
+        return []
+      }
+
+      return chunk.value ?? []
+    },
+    groupId,
+    config,
+  ).bind({} as KafkaConsumer)
+
+  return new ReadableStream<Message[]>({
+    async pull(controller) {
+      while (true) {
+        const messages = await instrumentedBatchReceive(size, timeoutMs)
+        if (done) {
+          controller.close()
+          return
+        }
+
+        if (messages.length === 0) {
+          continue
+        }
+
+        controller.enqueue(messages)
+        return
+      }
+    },
+    async cancel(reason) {
+      done = true
+      await reader.cancel(reason)
+    },
+  })
+}

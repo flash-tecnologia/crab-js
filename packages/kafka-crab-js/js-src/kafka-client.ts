@@ -4,22 +4,97 @@ import {
   KafkaClientConfig,
   type KafkaConfiguration,
   type KafkaConsumer,
+  type Message,
   type KafkaProducer,
   type ProducerConfiguration,
 } from '../js-binding.js'
 
 import {
   instrumentBatchReceive,
+  instrumentBatchReadableStream,
   instrumentConsumerReceive,
+  instrumentConsumerReadableStream,
   instrumentProducerSend,
 } from './diagnostics/instrumentation.js'
 import { KafkaBatchStreamReadable } from './streams/kafka-batch-stream-readable.js'
 import { KafkaStreamReadable } from './streams/kafka-stream-readable.js'
 
+const DEFAULT_WEB_STREAM_BATCH_TIMEOUT = 1000
+const DEFAULT_WEB_STREAM_SERIAL_PREFETCH_SIZE = 64
+const DEFAULT_WEB_STREAM_SERIAL_PREFETCH_TIMEOUT = 1
+
+type KafkaConsumerWithWebStream = KafkaConsumer & {
+  recvStream(): ReadableStream<Message>
+  recvBatchStream(size: number, timeoutMs: number): ReadableStream<Message[]>
+}
+
 export interface StreamConsumerConfiguration extends ConsumerConfiguration {
   batchSize?: number // Default 1 (single mode), > 1 enables batch mode
   batchTimeout?: number // Default 100ms, only used when batchSize > 1
   streamOptions?: ReadableOptions
+}
+
+export interface WebStreamConsumerConfiguration extends ConsumerConfiguration {
+  batchSize?: number // Default 1 (single mode), > 1 enables batch mode
+  batchTimeout?: number // Default 1000ms
+  serialPrefetchSize?: number // Default 64, only used in serial mode
+  serialPrefetchTimeout?: number // Default 1ms, only used in serial mode
+}
+
+export type WebStreamConsumer =
+  | {
+    mode: 'serial'
+    consumer: KafkaConsumer
+    stream: ReadableStream<Message>
+  }
+  | {
+    mode: 'batch'
+    consumer: KafkaConsumer
+    stream: ReadableStream<Message[]>
+  }
+
+function flattenBatchStream(batchStream: ReadableStream<Message[]>): ReadableStream<Message> {
+  const reader = batchStream.getReader()
+  let currentBatch: Message[] = []
+  let currentIndex = 0
+  let closed = false
+
+  return new ReadableStream<Message>({
+    async pull(controller) {
+      while (true) {
+        if (currentIndex < currentBatch.length) {
+          controller.enqueue(currentBatch[currentIndex] as Message)
+          currentIndex += 1
+          return
+        }
+
+        if (closed) {
+          controller.close()
+          return
+        }
+
+        const { value, done } = await reader.read()
+        if (done || !value) {
+          closed = true
+          controller.close()
+          return
+        }
+
+        if (value.length === 0) {
+          continue
+        }
+
+        currentBatch = value
+        currentIndex = 0
+      }
+    },
+    async cancel(reason) {
+      closed = true
+      currentBatch = []
+      currentIndex = 0
+      await reader.cancel(reason)
+    },
+  })
 }
 
 export interface KafkaClientConfiguration extends Omit<KafkaConfiguration, 'clientId'> {
@@ -137,6 +212,63 @@ export class KafkaClient {
     }
 
     return new KafkaStreamReadable({ kafkaConsumer: instrumentedConsumer, ...opts })
+  }
+
+  /**
+   * Creates a native WebStream consumer.
+   * @param {WebStreamConsumerConfiguration} streamConfiguration - Stream consumer configuration
+   * @returns {WebStreamConsumer} Native WebStream consumer and raw consumer pair
+   */
+  createWebStreamConsumer(streamConfiguration: WebStreamConsumerConfiguration): WebStreamConsumer {
+    const {
+      batchSize,
+      batchTimeout,
+      serialPrefetchSize,
+      serialPrefetchTimeout,
+      ...consumerConfiguration
+    } = streamConfiguration
+
+    const kafkaConsumer = this.kafkaClientConfig.createConsumer(consumerConfiguration)
+    const instrumentedConsumer = this._diagnosticsEnabled
+      ? this._instrumentConsumer(kafkaConsumer, consumerConfiguration.groupId)
+      : kafkaConsumer
+    const webStreamConsumer = instrumentedConsumer as KafkaConsumerWithWebStream
+
+    if (batchSize && batchSize > 1) {
+      const resolvedBatchTimeout = batchTimeout ?? DEFAULT_WEB_STREAM_BATCH_TIMEOUT
+      const stream = webStreamConsumer.recvBatchStream(batchSize, resolvedBatchTimeout)
+      const instrumentedStream = this._diagnosticsEnabled
+        ? instrumentBatchReadableStream(
+          stream,
+          consumerConfiguration.groupId,
+          batchSize,
+          resolvedBatchTimeout,
+          this._diagnosticsConfig,
+        )
+        : stream
+
+      return {
+        mode: 'batch',
+        consumer: instrumentedConsumer,
+        stream: instrumentedStream,
+      }
+    }
+
+    const resolvedPrefetchSize = serialPrefetchSize && serialPrefetchSize > 1
+      ? serialPrefetchSize
+      : DEFAULT_WEB_STREAM_SERIAL_PREFETCH_SIZE
+    const resolvedPrefetchTimeout = serialPrefetchTimeout ?? DEFAULT_WEB_STREAM_SERIAL_PREFETCH_TIMEOUT
+    const prefetchStream = webStreamConsumer.recvBatchStream(resolvedPrefetchSize, resolvedPrefetchTimeout)
+    const serialStream = flattenBatchStream(prefetchStream)
+    const instrumentedStream = this._diagnosticsEnabled
+      ? instrumentConsumerReadableStream(serialStream, consumerConfiguration.groupId, this._diagnosticsConfig)
+      : serialStream
+
+    return {
+      mode: 'serial',
+      consumer: instrumentedConsumer,
+      stream: instrumentedStream,
+    }
   }
 
   private _instrumentProducer(producer: KafkaProducer) {

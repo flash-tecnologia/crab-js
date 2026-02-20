@@ -7,12 +7,13 @@
   "dependencies": {
     "cronometro": "^6.0.0",
     "kafka-crab-js": "workspace:*",
+    "kafka-crab-js-v3": "npm:kafka-crab-js@3.1.0",
     "kafkajs": "^2.2.4",
     "nanoid": "^5.1.6",
     "node-rdkafka": "^3.6.1"
   },
   "scripts": {
     "setup:consumer": "tsx utils/setup.ts",
-    "benchmark": "tsx consumer.ts"
+    "benchmark": "node --expose-gc --import tsx consumer.ts"
   }
 }
