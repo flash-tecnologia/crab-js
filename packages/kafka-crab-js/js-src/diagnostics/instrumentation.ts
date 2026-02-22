@@ -406,11 +406,11 @@ export function instrumentBatchReceive(
 /**
  * Instruments a ReadableStream of single messages with consumer diagnostic events.
  */
-export function instrumentConsumerReadableStream(
-  originalStream: ReadableStream<Message>,
+export function instrumentConsumerReadableStream<StreamMessage extends Message>(
+  originalStream: ReadableStream<StreamMessage>,
   groupId?: string,
   config: DiagnosticInstrumentationConfig = {},
-): ReadableStream<Message> {
+): ReadableStream<StreamMessage> {
   const reader = originalStream.getReader()
   let done = false
 
@@ -430,9 +430,9 @@ export function instrumentConsumerReadableStream(
     },
     groupId,
     config,
-  ).bind({} as KafkaConsumer)
+  ).bind({} as KafkaConsumer) as () => Promise<StreamMessage | null>
 
-  return new ReadableStream<Message>({
+  return new ReadableStream<StreamMessage>({
     async pull(controller) {
       const message = await instrumentedReceive()
       if (!message) {
@@ -452,13 +452,13 @@ export function instrumentConsumerReadableStream(
 /**
  * Instruments a ReadableStream of message batches with batch diagnostic events.
  */
-export function instrumentBatchReadableStream(
-  originalStream: ReadableStream<Message[]>,
+export function instrumentBatchReadableStream<StreamBatch extends Message[]>(
+  originalStream: ReadableStream<StreamBatch>,
   groupId: string | undefined,
   size: number,
   timeoutMs: number,
   config: DiagnosticInstrumentationConfig = {},
-): ReadableStream<Message[]> {
+): ReadableStream<StreamBatch> {
   const reader = originalStream.getReader()
   let done = false
 
@@ -478,23 +478,18 @@ export function instrumentBatchReadableStream(
     },
     groupId,
     config,
-  ).bind({} as KafkaConsumer)
+  ).bind({} as KafkaConsumer) as (size: number, timeoutMs: number) => Promise<StreamBatch>
 
-  return new ReadableStream<Message[]>({
+  return new ReadableStream<StreamBatch>({
     async pull(controller) {
-      while (true) {
-        const messages = await instrumentedBatchReceive(size, timeoutMs)
-        if (done) {
-          controller.close()
-          return
-        }
-
-        if (messages.length === 0) {
-          continue
-        }
-
-        controller.enqueue(messages)
+      const messages = await instrumentedBatchReceive(size, timeoutMs)
+      if (done) {
+        controller.close()
         return
+      }
+
+      if (messages.length > 0) {
+        controller.enqueue(messages)
       }
     },
     async cancel(reason) {

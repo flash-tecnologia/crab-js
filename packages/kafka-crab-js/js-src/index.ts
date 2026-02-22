@@ -62,10 +62,10 @@ export {
   type ConsumerReceiveStartEvent,
   // Diagnostic instrumentation
   type DiagnosticInstrumentationConfig,
-  instrumentBatchReceive,
   instrumentBatchReadableStream,
-  instrumentConsumerReceive,
+  instrumentBatchReceive,
   instrumentConsumerReadableStream,
+  instrumentConsumerReceive,
   instrumentProducerSend,
   producerSendEndChannel,
   type ProducerSendEndEvent,

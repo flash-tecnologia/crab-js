@@ -2,12 +2,51 @@ import { printResults, type Result, Tracker } from 'cronometro'
 import { KafkaClient, type Message, type MessageProducer } from 'kafka-crab-js'
 import { KafkaClient as KafkaClientV3, type Message as V3Message } from 'kafka-crab-js-v3'
 import { Kafka as KafkaJS, logLevel } from 'kafkajs'
+import RDKafka from 'node-rdkafka'
 import assert from 'node:assert'
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { setTimeout as sleep } from 'node:timers/promises'
-import RDKafka from 'node-rdkafka'
 import { brokers, topic } from './utils/definitions.ts'
+
+type AssertYieldMode = 'none' | 'microtask' | 'sleep'
+
+function readPositiveInteger(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) {
+    return fallback
+  }
+
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback
+  }
+
+  return Math.floor(parsed)
+}
+
+function readNonNegativeInteger(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) {
+    return fallback
+  }
+
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback
+  }
+
+  return Math.floor(parsed)
+}
+
+function readAssertYieldMode(): AssertYieldMode {
+  const raw = (process.env.BENCHMARK_ASSERT_YIELD_MODE ?? 'none').trim().toLowerCase()
+  if (raw === 'none' || raw === 'microtask' || raw === 'sleep') {
+    return raw
+  }
+
+  return 'none'
+}
 
 const iterations = readPositiveInteger('BENCHMARK_ITERATIONS', 100_000)
 const warmupMessages = readNonNegativeInteger('BENCHMARK_WARMUP_MESSAGES', 10_000)
@@ -47,8 +86,6 @@ const scenarioPartitionKeys = Array.from(
   (_, partition) => Buffer.from(`partition-${partition}`),
 )
 
-type AssertYieldMode = 'none' | 'microtask' | 'sleep'
-
 interface MeasurementState {
   seen: number
   measured: number
@@ -67,43 +104,6 @@ class BenchmarkStopError extends Error {
     super('Benchmark reached requested iteration count')
     this.name = 'BenchmarkStopError'
   }
-}
-
-function readPositiveInteger(name: string, fallback: number): number {
-  const raw = process.env[name]
-  if (!raw) {
-    return fallback
-  }
-
-  const parsed = Number(raw)
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return fallback
-  }
-
-  return Math.floor(parsed)
-}
-
-function readNonNegativeInteger(name: string, fallback: number): number {
-  const raw = process.env[name]
-  if (!raw) {
-    return fallback
-  }
-
-  const parsed = Number(raw)
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return fallback
-  }
-
-  return Math.floor(parsed)
-}
-
-function readAssertYieldMode(): AssertYieldMode {
-  const raw = (process.env.BENCHMARK_ASSERT_YIELD_MODE ?? 'none').trim().toLowerCase()
-  if (raw === 'none' || raw === 'microtask' || raw === 'sleep') {
-    return raw
-  }
-
-  return 'none'
 }
 
 function toError(error: unknown): Error {
@@ -189,7 +189,7 @@ function selectMedianResult(results: Result[]): Result {
     throw new Error('No benchmark results available for median selection')
   }
 
-  const sorted = [...results].sort((left, right) => left.mean - right.mean)
+  const sorted = results.toSorted((left, right) => left.mean - right.mean)
   return sorted[Math.floor(sorted.length / 2)] as Result
 }
 
@@ -241,13 +241,13 @@ async function prepareScenarioTopic(name: string, run: number): Promise<string> 
 
     for (let start = 0; start < scenarioMessageCount; start += scenarioSetupBatchSize) {
       const end = Math.min(start + scenarioSetupBatchSize, scenarioMessageCount)
-      const messages = new Array<MessageProducer>(end - start)
-      for (let index = start; index < end; index += 1) {
-        messages[index - start] = {
+      const messages: MessageProducer[] = Array.from({ length: end - start }, (_, offset) => {
+        const index = start + offset
+        return {
           payload: buildScenarioMessagePayload(),
           key: scenarioPartitionKeys[index % scenarioPartitionKeys.length],
         }
-      }
+      })
 
       await setupProducer.send({
         topic: scenarioTopic,
@@ -264,13 +264,13 @@ async function prepareScenarioTopic(name: string, run: number): Promise<string> 
     try {
       consumer.unsubscribe()
     } catch {
-      // noop
+      // Noop
     }
 
     try {
       await consumer.disconnect()
     } catch {
-      // noop
+      // Noop
     }
   }
 }
@@ -336,7 +336,7 @@ async function destroyReadableStream(stream: {
     try {
       stream.pause()
     } catch {
-      // noop
+      // Noop
     }
   }
 
@@ -361,13 +361,13 @@ async function disconnectV3StreamConsumer(streamConsumer: {
   try {
     streamConsumer.unsubscribe()
   } catch {
-    // noop
+    // Noop
   }
 
   try {
     await streamConsumer.disconnect()
   } catch {
-    // noop
+    // Noop
   }
 }
 
@@ -427,6 +427,10 @@ async function kafkaCrabJsV3(scenarioTopic: string, useBatchMode = false): Promi
     resolve(tracker.results)
   }
 
+  const scheduleFinish = (error?: Error) => {
+    finish(error).catch(() => {})
+  }
+
   consumer.on('data', async ({ payload }: V3Message) => {
     if (completed) {
       return
@@ -448,17 +452,17 @@ async function kafkaCrabJsV3(scenarioTopic: string, useBatchMode = false): Promi
   })
 
   consumer.on('end', () => {
-    void finish()
+    scheduleFinish()
   })
 
   consumer.on('close', () => {
     if (!completed) {
-      void finish()
+      scheduleFinish()
     }
   })
 
   consumer.on('error', (error: Error) => {
-    void finish(error)
+    scheduleFinish(error)
   })
 
   return promise
@@ -471,13 +475,13 @@ async function disconnectV4Consumer(consumer: {
   try {
     consumer.unsubscribe()
   } catch {
-    // noop
+    // Noop
   }
 
   try {
     await consumer.disconnect()
   } catch {
-    // noop
+    // Noop
   }
 }
 
@@ -610,7 +614,9 @@ async function kafkaCrabJsV4(scenarioTopic: string, useBatchMode = false): Promi
       const minChunk = Number.isFinite(collectorStats.minChunk) ? collectorStats.minChunk : 0
       const avgChunk = collectorStats.chunks > 0 ? collectorStats.messages / collectorStats.chunks : 0
       console.log(
-        `[v4-batch-collector] chunks=${collectorStats.chunks} messages=${collectorStats.messages} min=${minChunk} avg=${avgChunk.toFixed(2)} max=${collectorStats.maxChunk}`,
+        `[v4-batch-collector] chunks=${collectorStats.chunks} messages=${collectorStats.messages} min=${minChunk} avg=${
+          avgChunk.toFixed(2)
+        } max=${collectorStats.maxChunk}`,
       )
     }
 
@@ -661,7 +667,7 @@ function rdkafkaEvented(scenarioTopic: string): Promise<Result> {
         { topic: scenarioTopic, partition: 2 },
       ])
     } catch {
-      // noop
+      // Noop
     }
 
     await new Promise<void>(resolveDisconnect => {
@@ -669,7 +675,7 @@ function rdkafkaEvented(scenarioTopic: string): Promise<Result> {
         try {
           consumer.disconnect()
         } catch {
-          // noop
+          // Noop
         }
         resolveDisconnect()
       }, 20)
@@ -686,6 +692,10 @@ function rdkafkaEvented(scenarioTopic: string): Promise<Result> {
     }
 
     resolve(tracker.results)
+  }
+
+  const scheduleFinish = (error?: Error) => {
+    finish(error).catch(() => {})
   }
 
   consumer.on('data', async (message: RDKafka.Message) => {
@@ -713,7 +723,7 @@ function rdkafkaEvented(scenarioTopic: string): Promise<Result> {
   })
 
   consumer.on('event.error', (error: unknown) => {
-    void finish(toError(error))
+    scheduleFinish(toError(error))
   })
 
   consumer.connect()
@@ -752,7 +762,7 @@ function rdkafkaStream(scenarioTopic: string): Promise<Result> {
     try {
       await destroyReadableStream(stream)
     } catch {
-      // noop
+      // Noop
     }
 
     if (error) {
@@ -766,6 +776,10 @@ function rdkafkaStream(scenarioTopic: string): Promise<Result> {
     }
 
     resolve(tracker.results)
+  }
+
+  const scheduleFinish = (error?: Error) => {
+    finish(error).catch(() => {})
   }
 
   stream.on('data', async (message: RDKafka.Message) => {
@@ -788,17 +802,17 @@ function rdkafkaStream(scenarioTopic: string): Promise<Result> {
   })
 
   stream.on('end', () => {
-    void finish()
+    scheduleFinish()
   })
 
   stream.on('close', () => {
     if (!completed) {
-      void finish()
+      scheduleFinish()
     }
   })
 
   stream.on('error', (error: unknown) => {
-    void finish(toError(error))
+    scheduleFinish(toError(error))
   })
 
   return promise
@@ -827,13 +841,13 @@ async function kafkajs(scenarioTopic: string): Promise<Result> {
     try {
       await consumer.stop()
     } catch {
-      // noop
+      // Noop
     }
 
     try {
       await consumer.disconnect()
     } catch {
-      // noop
+      // Noop
     }
 
     if (error) {
@@ -849,6 +863,10 @@ async function kafkajs(scenarioTopic: string): Promise<Result> {
     resolve(tracker.results)
   }
 
+  const scheduleFinish = (error?: Error) => {
+    finish(error).catch(() => {})
+  }
+
   consumer.on('consumer.crash', (event: unknown) => {
     if (completed) {
       return
@@ -859,7 +877,7 @@ async function kafkajs(scenarioTopic: string): Promise<Result> {
         ? (event as { payload?: { error?: unknown } }).payload?.error ?? event
         : event,
     )
-    void finish(crashError)
+    scheduleFinish(crashError)
   })
 
   try {
@@ -879,10 +897,10 @@ async function kafkajs(scenarioTopic: string): Promise<Result> {
 
           if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
             pause()
-            void finish()
+            scheduleFinish()
           }
         } catch (error) {
-          void finish(toError(error))
+          scheduleFinish(toError(error))
         }
       },
     })
@@ -898,7 +916,9 @@ console.log(`Benchmark brokers: ${brokers.join(',')}`)
 console.log(`Benchmark iterations: ${iterations}`)
 console.log(`Benchmark warmup messages: ${warmupMessages}`)
 console.log(`Benchmark runs per scenario: ${benchmarkRuns}`)
-console.log(`Benchmark assertion yield mode: ${assertYieldMode}${assertYieldMode === 'sleep' ? `(${assertSleepMs}ms)` : ''}`)
+console.log(
+  `Benchmark assertion yield mode: ${assertYieldMode}${assertYieldMode === 'sleep' ? `(${assertSleepMs}ms)` : ''}`,
+)
 console.log(`Benchmark force GC before run: ${benchmarkForceGcBeforeRun}`)
 console.log(
   `v4 stream tuning => serial prefetch ${v4SerialPrefetchSize}/${v4SerialPrefetchTimeoutMs}ms, batch ${v4BatchSize}/${v4BatchTimeoutMs}ms`,

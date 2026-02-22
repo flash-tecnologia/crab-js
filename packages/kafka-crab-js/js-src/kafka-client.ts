@@ -4,16 +4,16 @@ import {
   KafkaClientConfig,
   type KafkaConfiguration,
   type KafkaConsumer,
-  type Message,
   type KafkaProducer,
+  type Message,
   type ProducerConfiguration,
 } from '../js-binding.js'
 
 import {
-  instrumentBatchReceive,
   instrumentBatchReadableStream,
-  instrumentConsumerReceive,
+  instrumentBatchReceive,
   instrumentConsumerReadableStream,
+  instrumentConsumerReceive,
   instrumentProducerSend,
 } from './diagnostics/instrumentation.js'
 import { KafkaBatchStreamReadable } from './streams/kafka-batch-stream-readable.js'
@@ -53,6 +53,31 @@ export type WebStreamConsumer =
     stream: ReadableStream<Message[]>
   }
 
+type SerialBatchSize = 0 | 1 | undefined
+type NumericLiteral<BatchSizeValue extends number> = number extends BatchSizeValue ? never : BatchSizeValue
+type BatchLiteralSize<BatchSizeValue extends number> = BatchSizeValue extends 0 | 1 ? never
+  : NumericLiteral<BatchSizeValue>
+
+type SerialWebStreamConsumer = Extract<WebStreamConsumer, { mode: 'serial' }>
+type BatchWebStreamConsumer = Extract<WebStreamConsumer, { mode: 'batch' }>
+
+type SerialWebStreamConsumerConfiguration = Omit<WebStreamConsumerConfiguration, 'batchSize'> & {
+  batchSize?: SerialBatchSize
+}
+
+type BatchLiteralWebStreamConsumerConfiguration<BatchSizeValue extends number> =
+  & Omit<
+    WebStreamConsumerConfiguration,
+    'batchSize'
+  >
+  & {
+    batchSize: BatchLiteralSize<BatchSizeValue>
+  }
+
+type DynamicBatchWebStreamConsumerConfiguration = Omit<WebStreamConsumerConfiguration, 'batchSize'> & {
+  batchSize: number
+}
+
 function flattenBatchStream(batchStream: ReadableStream<Message[]>): ReadableStream<Message> {
   const reader = batchStream.getReader()
   let currentBatch: Message[] = []
@@ -61,29 +86,25 @@ function flattenBatchStream(batchStream: ReadableStream<Message[]>): ReadableStr
 
   return new ReadableStream<Message>({
     async pull(controller) {
-      while (true) {
-        if (currentIndex < currentBatch.length) {
-          controller.enqueue(currentBatch[currentIndex] as Message)
-          currentIndex += 1
-          return
-        }
+      if (currentIndex < currentBatch.length) {
+        controller.enqueue(currentBatch[currentIndex] as Message)
+        currentIndex += 1
+        return
+      }
 
-        if (closed) {
-          controller.close()
-          return
-        }
+      if (closed) {
+        controller.close()
+        return
+      }
 
-        const { value, done } = await reader.read()
-        if (done || !value) {
-          closed = true
-          controller.close()
-          return
-        }
+      const { value, done } = await reader.read()
+      if (done || !value) {
+        closed = true
+        controller.close()
+        return
+      }
 
-        if (value.length === 0) {
-          continue
-        }
-
+      if (value.length > 0) {
         currentBatch = value
         currentIndex = 0
       }
@@ -219,6 +240,13 @@ export class KafkaClient {
    * @param {WebStreamConsumerConfiguration} streamConfiguration - Stream consumer configuration
    * @returns {WebStreamConsumer} Native WebStream consumer and raw consumer pair
    */
+  createWebStreamConsumer(streamConfiguration: SerialWebStreamConsumerConfiguration): SerialWebStreamConsumer
+  createWebStreamConsumer<const BatchSizeValue extends number>(
+    streamConfiguration: BatchLiteralWebStreamConsumerConfiguration<BatchSizeValue>,
+  ): BatchWebStreamConsumer
+  createWebStreamConsumer(
+    streamConfiguration: DynamicBatchWebStreamConsumerConfiguration,
+  ): WebStreamConsumer
   createWebStreamConsumer(streamConfiguration: WebStreamConsumerConfiguration): WebStreamConsumer {
     const {
       batchSize,
@@ -291,3 +319,37 @@ export class KafkaClient {
     return consumer
   }
 }
+
+type Assert<Condition extends true> = Condition
+type IsEqual<LeftType, RightType> = [LeftType] extends [RightType] ? [RightType] extends [LeftType] ? true
+  : false
+  : false
+
+type _CreateWebStreamConsumer = KafkaClient['createWebStreamConsumer']
+
+type _AssertSerialConfigReturn = Assert<
+  _CreateWebStreamConsumer extends (
+    config: SerialWebStreamConsumerConfiguration,
+  ) => SerialWebStreamConsumer ? true
+    : false
+>
+
+type _AssertBatchLiteralConfigReturn = Assert<
+  _CreateWebStreamConsumer extends <BatchSizeValue extends number>(
+    config: BatchLiteralWebStreamConsumerConfiguration<BatchSizeValue>,
+  ) => BatchWebStreamConsumer ? true
+    : false
+>
+
+type _AssertDynamicBatchConfigReturn = Assert<
+  _CreateWebStreamConsumer extends (
+    config: DynamicBatchWebStreamConsumerConfiguration,
+  ) => WebStreamConsumer ? true
+    : false
+>
+
+type _AssertBatchLiteralFor1024 = Assert<IsEqual<BatchLiteralSize<1024>, 1024>>
+type _AssertBatchLiteralForNumber = Assert<IsEqual<BatchLiteralSize<number>, never>>
+
+// @ts-expect-error batch size literal 1 must not be considered a batch literal
+type _AssertBatchLiteralRejectsOne = Assert<IsEqual<BatchLiteralSize<1>, 1>>
