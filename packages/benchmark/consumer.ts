@@ -54,9 +54,11 @@ const benchmarkRuns = readPositiveInteger('BENCHMARK_RUNS', 7)
 const scenarioCooldownMs = readNonNegativeInteger('BENCHMARK_SCENARIO_COOLDOWN_MS', 25)
 const maxBytes = readPositiveInteger('BENCHMARK_MAX_BYTES', 200)
 const v4SerialPrefetchSize = readPositiveInteger('BENCHMARK_V4_SERIAL_PREFETCH_SIZE', 64)
-const v4SerialPrefetchTimeoutMs = readPositiveInteger('BENCHMARK_V4_SERIAL_PREFETCH_TIMEOUT_MS', 1)
-const v4BatchSize = readPositiveInteger('BENCHMARK_V4_BATCH_SIZE', 8192)
+const v4SerialPrefetchTimeoutMs = readPositiveInteger('BENCHMARK_V4_SERIAL_PREFETCH_TIMEOUT_MS', 5)
+const v4BatchSize = readPositiveInteger('BENCHMARK_V4_BATCH_SIZE', 3072)
 const v4BatchTimeoutMs = readPositiveInteger('BENCHMARK_V4_BATCH_TIMEOUT_MS', 2)
+const v4FetchMinBytes = readPositiveInteger('BENCHMARK_V4_FETCH_MIN_BYTES', 1)
+const v4FetchWaitMaxMs = readPositiveInteger('BENCHMARK_V4_FETCH_WAIT_MAX_MS', 1)
 const assertYieldMode = readAssertYieldMode()
 const assertSleepMs = readNonNegativeInteger('BENCHMARK_ASSERT_SLEEP_MS', 0)
 const isolatedTopics = process.env.BENCHMARK_ISOLATED_TOPICS !== '0'
@@ -391,9 +393,9 @@ async function kafkaCrabJsV3(scenarioTopic: string, useBatchMode = false): Promi
     configuration: {
       'auto.offset.reset': 'earliest',
       'enable.auto.commit': false,
-      'fetch.min.bytes': 1,
+      'fetch.min.bytes': v4FetchMinBytes,
       'fetch.message.max.bytes': maxBytes,
-      'fetch.wait.max.ms': 10,
+      'fetch.wait.max.ms': v4FetchWaitMaxMs,
     },
   })
 
@@ -485,7 +487,11 @@ async function disconnectV4Consumer(consumer: {
   }
 }
 
-async function kafkaCrabJsV4(scenarioTopic: string, useBatchMode = false): Promise<Result> {
+async function kafkaCrabJsV4(
+  scenarioTopic: string,
+  useBatchMode = false,
+  payloadOnlyBatch = useBatchMode,
+): Promise<Result> {
   const tracker = new Tracker()
   const measurement = createMeasurementState()
   const collectorStats: BatchCollectorStats | undefined = useBatchMode
@@ -513,12 +519,13 @@ async function kafkaCrabJsV4(scenarioTopic: string, useBatchMode = false): Promi
     batchTimeout: useBatchMode ? v4BatchTimeoutMs : v4SerialPrefetchTimeoutMs,
     serialPrefetchSize: v4SerialPrefetchSize,
     serialPrefetchTimeout: v4SerialPrefetchTimeoutMs,
+    payloadOnly: useBatchMode && payloadOnlyBatch,
     configuration: {
       'auto.offset.reset': 'earliest',
       'enable.auto.commit': false,
-      'fetch.min.bytes': 1,
+      'fetch.min.bytes': v4FetchMinBytes,
       'fetch.message.max.bytes': maxBytes,
-      'fetch.wait.max.ms': 10,
+      'fetch.wait.max.ms': v4FetchWaitMaxMs,
     },
   })
 
@@ -528,13 +535,17 @@ async function kafkaCrabJsV4(scenarioTopic: string, useBatchMode = false): Promi
 
   try {
     try {
-      if (assertYieldMode === 'none') {
-        await webConsumer.stream.pipeTo(
-          new WritableStream<Message | Message[]>({
-            write(value) {
-              if (Array.isArray(value)) {
+      if (useBatchMode) {
+        if (webConsumer.mode !== 'batch') {
+          throw new Error(`Expected batch web consumer mode, received ${webConsumer.mode}`)
+        }
+
+        if (assertYieldMode === 'none') {
+          await webConsumer.stream.pipeTo(
+            new WritableStream<Message[]>({
+              write(batch) {
                 if (collectorStats) {
-                  const batchLength = value.length
+                  const batchLength = batch.length
                   collectorStats.chunks += 1
                   collectorStats.messages += batchLength
                   if (batchLength < collectorStats.minChunk) {
@@ -545,30 +556,24 @@ async function kafkaCrabJsV4(scenarioTopic: string, useBatchMode = false): Promi
                   }
                 }
 
-                for (const message of value) {
+                let index = 0
+                while (index < batch.length) {
+                  const message = batch[index] as Message
                   assertPayloadSync(message.payload)
-
                   if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
                     throw stopError
                   }
+                  index += 1
                 }
-                return
-              }
-
-              assertPayloadSync(value.payload)
-              if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
-                throw stopError
-              }
-            },
-          }),
-        )
-      } else {
-        await webConsumer.stream.pipeTo(
-          new WritableStream<Message | Message[]>({
-            async write(value) {
-              if (Array.isArray(value)) {
+              },
+            }),
+          )
+        } else {
+          await webConsumer.stream.pipeTo(
+            new WritableStream<Message[]>({
+              async write(batch) {
                 if (collectorStats) {
-                  const batchLength = value.length
+                  const batchLength = batch.length
                   collectorStats.chunks += 1
                   collectorStats.messages += batchLength
                   if (batchLength < collectorStats.minChunk) {
@@ -579,7 +584,9 @@ async function kafkaCrabJsV4(scenarioTopic: string, useBatchMode = false): Promi
                   }
                 }
 
-                for (const message of value) {
+                let index = 0
+                while (index < batch.length) {
+                  const message = batch[index] as Message
                   const assertion = assertPayload(message.payload)
                   if (assertion) {
                     await assertion
@@ -588,21 +595,44 @@ async function kafkaCrabJsV4(scenarioTopic: string, useBatchMode = false): Promi
                   if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
                     throw stopError
                   }
+                  index += 1
                 }
-                return
-              }
+              },
+            }),
+          )
+        }
+      } else {
+        if (webConsumer.mode !== 'serial') {
+          throw new Error(`Expected serial web consumer mode, received ${webConsumer.mode}`)
+        }
 
-              const assertion = assertPayload(value.payload)
-              if (assertion) {
-                await assertion
-              }
+        if (assertYieldMode === 'none') {
+          await webConsumer.stream.pipeTo(
+            new WritableStream<Message>({
+              write(message) {
+                assertPayloadSync(message.payload)
+                if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
+                  throw stopError
+                }
+              },
+            }),
+          )
+        } else {
+          await webConsumer.stream.pipeTo(
+            new WritableStream<Message>({
+              async write(message) {
+                const assertion = assertPayload(message.payload)
+                if (assertion) {
+                  await assertion
+                }
 
-              if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
-                throw stopError
-              }
-            },
-          }),
-        )
+                if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
+                  throw stopError
+                }
+              },
+            }),
+          )
+        }
       }
     } catch (error) {
       if (!(error instanceof BenchmarkStopError)) {
@@ -923,6 +953,9 @@ console.log(`Benchmark force GC before run: ${benchmarkForceGcBeforeRun}`)
 console.log(
   `v4 stream tuning => serial prefetch ${v4SerialPrefetchSize}/${v4SerialPrefetchTimeoutMs}ms, batch ${v4BatchSize}/${v4BatchTimeoutMs}ms`,
 )
+console.log(
+  `v4 fetch tuning => min.bytes ${v4FetchMinBytes}, wait.max.ms ${v4FetchWaitMaxMs}`,
+)
 
 const benchmarkOnly = new Set(
   (process.env.BENCHMARK_ONLY ?? '')
@@ -939,6 +972,7 @@ const scenariosToRun = [
   'rdkafka-evented',
   'v3-batch',
   'v4-batch',
+  'v4-batch-metadata',
   'kafkajs',
 ].filter(shouldRun)
 
@@ -947,7 +981,7 @@ function scenarioDatasetKey(scenario: string): string {
     return 'serial-shared'
   }
 
-  if (scenario === 'v3-batch' || scenario === 'v4-batch') {
+  if (scenario === 'v3-batch' || scenario === 'v4-batch' || scenario === 'v4-batch-metadata') {
     return 'batch-shared'
   }
 
@@ -1006,10 +1040,17 @@ if (shouldRun('v3-batch')) {
   )
 }
 if (shouldRun('v4-batch')) {
-  results['kafka-crab-js v4 (stream, batch)'] = await runScenario(
+  results['kafka-crab-js v4 (stream, batch, payload-only)'] = await runScenario(
     'v4-batch',
     scenarioTopicsByName.get('v4-batch') ?? [topic],
-    scenarioTopic => kafkaCrabJsV4(scenarioTopic, true),
+    scenarioTopic => kafkaCrabJsV4(scenarioTopic, true, true),
+  )
+}
+if (shouldRun('v4-batch-metadata')) {
+  results['kafka-crab-js v4 (stream, batch, payload-and-metadata)'] = await runScenario(
+    'v4-batch-metadata',
+    scenarioTopicsByName.get('v4-batch-metadata') ?? [topic],
+    scenarioTopic => kafkaCrabJsV4(scenarioTopic, true, false),
   )
 }
 if (shouldRun('kafkajs')) {

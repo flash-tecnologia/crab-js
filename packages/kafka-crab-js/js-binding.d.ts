@@ -103,6 +103,11 @@ export declare class KafkaConsumer {
   /** Receives batches of messages as a native Web `ReadableStream`. */
   recvBatchStream(size: number, timeoutMs: number): ReadableStream<Array<Message>>
   /**
+   * Receives payload-only batches as a native Web `ReadableStream`.
+   * Message metadata fields are omitted to maximize transfer throughput.
+   */
+  recvBatchStreamPayload(size: number, timeoutMs: number): ReadableStream<Array<Message>>
+  /**
    * Commits an offset for a specific topic partition.
    * This marks the offset as processed, so the consumer will not receive
    * messages before this offset after a restart.

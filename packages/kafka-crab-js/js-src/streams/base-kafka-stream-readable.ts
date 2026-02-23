@@ -94,33 +94,62 @@ export abstract class BaseKafkaStreamReadable extends Readable {
   }
 
   /**
+   * Hook for subclasses to cancel external stream readers before consumer teardown.
+   */
+  protected cancelSourceReader(_reason: unknown): Promise<void> {
+    if (!this._kafkaConsumer) {
+      return Promise.resolve()
+    }
+
+    return Promise.resolve()
+  }
+
+  /**
    * Called when the stream is being destroyed
    * Ensures proper cleanup of the Kafka consumer
    * @private
    */
   _destroy(error: Error | null, callback: (error?: Error | null) => void): void {
-    // Always unsubscribe first to stop receiving messages
-    try {
-      this.kafkaConsumer.unsubscribe()
-    } catch {
-      // Silently ignore unsubscribe errors during cleanup - they're non-critical
-      // Common when consumer is already disconnected or in invalid state
+    const finalizeDestroy = (sourceCancelError?: Error) => {
+      // Always unsubscribe first to stop receiving messages
+      try {
+        this.kafkaConsumer.unsubscribe()
+      } catch {
+        // Silently ignore unsubscribe errors during cleanup - they're non-critical
+        // Common when consumer is already disconnected or in invalid state
+      }
+
+      const baseError = error ?? sourceCancelError ?? null
+
+      // Disconnect the consumer
+      this.kafkaConsumer
+        .disconnect()
+        .then(() => {
+          // Success: pass through the original error (if any)
+          callback(baseError)
+        })
+        // eslint-disable-next-line unicorn/catch-error-name
+        .catch((disconnectError) => {
+          // Failed to disconnect: combine errors
+          if (baseError) {
+            callback(new Error(`Stream error: ${baseError.message}; Disconnect error: ${disconnectError.message}`))
+            return
+          }
+
+          callback(disconnectError)
+        })
     }
 
-    // Disconnect the consumer
-    this.kafkaConsumer
-      .disconnect()
+    this.cancelSourceReader(error)
       .then(() => {
-        // Success: pass through the original error (if any)
-        callback(error)
+        finalizeDestroy()
       })
       // eslint-disable-next-line unicorn/catch-error-name
-      .catch((disconnectError) => {
-        // Failed to disconnect: combine errors
-        const combinedError = error
-          ? new Error(`Stream error: ${error.message}; Disconnect error: ${disconnectError.message}`)
-          : disconnectError
-        callback(combinedError)
+      .catch((sourceCancelError) => {
+        const normalizedError = sourceCancelError instanceof Error
+          ? sourceCancelError
+          : new Error(String(sourceCancelError))
+        finalizeDestroy(normalizedError)
       })
   }
 

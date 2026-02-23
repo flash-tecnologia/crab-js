@@ -28,30 +28,58 @@ pub fn hashmap_to_kafka_headers(map: &HashMap<String, Buffer>) -> OwnedHeaders {
   })
 }
 
-pub fn kafka_headers_to_hashmap_buffer(
-  headers: Option<&BorrowedHeaders>,
-) -> HashMap<String, Buffer> {
-  match headers {
-    Some(value) => value
-      .iter()
-      .filter_map(|it| it.value.map(|v| (it.key.to_owned(), v.into())))
-      .collect::<HashMap<String, Buffer>>(),
-    _ => HashMap::new(),
+#[inline]
+fn borrowed_headers_to_hashmap_buffer(
+  headers: &BorrowedHeaders,
+) -> Option<HashMap<String, Buffer>> {
+  let header_count = headers.count();
+  if header_count == 0 {
+    return None;
+  }
+
+  let mut map = HashMap::with_capacity(header_count);
+  for index in 0..header_count {
+    let header = headers.get(index);
+    if let Some(value) = header.value {
+      map.insert(header.key.to_owned(), value.into());
+    }
+  }
+
+  if map.is_empty() {
+    None
+  } else {
+    Some(map)
   }
 }
 
+#[inline]
 pub fn create_message(message: &BorrowedMessage<'_>, payload: &[u8]) -> Message {
-  let key: Option<Buffer> = message.key().map(|bytes| bytes.into());
-  let headers = Some(kafka_headers_to_hashmap_buffer(message.headers()));
-  let payload_js = Message::new(
+  let topic = message.topic().to_owned();
+  let partition = message.partition();
+  let offset = message.offset();
+  let key_bytes = message.key();
+  let borrowed_headers = message.headers();
+
+  if key_bytes.is_none() && borrowed_headers.is_none() {
+    return Message::new(payload.into(), None, None, topic, partition, offset);
+  }
+
+  let key = key_bytes.map(|bytes| bytes.into());
+  let headers = borrowed_headers.and_then(borrowed_headers_to_hashmap_buffer);
+
+  Message::new(
     payload.into(),
     key,
     headers,
-    message.topic().to_owned(),
-    message.partition(),
-    message.offset(),
-  );
-  payload_js
+    topic,
+    partition,
+    offset,
+  )
+}
+
+#[inline]
+pub fn create_message_without_metadata(payload: &[u8]) -> Message {
+  Message::new(payload.into(), None, None, String::new(), 0, 0)
 }
 
 pub fn convert_config_values_to_strings(

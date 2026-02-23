@@ -14,6 +14,8 @@
   },
   "scripts": {
     "setup:consumer": "tsx utils/setup.ts",
-    "benchmark": "node --expose-gc --import tsx consumer.ts"
+    "benchmark": "node --expose-gc --import tsx consumer.ts",
+    "benchmark:batch-only": "BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=5 node --expose-gc --import tsx consumer.ts",
+    "benchmark:batch-only:quick": "BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts"
   }
 }

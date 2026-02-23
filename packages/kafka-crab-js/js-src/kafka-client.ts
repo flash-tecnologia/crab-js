@@ -22,10 +22,13 @@ import { KafkaStreamReadable } from './streams/kafka-stream-readable.js'
 const DEFAULT_WEB_STREAM_BATCH_TIMEOUT = 1000
 const DEFAULT_WEB_STREAM_SERIAL_PREFETCH_SIZE = 64
 const DEFAULT_WEB_STREAM_SERIAL_PREFETCH_TIMEOUT = 1
+const LEGACY_STREAM_SERIAL_COLLECTOR_SIZE = 1
+const LEGACY_STREAM_SERIAL_COLLECTOR_TIMEOUT = 1000
 
 type KafkaConsumerWithWebStream = KafkaConsumer & {
   recvStream(): ReadableStream<Message>
   recvBatchStream(size: number, timeoutMs: number): ReadableStream<Message[]>
+  recvBatchStreamPayload(size: number, timeoutMs: number): ReadableStream<Message[]>
 }
 
 export interface StreamConsumerConfiguration extends ConsumerConfiguration {
@@ -39,6 +42,7 @@ export interface WebStreamConsumerConfiguration extends ConsumerConfiguration {
   batchTimeout?: number // Default 1000ms
   serialPrefetchSize?: number // Default 64, only used in serial mode
   serialPrefetchTimeout?: number // Default 1ms, only used in serial mode
+  payloadOnly?: boolean // Default false. Omits message metadata fields for maximum transfer throughput.
 }
 
 export type WebStreamConsumer =
@@ -225,14 +229,45 @@ export class KafkaClient {
     const instrumentedConsumer = this._diagnosticsEnabled
       ? this._instrumentConsumer(kafkaConsumer, consumerConfiguration.groupId)
       : kafkaConsumer
+    const webStreamConsumer = instrumentedConsumer as KafkaConsumerWithWebStream
     const opts = streamOptions ?? { objectMode: true }
 
-    // Return appropriate class based on batch configuration
     if (batchSize && batchSize > 1) {
-      return new KafkaBatchStreamReadable({ kafkaConsumer: instrumentedConsumer, batchSize, batchTimeout, ...opts })
+      const resolvedBatchTimeout = batchTimeout ?? DEFAULT_WEB_STREAM_BATCH_TIMEOUT
+      const batchStream = webStreamConsumer.recvBatchStream(batchSize, resolvedBatchTimeout)
+      const instrumentedBatchStream = this._diagnosticsEnabled
+        ? instrumentBatchReadableStream(
+          batchStream,
+          consumerConfiguration.groupId,
+          batchSize,
+          resolvedBatchTimeout,
+          this._diagnosticsConfig,
+        )
+        : batchStream
+
+      return new KafkaBatchStreamReadable({
+        kafkaConsumer: instrumentedConsumer,
+        batchSize,
+        batchTimeout: resolvedBatchTimeout,
+        sourceStream: instrumentedBatchStream,
+        ...opts,
+      })
     }
 
-    return new KafkaStreamReadable({ kafkaConsumer: instrumentedConsumer, ...opts })
+    const serialBatchStream = webStreamConsumer.recvBatchStream(
+      LEGACY_STREAM_SERIAL_COLLECTOR_SIZE,
+      LEGACY_STREAM_SERIAL_COLLECTOR_TIMEOUT,
+    )
+    const serialStream = flattenBatchStream(serialBatchStream)
+    const instrumentedSerialStream = this._diagnosticsEnabled
+      ? instrumentConsumerReadableStream(serialStream, consumerConfiguration.groupId, this._diagnosticsConfig)
+      : serialStream
+
+    return new KafkaStreamReadable({
+      kafkaConsumer: instrumentedConsumer,
+      sourceStream: instrumentedSerialStream,
+      ...opts,
+    })
   }
 
   /**
@@ -253,6 +288,7 @@ export class KafkaClient {
       batchTimeout,
       serialPrefetchSize,
       serialPrefetchTimeout,
+      payloadOnly,
       ...consumerConfiguration
     } = streamConfiguration
 
@@ -264,7 +300,9 @@ export class KafkaClient {
 
     if (batchSize && batchSize > 1) {
       const resolvedBatchTimeout = batchTimeout ?? DEFAULT_WEB_STREAM_BATCH_TIMEOUT
-      const stream = webStreamConsumer.recvBatchStream(batchSize, resolvedBatchTimeout)
+      const stream = payloadOnly
+        ? webStreamConsumer.recvBatchStreamPayload(batchSize, resolvedBatchTimeout)
+        : webStreamConsumer.recvBatchStream(batchSize, resolvedBatchTimeout)
       const instrumentedStream = this._diagnosticsEnabled
         ? instrumentBatchReadableStream(
           stream,
@@ -286,7 +324,9 @@ export class KafkaClient {
       ? serialPrefetchSize
       : DEFAULT_WEB_STREAM_SERIAL_PREFETCH_SIZE
     const resolvedPrefetchTimeout = serialPrefetchTimeout ?? DEFAULT_WEB_STREAM_SERIAL_PREFETCH_TIMEOUT
-    const prefetchStream = webStreamConsumer.recvBatchStream(resolvedPrefetchSize, resolvedPrefetchTimeout)
+    const prefetchStream = payloadOnly
+      ? webStreamConsumer.recvBatchStreamPayload(resolvedPrefetchSize, resolvedPrefetchTimeout)
+      : webStreamConsumer.recvBatchStream(resolvedPrefetchSize, resolvedPrefetchTimeout)
     const serialStream = flattenBatchStream(prefetchStream)
     const instrumentedStream = this._diagnosticsEnabled
       ? instrumentConsumerReadableStream(serialStream, consumerConfiguration.groupId, this._diagnosticsConfig)
