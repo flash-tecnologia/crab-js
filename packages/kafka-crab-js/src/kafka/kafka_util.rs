@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+  collections::{hash_map::RandomState, HashMap},
+  sync::OnceLock,
+};
 
 use napi::{bindgen_prelude::Buffer, Error, Status};
 use rdkafka::{
@@ -29,6 +32,12 @@ pub fn hashmap_to_kafka_headers(map: &HashMap<String, Buffer>) -> OwnedHeaders {
 }
 
 #[inline]
+fn header_hash_builder() -> RandomState {
+  static HEADER_HASH_BUILDER: OnceLock<RandomState> = OnceLock::new();
+  HEADER_HASH_BUILDER.get_or_init(RandomState::new).clone()
+}
+
+#[inline]
 fn borrowed_headers_to_hashmap_buffer(
   headers: &BorrowedHeaders,
 ) -> Option<HashMap<String, Buffer>> {
@@ -37,19 +46,18 @@ fn borrowed_headers_to_hashmap_buffer(
     return None;
   }
 
-  let mut map = HashMap::with_capacity(header_count);
+  let mut map: Option<HashMap<String, Buffer>> = None;
   for index in 0..header_count {
     let header = headers.get(index);
     if let Some(value) = header.value {
-      map.insert(header.key.to_owned(), value.into());
+      let header_map = map.get_or_insert_with(|| {
+        HashMap::with_capacity_and_hasher(header_count, header_hash_builder())
+      });
+      header_map.insert(header.key.to_owned(), value.into());
     }
   }
 
-  if map.is_empty() {
-    None
-  } else {
-    Some(map)
-  }
+  map
 }
 
 #[inline]
@@ -57,24 +65,26 @@ pub fn create_message(message: &BorrowedMessage<'_>, payload: &[u8]) -> Message 
   let topic = message.topic().to_owned();
   let partition = message.partition();
   let offset = message.offset();
-  let key_bytes = message.key();
-  let borrowed_headers = message.headers();
-
-  if key_bytes.is_none() && borrowed_headers.is_none() {
-    return Message::new(payload.into(), None, None, topic, partition, offset);
+  match (message.key(), message.headers()) {
+    (None, None) => Message::new(payload.into(), None, None, topic, partition, offset),
+    (Some(key), None) => Message::new(payload.into(), Some(key.into()), None, topic, partition, offset),
+    (None, Some(headers)) => Message::new(
+      payload.into(),
+      None,
+      borrowed_headers_to_hashmap_buffer(headers),
+      topic,
+      partition,
+      offset,
+    ),
+    (Some(key), Some(headers)) => Message::new(
+      payload.into(),
+      Some(key.into()),
+      borrowed_headers_to_hashmap_buffer(headers),
+      topic,
+      partition,
+      offset,
+    ),
   }
-
-  let key = key_bytes.map(|bytes| bytes.into());
-  let headers = borrowed_headers.and_then(borrowed_headers_to_hashmap_buffer);
-
-  Message::new(
-    payload.into(),
-    key,
-    headers,
-    topic,
-    partition,
-    offset,
-  )
 }
 
 #[inline]
