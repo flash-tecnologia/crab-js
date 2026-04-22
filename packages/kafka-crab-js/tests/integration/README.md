@@ -2,7 +2,7 @@
 
 This directory contains comprehensive integration tests for the kafka-crab-js library, testing all major components: Producer, Consumer, Consumer Stream, and Consumer Stream Batch Mode.
 
-**Location**: `__test__/integration/` - Following standard test organization patterns.
+**Location**: `tests/integration/` - Following standard test organization patterns.
 
 ## Test Structure
 
@@ -19,30 +19,26 @@ This directory contains comprehensive integration tests for the kafka-crab-js li
 1. **Container Runtime** - Either:
    - Docker and Docker Compose, OR
    - Podman and podman-compose
-2. **Built Library** - Run `pnpm build` from the root directory first
+2. **Built Library** - Run `vp run build` from the root directory first
 
 ## Running Tests
 
 ### 1. Automated Test Runner (Recommended)
 
-**From project root:**
+**From this directory:**
+
 ```bash
-pnpm test:integration
+vp run test
 ```
 
-**From this directory:**
+You can still use the shell wrapper directly if you prefer:
+
 ```bash
-cd __test__/integration
 ./run-tests.sh
 ```
 
-Or using npm:
-```bash
-cd __test__/integration
-npm test
-```
-
 The automated script will:
+
 - Check if the library is built (builds if needed)
 - Start Kafka infrastructure automatically
 - Wait for services to be ready
@@ -55,15 +51,13 @@ The automated script will:
 If you prefer manual control:
 
 **Start Kafka Infrastructure:**
+
 ```bash
-cd __test__/integration
-# Docker Compose
-docker-compose up -d
-# OR Podman Compose  
-podman-compose up -d
+vp run kafka:up
 ```
 
 **Wait for services to be healthy:**
+
 ```bash
 docker-compose ps
 # OR
@@ -71,30 +65,26 @@ podman-compose ps
 ```
 
 **Run Individual Test Suites:**
+
 ```bash
-node producer.test.mjs
-node consumer.test.mjs
-node consumer-stream.test.mjs
-node consumer-stream-batch.test.mjs
-node batch-size-limits.test.mjs
+vp run test:producer
+vp run test:consumer
+vp run test:stream
+vp run test:batch
 ```
 
 **Run All Tests Manually:**
+
 ```bash
-for test in *.test.mjs; do
-  echo "Running $test..."
-  node "$test"
-done
+vp run test:manual
 ```
 
 ### 4. Optional: Access Kafka UI
 
 Start with UI profile to access the web interface:
+
 ```bash
-# Docker
-docker-compose --profile ui up -d
-# OR Podman
-podman-compose --profile ui up -d
+vp run kafka:ui
 ```
 
 Visit http://localhost:8080 to inspect topics and messages.
@@ -107,13 +97,15 @@ Tests use environment variables for configuration:
 - `KAFKA_LOG_LEVEL` - Log level (default: `info`)
 
 Example:
+
 ```bash
-KAFKA_BROKERS=localhost:9092 KAFKA_LOG_LEVEL=debug node __test__/integration/producer.test.mjs
+KAFKA_BROKERS=localhost:9092 KAFKA_LOG_LEVEL=debug vp run test:producer
 ```
 
 ## Test Coverage
 
 ### Producer Tests (`producer.test.mjs`)
+
 - ✅ Single message sending
 - ✅ Batch message sending
 - ✅ Complex headers handling
@@ -123,6 +115,7 @@ KAFKA_BROKERS=localhost:9092 KAFKA_LOG_LEVEL=debug node __test__/integration/pro
 - ✅ Empty payload handling
 
 ### Consumer Tests (`consumer.test.mjs`)
+
 - ✅ Basic message receiving
 - ✅ Batch message receiving
 - ✅ Multiple topic subscription
@@ -132,6 +125,7 @@ KAFKA_BROKERS=localhost:9092 KAFKA_LOG_LEVEL=debug node __test__/integration/pro
 - ✅ Message headers processing
 
 ### Consumer Stream Tests (`consumer-stream.test.mjs`)
+
 - ✅ Stream data event handling
 - ✅ Error handling
 - ✅ Multiple topics processing
@@ -142,6 +136,7 @@ KAFKA_BROKERS=localhost:9092 KAFKA_LOG_LEVEL=debug node __test__/integration/pro
 - ✅ Large message batch handling
 
 ### Consumer Stream Batch Tests (`consumer-stream-batch.test.mjs`)
+
 - ✅ Basic batch mode functionality
 - ✅ Default batch configuration
 - ✅ Timeout validation
@@ -152,6 +147,7 @@ KAFKA_BROKERS=localhost:9092 KAFKA_LOG_LEVEL=debug node __test__/integration/pro
 - ✅ Batch timeout behavior
 
 ### Batch Size Limits Tests (`batch-size-limits.test.mjs`)
+
 - ✅ Maximum batch size validation (limit: 10 messages)
 - ✅ Boundary condition testing (0, 1, 10, 25, 1000)
 - ✅ Performance comparison across batch sizes
@@ -163,6 +159,7 @@ KAFKA_BROKERS=localhost:9092 KAFKA_LOG_LEVEL=debug node __test__/integration/pro
 ## Test Utilities (`utils.mjs`)
 
 The utilities provide:
+
 - Test environment setup
 - Message creation helpers
 - Consumer/Producer configuration builders
@@ -173,26 +170,27 @@ The utilities provide:
 ## Cleanup
 
 Stop and remove containers:
+
 ```bash
-# Docker
-docker-compose down -v
-# OR Podman
-podman-compose down -v
+vp run kafka:down
 ```
 
 ## Troubleshooting
 
 ### Tests Timeout
+
 - Ensure Kafka is fully started (check `docker-compose ps` or `podman-compose ps`)
 - Increase timeout values in test configuration
 - Check container logs: `docker-compose logs kafka` or `podman-compose logs kafka`
 
 ### Connection Errors
+
 - Verify KAFKA_BROKERS environment variable
 - Ensure no firewall blocking port 9092
 - Check if port is already in use
 
 ### Test Isolation Issues
+
 - Each test uses unique topic names with nanoid
 - Tests filter messages by testId to avoid cross-test interference
 - If issues persist, restart Kafka: `docker-compose restart kafka` or `podman-compose restart kafka`

@@ -2,19 +2,17 @@
   "name": "kafka-crab-monorepo",
   "private": true,
   "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
-  "packageManager": "pnpm@10.30.1",
   "scripts": {
-    "build": "pnpm -r build",
-    "build:core": "pnpm --filter kafka-crab-js build",
-    "build:otel": "pnpm --filter kafka-crab-js-otel build",
-    "test": "pnpm -r test",
-    "test:unit": "pnpm --filter kafka-crab-js test",
-    "typecheck": "pnpm -r typecheck",
-    "fmt": "dprint fmt",
-    "lint": "oxlint .",
+    "build": "vp run -r build",
+    "build:core": "vp run --filter kafka-crab-js build",
+    "build:otel": "vp run --filter kafka-crab-js-otel build",
+    "test": "vp run -r test",
+    "test:integration": "vp run --filter kafka-crab-js test:integration",
+    "test:unit": "vp run --filter kafka-crab-js test",
+    "typecheck": "vp run -r typecheck",
+    "check": "vp check",
+    "fmt": "vp fmt",
+    "lint": "vp lint",
     "trace:batch-example": "pnpm tsx example/otel-batch-trace.ts"
   },
   "devDependencies": {
@@ -29,15 +27,17 @@
     "@opentelemetry/sdk-trace-base": "catalog:",
     "@opentelemetry/sdk-trace-node": "catalog:",
     "@opentelemetry/semantic-conventions": "catalog:",
-    "@types/node": "25.3.0",
-    "dprint": "^0.51.1",
-    "esbuild": "^0.27.3",
+    "@types/node": "25.6.0",
     "kafka-crab-js": "workspace:*",
     "kafka-crab-js-otel": "workspace:*",
-    "nanoid": "^5.1.6",
-    "oxlint": "^1.49.0",
+    "nanoid": "catalog:",
     "rimraf": "^6.1.3",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
-  }
+    "typescript": "^6.0.3",
+    "vite-plus": "0.1.19"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@10.33.0"
 }

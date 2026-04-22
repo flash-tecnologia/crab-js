@@ -120,9 +120,8 @@ export class OtelAdapter {
   }
 
   updateConfig(config: OtelAdapterConfig): void {
-    const mergedMetrics = config.metrics && typeof config.metrics === 'object'
-      ? { ...this._config.metrics, ...config.metrics }
-      : undefined
+    const mergedMetrics =
+      config.metrics && typeof config.metrics === 'object' ? { ...this._config.metrics, ...config.metrics } : undefined
 
     this._config = {
       ...this._config,
@@ -317,10 +316,7 @@ export class OtelAdapter {
         if (event.metadata?.length) {
           const [meta] = event.metadata
           if (meta?.partition !== undefined) {
-            span.setAttribute(
-              KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID,
-              String(meta.partition),
-            )
+            span.setAttribute(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID, String(meta.partition))
           }
           if (meta?.offset !== undefined) {
             span.setAttribute(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET, meta.offset)
@@ -401,9 +397,7 @@ export class OtelAdapter {
             ...(event.clientId ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID]: event.clientId } : {}),
             ...(event.serverAddress ? { [KAFKA_SEMANTIC_CONVENTIONS.SERVER_ADDRESS]: event.serverAddress } : {}),
             ...(event.serverPort !== undefined ? { [KAFKA_SEMANTIC_CONVENTIONS.SERVER_PORT]: event.serverPort } : {}),
-            ...(event.groupId
-              ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: event.groupId }
-              : {}),
+            ...(event.groupId ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: event.groupId } : {}),
           }
 
           if (event.message && !ignoredTopic) {
@@ -571,7 +565,7 @@ export class OtelAdapter {
 
     const receiveEndHandler = (event: BatchReceiveEndEvent) => {
       try {
-        const instrumentedMessages = event.messages.filter(message => !this._shouldIgnoreTopic(message.topic))
+        const instrumentedMessages = event.messages.filter((message) => !this._shouldIgnoreTopic(message.topic))
 
         if (instrumentedMessages.length === 0 && !event.error) {
           return
@@ -588,9 +582,7 @@ export class OtelAdapter {
             ...(event.clientId ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CLIENT_ID]: event.clientId } : {}),
             ...(event.serverAddress ? { [KAFKA_SEMANTIC_CONVENTIONS.SERVER_ADDRESS]: event.serverAddress } : {}),
             ...(event.serverPort !== undefined ? { [KAFKA_SEMANTIC_CONVENTIONS.SERVER_PORT]: event.serverPort } : {}),
-            ...(event.groupId
-              ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: event.groupId }
-              : {}),
+            ...(event.groupId ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: event.groupId } : {}),
           }
 
           if (first) {
@@ -645,17 +637,16 @@ export class OtelAdapter {
 
     const processStartHandler = (event: BatchProcessStartEvent) => {
       try {
-        const instrumentedMessages = event.messages.filter(message => !this._shouldIgnoreTopic(message.topic))
+        const instrumentedMessages = event.messages.filter((message) => !this._shouldIgnoreTopic(message.topic))
         if (instrumentedMessages.length === 0) {
           return
         }
 
         const [first] = instrumentedMessages
         const headerCarrier = (event.context as { parentHeaders?: Record<string, unknown> }).parentHeaders
-        const parentContext = extractTraceContext((headerCarrier || first.headers || {}) as Record<
-          string,
-          Buffer | string | string[] | undefined
-        >)
+        const parentContext = extractTraceContext(
+          (headerCarrier || first.headers || {}) as Record<string, Buffer | string | string[] | undefined>,
+        )
         // Re-inject parent context into messages to help stream/batch consumers stay on the producer trace
         for (const message of instrumentedMessages) {
           const headers = message.headers ?? {}
@@ -699,9 +690,7 @@ export class OtelAdapter {
             if (messageSpan) {
               messageSpan.setAttributes({
                 [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT]: instrumentedMessages.length,
-                ...(event.groupId
-                  ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: event.groupId }
-                  : {}),
+                ...(event.groupId ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: event.groupId } : {}),
               })
 
               if (this._config.captureMessageHeaders) {

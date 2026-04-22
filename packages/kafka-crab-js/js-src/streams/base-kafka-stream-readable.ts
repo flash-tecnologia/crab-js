@@ -16,9 +16,7 @@ export abstract class BaseKafkaStreamReadable extends Readable {
   /**
    * Creates a BaseKafkaStreamReadable instance
    */
-  constructor(
-    streamOptions: KafkaStreamReadableOptions,
-  ) {
+  constructor(streamOptions: KafkaStreamReadableOptions) {
     const { kafkaConsumer, ...opts } = streamOptions
 
     super(opts)
@@ -146,9 +144,8 @@ export abstract class BaseKafkaStreamReadable extends Readable {
       })
       // eslint-disable-next-line unicorn/catch-error-name
       .catch((sourceCancelError) => {
-        const normalizedError = sourceCancelError instanceof Error
-          ? sourceCancelError
-          : new Error(String(sourceCancelError))
+        const normalizedError =
+          sourceCancelError instanceof Error ? sourceCancelError : new Error(String(sourceCancelError))
         finalizeDestroy(normalizedError)
       })
   }

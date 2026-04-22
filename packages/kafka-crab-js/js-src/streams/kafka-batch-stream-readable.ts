@@ -26,9 +26,7 @@ export class KafkaBatchStreamReadable extends BaseKafkaStreamReadable {
   /**
    * Creates a KafkaBatchStreamReadable instance
    */
-  constructor(
-    streamOptions: KafkaBatchStreamReadableOptions,
-  ) {
+  constructor(streamOptions: KafkaBatchStreamReadableOptions) {
     const { batchSize, batchTimeout = DEFAULT_BATCH_TIMEOUT, sourceStream, kafkaConsumer, ...opts } = streamOptions
 
     // Set highWaterMark to batch size for optimal performance

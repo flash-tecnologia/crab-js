@@ -20,12 +20,14 @@ export function createTestMessages(count = 3, testId = nanoid(6)) {
       'test-id': Buffer.from(testId),
       'message-index': Buffer.from(i.toString()),
     },
-    payload: Buffer.from(JSON.stringify({
-      _id: i,
-      testId,
-      name: `Test Message ${i}`,
-      timestamp: Date.now(),
-    })),
+    payload: Buffer.from(
+      JSON.stringify({
+        _id: i,
+        testId,
+        name: `Test Message ${i}`,
+        timestamp: Date.now(),
+      }),
+    ),
   }))
 }
 

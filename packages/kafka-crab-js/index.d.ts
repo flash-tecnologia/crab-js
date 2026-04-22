@@ -30,6 +30,8 @@ export declare class KafkaClientConfig {
 export declare class KafkaConsumer {
   /** Returns the current consumer configuration. */
   getConfig(): ConsumerConfiguration
+  /** Returns the client ID associated with this consumer */
+  get clientId(): string
   /** Returns the list of topics and partitions currently subscribed to. */
   getSubscription(): Array<TopicPartition>
   /**
@@ -96,6 +98,18 @@ export declare class KafkaConsumer {
    */
   recvBatch(size: number, timeoutMs: number): Promise<Array<Message>>
   /**
+   * Receives messages as a native Web `ReadableStream`.
+   * Uses a small internal batch prefetch to reduce native boundary crossings.
+   */
+  recvStream(prefetchSize?: number | undefined | null, prefetchTimeoutMs?: number | undefined | null): ReadableStream<Message>
+  /** Receives batches of messages as a native Web `ReadableStream`. */
+  recvBatchStream(size: number, timeoutMs: number): ReadableStream<Array<Message>>
+  /**
+   * Receives metadata batches as a compact native Web `ReadableStream`.
+   * Intended for JS-side expansion to preserve the public `Message[]` API with less native marshalling overhead.
+   */
+  recvBatchStreamCompact(size: number, timeoutMs: number): ReadableStream<CompactMessageBatch>
+  /**
    * Commits an offset for a specific topic partition.
    * This marks the offset as processed, so the consumer will not receive
    * messages before this offset after a restart.
@@ -139,7 +153,27 @@ export declare class KafkaProducer {
 
 export declare const enum CommitMode {
   Sync = 'Sync',
-  Async = 'Async',
+  Async = 'Async'
+}
+
+export interface CompactMessageBatch {
+  payloads: Array<Buffer>
+  keys?: Array<Buffer | undefined>
+  denseKeys?: Array<Buffer>
+  sharedKey?: Buffer
+  keyDictionary?: Array<Buffer>
+  keyDictionaryIndexes?: Array<number>
+  topic?: string
+  topics?: Array<string>
+  partitions: Array<number>
+  offsets: Array<number>
+  sharedHeaderKey?: string
+  sharedHeaderValue?: Buffer
+  sharedHeaderValues?: Array<Buffer | undefined>
+  denseSharedHeaderValues?: Array<Buffer>
+  headerValueDictionary?: Array<Buffer>
+  headerValueDictionaryIndexes?: Array<number>
+  headers?: Array<Record<string, Buffer> | undefined>
 }
 
 export interface ConsumerConfiguration {
@@ -171,7 +205,7 @@ export interface KafkaEvent {
 export declare const enum KafkaEventName {
   PreRebalance = 'PreRebalance',
   PostRebalance = 'PostRebalance',
-  CommitCallback = 'CommitCallback',
+  CommitCallback = 'CommitCallback'
 }
 
 export interface KafkaEventPayload {
@@ -209,7 +243,7 @@ export declare const enum PartitionPosition {
   Beginning = 'Beginning',
   End = 'End',
   Stored = 'Stored',
-  Invalid = 'Invalid',
+  Invalid = 'Invalid'
 }
 
 export interface ProducerConfiguration {
@@ -234,7 +268,7 @@ export declare const enum SecurityProtocol {
   Plaintext = 'Plaintext',
   Ssl = 'Ssl',
   SaslPlaintext = 'SaslPlaintext',
-  SaslSsl = 'SaslSsl',
+  SaslSsl = 'SaslSsl'
 }
 
 export interface TopicPartition {

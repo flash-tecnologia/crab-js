@@ -57,13 +57,9 @@ const grafanaPassword = process.env.GRAFANA_PASSWORD || 'admin'
 const grafanaToken = process.env.GRAFANA_TOKEN
 const validateGrafana = (process.env.GRAFANA_VALIDATE ?? String(!useConsoleExporter)) === 'true'
 
-const traceExporter = useConsoleExporter
-  ? new ConsoleSpanExporter()
-  : new OTLPTraceExporter({ url: endpoint })
+const traceExporter = useConsoleExporter ? new ConsoleSpanExporter() : new OTLPTraceExporter({ url: endpoint })
 
-const metricExporter = useConsoleExporter
-  ? new ConsoleMetricExporter()
-  : new OTLPMetricExporter({ url: endpoint })
+const metricExporter = useConsoleExporter ? new ConsoleMetricExporter() : new OTLPMetricExporter({ url: endpoint })
 
 const metricReader = new PeriodicExportingMetricReader({
   exporter: metricExporter,
@@ -79,7 +75,7 @@ const sdk = new NodeSDK({
 })
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function grafanaAuthHeader() {
@@ -126,7 +122,7 @@ async function getDatasourceUid(type) {
   if (!Array.isArray(datasources)) {
     return null
   }
-  const found = datasources.find(ds => typeof ds?.type === 'string' && ds.type.toLowerCase().includes(type))
+  const found = datasources.find((ds) => typeof ds?.type === 'string' && ds.type.toLowerCase().includes(type))
   return found?.uid || null
 }
 
@@ -270,11 +266,13 @@ async function produceAndConsume() {
   for (let i = 0; i < totalMessages; i++) {
     await producer.send({
       topic,
-      messages: [{
-        key: Buffer.from(`key-${i}`),
-        headers: { 'x-otel-smoke': Buffer.from(serviceName) },
-        payload: Buffer.from(JSON.stringify({ id: i, msg: `hello-${i}`, ts: Date.now() })),
-      }],
+      messages: [
+        {
+          key: Buffer.from(`key-${i}`),
+          headers: { 'x-otel-smoke': Buffer.from(serviceName) },
+          payload: Buffer.from(JSON.stringify({ id: i, msg: `hello-${i}`, ts: Date.now() })),
+        },
+      ],
     })
   }
   await producer.flush()
@@ -298,7 +296,7 @@ async function produceAndConsume() {
       if (Date.now() >= subscribeDeadline) {
         throw error
       }
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise((resolve) => setTimeout(resolve, 500))
     }
   }
 

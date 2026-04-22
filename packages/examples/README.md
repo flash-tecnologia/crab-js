@@ -5,19 +5,22 @@ This directory contains example code demonstrating various features of kafka-cra
 ## Basic Examples
 
 ### simple.mjs
+
 Basic producer and consumer example showing fundamental Kafka operations.
 
 KAFKA_AVAILABLE=true node simple.mjs
-```
+
+````
 
 ### stream-sample.mjs
 Demonstrates using Kafka consumers with Node.js streams.
 
 ```bash
 KAFKA_AVAILABLE=true node stream-sample.mjs
-```
+````
 
 ### events.mjs
+
 Shows how to handle Kafka consumer events (rebalance, errors, etc.).
 
 ```bash
@@ -25,6 +28,7 @@ KAFKA_AVAILABLE=true node events.mjs
 ```
 
 ### kafka-consumer-with-retry.mjs
+
 Example of implementing retry logic for failed message processing.
 
 ```bash
@@ -32,6 +36,7 @@ KAFKA_AVAILABLE=true node kafka-consumer-with-retry.mjs
 ```
 
 ### batch-usage-examples.mjs
+
 Demonstrates batch processing for higher throughput.
 
 ```bash
@@ -41,7 +46,9 @@ KAFKA_AVAILABLE=true node batch-usage-examples.mjs
 ## OpenTelemetry Examples
 
 ### otel-tracing-example.mjs
+
 **Comprehensive OpenTelemetry tracing example** showing:
+
 - Automatic instrumentation for Kafka operations
 - Trace context propagation between producer and consumer
 - Custom span creation and attributes
@@ -50,6 +57,7 @@ KAFKA_AVAILABLE=true node batch-usage-examples.mjs
 - Manual OTEL context usage
 
 **Prerequisites:**
+
 ```bash
 # Start Kafka
 docker-compose up -d
@@ -63,11 +71,13 @@ docker run -d \
 ```
 
 **Run with console exporter (default):**
+
 ```bash
 KAFKA_AVAILABLE=true node otel-tracing-example.mjs
 ```
 
 **Run with OTLP exporter (Jaeger):**
+
 ```bash
 KAFKA_AVAILABLE=true \
 OTEL_EXPORTER_TYPE=otlp \
@@ -78,7 +88,9 @@ node otel-tracing-example.mjs
 Then open http://localhost:16686 to view traces in Jaeger UI.
 
 ### otel-metrics-example.mjs
+
 **Comprehensive OpenTelemetry metrics example** showing:
+
 - Automatic metrics collection for Kafka operations
 - Custom histogram bucket configuration
 - Producer and consumer metrics
@@ -86,17 +98,20 @@ Then open http://localhost:16686 to view traces in Jaeger UI.
 - Integration with Prometheus/OTLP backends
 
 **Metrics collected:**
+
 - `messaging.client.operation.duration` - Producer/consumer operation latency
 - `messaging.client.sent.messages` - Number of messages sent
-- `messaging.client.consumed.messages` - Number of messages consumed  
+- `messaging.client.consumed.messages` - Number of messages consumed
 - `messaging.process.duration` - Message processing latency
 
 **Run:**
+
 ```bash
 KAFKA_AVAILABLE=true node otel-metrics-example.mjs
 ```
 
 **With Prometheus (optional):**
+
 ```yaml
 # prometheus.yml
 scrape_configs:
@@ -133,21 +148,21 @@ import { enableOtelInstrumentation } from 'kafka-crab-js-otel'
 // Enable the OTEL adapter once at startup (subscribes to diagnostics channels)
 enableOtelInstrumentation({
   // Tracing configuration
-  captureMessagePayload: true,          // Include payload in spans (default: false)
-  maxPayloadSize: 1024,                 // Max payload size in bytes (default: 1024)
-  captureMessageHeaders: true,          // Include headers in spans (default: true)
-  enableBatchInstrumentation: true,     // Enable batch spans (default: true)
+  captureMessagePayload: true, // Include payload in spans (default: false)
+  maxPayloadSize: 1024, // Max payload size in bytes (default: 1024)
+  captureMessageHeaders: true, // Include headers in spans (default: true)
+  enableBatchInstrumentation: true, // Enable batch spans (default: true)
 
   // Topic filtering
   ignoreTopics: ['__consumer_offsets'], // Array or function to ignore topics
 
   // Metrics configuration
   metrics: {
-    enabled: true,                      // Enable metrics (default: false in examples)
+    enabled: true, // Enable metrics (default: false in examples)
     meterProvider: customMeterProvider, // Optional custom meter provider
-    includePartitionId: true,           // Include partition in labels (default: true)
-    serverAddress: 'localhost',         // Broker address for metrics
-    serverPort: 9092,                   // Broker port for metrics
+    includePartitionId: true, // Include partition in labels (default: true)
+    serverAddress: 'localhost', // Broker address for metrics
+    serverPort: 9092, // Broker port for metrics
     histogramBuckets: [0.001, 0.01, 0.1, 1, 10], // Optional custom buckets (seconds)
   },
 
@@ -178,6 +193,7 @@ Tip: When consuming via streams or batches, call `message.endSpan()` (or `batch.
 kafka-crab-js fully implements [OpenTelemetry Semantic Conventions for Messaging Systems](https://opentelemetry.io/docs/specs/semconv/messaging/kafka/):
 
 **Span Attributes:**
+
 - `messaging.system` = `"kafka"`
 - `messaging.operation.name` - `send`, `receive`, `process`
 - `messaging.operation.type` - `send`, `receive`, `process`
@@ -190,6 +206,7 @@ kafka-crab-js fully implements [OpenTelemetry Semantic Conventions for Messaging
 - `server.address` / `server.port` - Broker info
 
 **Metric Attributes:**
+
 - All span attributes plus:
 - `error.type` - Error classification (only on error)
 
@@ -219,15 +236,18 @@ docker-compose down
 ## Troubleshooting
 
 **"Connection refused" errors:**
+
 - Ensure Kafka is running: `docker-compose ps`
 - Check broker address: `KAFKA_BROKERS=localhost:9092`
 
 **No traces in Jaeger:**
+
 - Verify Jaeger is running: `docker ps | grep jaeger`
 - Check OTLP endpoint: `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
 - Ensure `OTEL_EXPORTER_TYPE=otlp` is set
 
 **Metrics not appearing:**
+
 - Wait for export interval (10 seconds by default)
 - Check console output for metric exports
 - Verify MeterProvider configuration

@@ -48,9 +48,7 @@ await test('Consumer Stream Integration Tests', async (t) => {
 
     // Create stream consumer
     const streamConsumer = client.createStreamConsumer(createConsumerConfig(`stream-data-${testId}`))
-    await streamConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     // Use utility function to wait for messages
     const receivedMessages = await waitForMessages(streamConsumer, messages.length, testId, 15000)
@@ -98,12 +96,16 @@ await test('Consumer Stream Integration Tests', async (t) => {
     const topic2 = createTestTopic('stream-multi2')
     const testId = 'stream-multi-test'
 
-    const messages1 = [{
-      payload: Buffer.from(JSON.stringify({ testId, source: 'topic1' })),
-    }]
-    const messages2 = [{
-      payload: Buffer.from(JSON.stringify({ testId, source: 'topic2' })),
-    }]
+    const messages1 = [
+      {
+        payload: Buffer.from(JSON.stringify({ testId, source: 'topic1' })),
+      },
+    ]
+    const messages2 = [
+      {
+        payload: Buffer.from(JSON.stringify({ testId, source: 'topic2' })),
+      },
+    ]
 
     // Send to both topics
     await Promise.all([
@@ -157,9 +159,7 @@ await test('Consumer Stream Integration Tests', async (t) => {
     await sleep(1000)
 
     const streamConsumer = client.createStreamConsumer(createConsumerConfig(`pause-resume-${testId}`))
-    await streamConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     let receivedCount = 0
     const firstBatch = []
@@ -237,9 +237,7 @@ await test('Consumer Stream Integration Tests', async (t) => {
     await sleep(1000)
 
     const streamConsumer = client.createStreamConsumer(createConsumerConfig(`stream-seek-${testId}`))
-    await streamConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     let firstMessage = null
 
@@ -284,18 +282,14 @@ await test('Consumer Stream Integration Tests', async (t) => {
     const streamConsumer = client.createStreamConsumer(createConsumerConfig('unsubscribe-test'))
 
     // Subscribe first
-    await streamConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     // Then unsubscribe
     streamConsumer.unsubscribe()
 
     // Should be able to subscribe to different topic after unsubscribe
     const newTopic = createTestTopic('after-unsubscribe')
-    await streamConsumer.subscribe([
-      { topic: newTopic, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic: newTopic, allOffsets: { position: 'Beginning' } }])
 
     await cleanupConsumer(streamConsumer)
   })
@@ -315,9 +309,7 @@ await test('Consumer Stream Integration Tests', async (t) => {
     await sleep(2000)
 
     const streamConsumer = client.createStreamConsumer(createConsumerConfig(`large-batch-${testId}`))
-    await streamConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     const receivedMessages = await waitForMessages(streamConsumer, messageCount, testId, 30000)
 

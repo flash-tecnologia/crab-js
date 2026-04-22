@@ -105,7 +105,7 @@ await test('Consumer Integration Tests', async (t) => {
         break
       }
 
-      const testMessages = batch.filter(msg => isTestMessage(msg, testId))
+      const testMessages = batch.filter((msg) => isTestMessage(msg, testId))
       if (testMessages.length > 0) {
         receivedBatches.push(testMessages)
         totalReceived += testMessages.length
@@ -130,12 +130,16 @@ await test('Consumer Integration Tests', async (t) => {
     const topic1 = createTestTopic('multi1')
     const topic2 = createTestTopic('multi2')
     const testId = 'multi-topic-test'
-    const messages1 = [{
-      payload: Buffer.from(JSON.stringify({ testId, topic: topic1 })),
-    }]
-    const messages2 = [{
-      payload: Buffer.from(JSON.stringify({ testId, topic: topic2 })),
-    }]
+    const messages1 = [
+      {
+        payload: Buffer.from(JSON.stringify({ testId, topic: topic1 })),
+      },
+    ]
+    const messages2 = [
+      {
+        payload: Buffer.from(JSON.stringify({ testId, topic: topic2 })),
+      },
+    ]
 
     // Send to both topics
     await Promise.all([
@@ -191,7 +195,7 @@ await test('Consumer Integration Tests', async (t) => {
       let firstMessage = null
       const startTime = Date.now()
 
-      while (!firstMessage && (Date.now() - startTime) < 10000) {
+      while (!firstMessage && Date.now() - startTime < 10000) {
         const message = await consumer.recv()
         if (message && isTestMessage(message, testId)) {
           firstMessage = message
@@ -274,7 +278,7 @@ await test('Consumer Integration Tests', async (t) => {
       headers: {
         'content-type': Buffer.from('application/json'),
         'custom-header': Buffer.from('custom-value'),
-        'timestamp': Buffer.from(Date.now().toString()),
+        timestamp: Buffer.from(Date.now().toString()),
       },
     }
 
@@ -291,11 +295,7 @@ await test('Consumer Integration Tests', async (t) => {
       ok(message.headers, 'Message should have headers')
       ok(message.headers['content-type'], 'Should have content-type header')
       ok(message.headers['custom-header'], 'Should have custom header')
-      equal(
-        message.headers['content-type'].toString(),
-        'application/json',
-        'Header value should match',
-      )
+      equal(message.headers['content-type'].toString(), 'application/json', 'Header value should match')
     }
 
     await cleanupConsumer(consumer)

@@ -8,7 +8,7 @@ function parseBrokers(input: string | undefined): string[] {
 
   const values = input
     .split(',')
-    .map(value => value.trim())
+    .map((value) => value.trim())
     .filter(Boolean)
 
   return values.length > 0 ? values : defaultBrokers

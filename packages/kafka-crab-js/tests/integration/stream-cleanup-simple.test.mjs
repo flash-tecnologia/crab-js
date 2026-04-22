@@ -20,7 +20,7 @@ test('Stream Cleanup Validation', async (t) => {
     let disconnectCalled = false
     const rawConsumer = streamConsumer.rawConsumer()
     const originalDisconnect = rawConsumer.disconnect
-    rawConsumer.disconnect = async function() {
+    rawConsumer.disconnect = async function () {
       disconnectCalled = true
       return originalDisconnect.call(this)
     }
@@ -29,7 +29,7 @@ test('Stream Cleanup Validation', async (t) => {
     streamConsumer.destroy()
 
     // Give time for async cleanup to complete
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 100))
 
     // Verify disconnect was called
     assert.ok(disconnectCalled, 'Consumer disconnect should be called during stream destroy')
@@ -54,7 +54,7 @@ test('Stream Cleanup Validation', async (t) => {
     }
 
     // Wait for cleanup
-    await new Promise(resolve => setTimeout(resolve, 200))
+    await new Promise((resolve) => setTimeout(resolve, 200))
 
     // Verify all are destroyed
     for (let i = 0; i < streams.length; i++) {
@@ -79,14 +79,14 @@ test('Stream Cleanup Validation', async (t) => {
     let disconnectCalled = false
     const rawConsumer = batchStream.rawConsumer()
     const originalDisconnect = rawConsumer.disconnect
-    rawConsumer.disconnect = async function() {
+    rawConsumer.disconnect = async function () {
       disconnectCalled = true
       return originalDisconnect.call(this)
     }
 
     // Destroy and wait
     batchStream.destroy()
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, 100))
 
     // Verify cleanup
     assert.ok(disconnectCalled, 'Batch stream should call disconnect during cleanup')

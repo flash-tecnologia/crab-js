@@ -6,10 +6,10 @@ A high-performance Kafka client for Node.js built with Rust (via napi-rs).
 
 This monorepo contains two packages:
 
-| Package | Description | npm |
-|---------|-------------|-----|
-| [kafka-crab-js](./packages/kafka-crab-js) | Core Kafka client with producer, consumer, and streaming APIs | [![npm](https://img.shields.io/npm/v/kafka-crab-js)](https://www.npmjs.com/package/kafka-crab-js) |
-| [kafka-crab-js-otel](./packages/kafka-crab-js-otel) | OpenTelemetry instrumentation (tracing & metrics) | [![npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel) |
+| Package                                             | Description                                                   | npm                                                                                                         |
+| --------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| [kafka-crab-js](./packages/kafka-crab-js)           | Core Kafka client with producer, consumer, and streaming APIs | [![npm](https://img.shields.io/npm/v/kafka-crab-js)](https://www.npmjs.com/package/kafka-crab-js)           |
+| [kafka-crab-js-otel](./packages/kafka-crab-js-otel) | OpenTelemetry instrumentation (tracing & metrics)             | [![npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel) |
 
 ## Quick Start
 
@@ -100,34 +100,37 @@ endSpan(message)
 
 ## Examples
 
-| Example | Description |
-|---------|-------------|
-| [otel-tracing-example.mjs](./example/otel-tracing-example.mjs) | Distributed tracing with custom spans |
-| [otel-metrics-example.mjs](./example/otel-metrics-example.mjs) | Metrics collection and export |
+| Example                                                              | Description                               |
+| -------------------------------------------------------------------- | ----------------------------------------- |
+| [otel-tracing-example.mjs](./example/otel-tracing-example.mjs)       | Distributed tracing with custom spans     |
+| [otel-metrics-example.mjs](./example/otel-metrics-example.mjs)       | Metrics collection and export             |
 | [otel-grafana-validation.mjs](./example/otel-grafana-validation.mjs) | Full Grafana/Tempo/Prometheus integration |
 
 ## Development
 
 ```bash
 # Install dependencies
-pnpm install
+vp install
 
 # Build all packages
-pnpm build
+vp run build
 
 # Run tests
-pnpm test
+vp run test
 
-# Lint
-pnpm lint
+# Run integration tests
+vp run test:integration
 
-# Format
-pnpm fmt
+# Type checking
+vp run typecheck
+
+# Lint and format
+vp check
 ```
 
 ## Requirements
 
-- Node.js >= 20
+- Node.js >= 22
 - Rust toolchain (for building from source)
 - librdkafka (bundled)
 

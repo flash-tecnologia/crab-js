@@ -6,10 +6,12 @@ import RDKafka from 'node-rdkafka'
 import assert from 'node:assert'
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
+import net from 'node:net'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { brokers, topic } from './utils/definitions.ts'
 
 type AssertYieldMode = 'none' | 'microtask' | 'sleep'
+type BenchmarkProtocol = 'default' | 'strict'
 
 function readPositiveInteger(name: string, fallback: number): number {
   const raw = process.env[name]
@@ -39,6 +41,20 @@ function readNonNegativeInteger(name: string, fallback: number): number {
   return Math.floor(parsed)
 }
 
+function readOptionalNonNegativeInteger(name: string): number | undefined {
+  const raw = process.env[name]
+  if (!raw) {
+    return undefined
+  }
+
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return undefined
+  }
+
+  return Math.floor(parsed)
+}
+
 function readAssertYieldMode(): AssertYieldMode {
   const raw = (process.env.BENCHMARK_ASSERT_YIELD_MODE ?? 'none').trim().toLowerCase()
   if (raw === 'none' || raw === 'microtask' || raw === 'sleep') {
@@ -48,44 +64,87 @@ function readAssertYieldMode(): AssertYieldMode {
   return 'none'
 }
 
+function readBenchmarkProtocol(): BenchmarkProtocol {
+  const raw = (process.env.BENCHMARK_PROTOCOL ?? 'default').trim().toLowerCase()
+  if (raw === 'strict') {
+    return 'strict'
+  }
+  return 'default'
+}
+
+const benchmarkProtocol = readBenchmarkProtocol()
+const strictBenchmarkProtocol = benchmarkProtocol === 'strict'
+
 const iterations = readPositiveInteger('BENCHMARK_ITERATIONS', 100_000)
 const warmupMessages = readNonNegativeInteger('BENCHMARK_WARMUP_MESSAGES', 10_000)
-const benchmarkRuns = readPositiveInteger('BENCHMARK_RUNS', 7)
-const scenarioCooldownMs = readNonNegativeInteger('BENCHMARK_SCENARIO_COOLDOWN_MS', 25)
+const benchmarkRuns = readPositiveInteger('BENCHMARK_RUNS', strictBenchmarkProtocol ? 9 : 7)
+const scenarioCooldownMs = readNonNegativeInteger('BENCHMARK_SCENARIO_COOLDOWN_MS', strictBenchmarkProtocol ? 50 : 25)
+const scenarioTimeoutMs = readPositiveInteger('BENCHMARK_SCENARIO_TIMEOUT_MS', 120_000)
+const reuseScenarioTopicPerDataset = strictBenchmarkProtocol
+  ? true
+  : process.env.BENCHMARK_REUSE_TOPIC_PER_DATASET === '1'
+const scenarioTopicSettleMs = readNonNegativeInteger('BENCHMARK_TOPIC_SETTLE_MS', strictBenchmarkProtocol ? 750 : 250)
+const brokerReadyTimeoutMs = readPositiveInteger(
+  'BENCHMARK_BROKER_READY_TIMEOUT_MS',
+  strictBenchmarkProtocol ? 30_000 : 5_000,
+)
+const brokerReadyIntervalMs = readPositiveInteger('BENCHMARK_BROKER_READY_INTERVAL_MS', 250)
+const scenarioSetupAttempts = readPositiveInteger('BENCHMARK_SETUP_ATTEMPTS', strictBenchmarkProtocol ? 3 : 1)
 const maxBytes = readPositiveInteger('BENCHMARK_MAX_BYTES', 200)
 const v4SerialPrefetchSize = readPositiveInteger('BENCHMARK_V4_SERIAL_PREFETCH_SIZE', 64)
 const v4SerialPrefetchTimeoutMs = readPositiveInteger('BENCHMARK_V4_SERIAL_PREFETCH_TIMEOUT_MS', 5)
-const v4BatchSize = readPositiveInteger('BENCHMARK_V4_BATCH_SIZE', 3072)
-const v4BatchTimeoutMs = readPositiveInteger('BENCHMARK_V4_BATCH_TIMEOUT_MS', 2)
+const v4BatchSize = readPositiveInteger(
+  'BENCHMARK_V4_BATCH_SIZE',
+  readPositiveInteger('BENCHMARK_V4_BATCH_METADATA_SIZE', 4096),
+)
+const v4BatchTimeoutMs = readPositiveInteger(
+  'BENCHMARK_V4_BATCH_TIMEOUT_MS',
+  readPositiveInteger('BENCHMARK_V4_BATCH_METADATA_TIMEOUT_MS', 2),
+)
 const v4FetchMinBytes = readPositiveInteger('BENCHMARK_V4_FETCH_MIN_BYTES', 1)
 const v4FetchWaitMaxMs = readPositiveInteger('BENCHMARK_V4_FETCH_WAIT_MAX_MS', 1)
+const v4FetchQueueBackoffMs = readOptionalNonNegativeInteger('BENCHMARK_V4_FETCH_QUEUE_BACKOFF_MS')
+const v4BatchFetchMinBytes = readPositiveInteger(
+  'BENCHMARK_V4_FETCH_MIN_BYTES_BATCH',
+  readPositiveInteger('BENCHMARK_V4_FETCH_MIN_BYTES_METADATA', v4FetchMinBytes),
+)
+const v4BatchFetchWaitMaxMs = readPositiveInteger(
+  'BENCHMARK_V4_FETCH_WAIT_MAX_MS_BATCH',
+  readPositiveInteger('BENCHMARK_V4_FETCH_WAIT_MAX_MS_METADATA', 5),
+)
+const v4BatchFetchQueueBackoffMs =
+  readOptionalNonNegativeInteger('BENCHMARK_V4_FETCH_QUEUE_BACKOFF_MS_BATCH') ??
+  readOptionalNonNegativeInteger('BENCHMARK_V4_FETCH_QUEUE_BACKOFF_MS_METADATA')
 const assertYieldMode = readAssertYieldMode()
 const assertSleepMs = readNonNegativeInteger('BENCHMARK_ASSERT_SLEEP_MS', 0)
-const isolatedTopics = process.env.BENCHMARK_ISOLATED_TOPICS !== '0'
-const scenarioMessageCount = readPositiveInteger(
-  'BENCHMARK_SCENARIO_MESSAGES',
-  warmupMessages + iterations + 2048,
-)
+const isolatedTopics = strictBenchmarkProtocol ? true : process.env.BENCHMARK_ISOLATED_TOPICS !== '0'
+const scenarioMessageCount = readPositiveInteger('BENCHMARK_SCENARIO_MESSAGES', warmupMessages + iterations + 2048)
 const scenarioSetupBatchSize = readPositiveInteger('BENCHMARK_SCENARIO_SETUP_BATCH_SIZE', 10_000)
 const scenarioPartitions = readPositiveInteger('BENCHMARK_SCENARIO_PARTITIONS', 3)
 const scenarioReplicas = readPositiveInteger('BENCHMARK_SCENARIO_REPLICAS', 1)
 const benchmarkDebugSetup = process.env.BENCHMARK_DEBUG_SETUP === '1'
 const benchmarkDebugCollector = process.env.BENCHMARK_DEBUG_COLLECTOR === '1'
-const benchmarkForceGcBeforeRun = process.env.BENCHMARK_FORCE_GC_BEFORE_RUN !== '0'
+const benchmarkForceGcBeforeRun = strictBenchmarkProtocol ? true : process.env.BENCHMARK_FORCE_GC_BEFORE_RUN !== '0'
+const strictBenchmarkMinRuns = readPositiveInteger('BENCHMARK_STRICT_MIN_RUNS', 5)
+
+if (strictBenchmarkProtocol && benchmarkRuns < strictBenchmarkMinRuns) {
+  throw new Error(
+    `BENCHMARK_PROTOCOL=strict requires BENCHMARK_RUNS >= ${strictBenchmarkMinRuns}. Received ${benchmarkRuns}.`,
+  )
+}
 const setupClient = isolatedTopics
   ? new KafkaClient({
-    brokers: brokers.join(','),
-    clientId: 'benchmark-scenario-setup',
-    securityProtocol: 'Plaintext',
-    logLevel: 'warn',
-    brokerAddressFamily: 'v4',
-    diagnostics: false,
-  })
+      brokers: brokers.join(','),
+      clientId: 'benchmark-scenario-setup',
+      securityProtocol: 'Plaintext',
+      logLevel: 'warn',
+      brokerAddressFamily: 'v4',
+      diagnostics: false,
+    })
   : undefined
 const setupProducer = setupClient?.createProducer()
-const scenarioPartitionKeys = Array.from(
-  { length: Math.max(1, scenarioPartitions) },
-  (_, partition) => Buffer.from(`partition-${partition}`),
+const scenarioPartitionKeys = Array.from({ length: Math.max(1, scenarioPartitions) }, (_, partition) =>
+  Buffer.from(`partition-${partition}`),
 )
 
 interface MeasurementState {
@@ -101,10 +160,51 @@ interface BatchCollectorStats {
   maxChunk: number
 }
 
+interface V4BatchStreamTuning {
+  batchSize: number
+  batchTimeoutMs: number
+}
+
+interface V4FetchTuning {
+  fetchMinBytes: number
+  fetchWaitMaxMs: number
+  fetchQueueBackoffMs?: number
+}
+
 class BenchmarkStopError extends Error {
   constructor() {
     super('Benchmark reached requested iteration count')
     this.name = 'BenchmarkStopError'
+  }
+}
+
+function resolveV4BatchStreamTuning(useBatchMode: boolean): V4BatchStreamTuning {
+  if (!useBatchMode) {
+    return {
+      batchSize: 1,
+      batchTimeoutMs: v4SerialPrefetchTimeoutMs,
+    }
+  }
+
+  return {
+    batchSize: v4BatchSize,
+    batchTimeoutMs: v4BatchTimeoutMs,
+  }
+}
+
+function resolveV4FetchTuning(useBatchMode: boolean): V4FetchTuning {
+  if (useBatchMode) {
+    return {
+      fetchMinBytes: v4BatchFetchMinBytes,
+      fetchWaitMaxMs: v4BatchFetchWaitMaxMs,
+      fetchQueueBackoffMs: v4BatchFetchQueueBackoffMs ?? v4FetchQueueBackoffMs,
+    }
+  }
+
+  return {
+    fetchMinBytes: v4FetchMinBytes,
+    fetchWaitMaxMs: v4FetchWaitMaxMs,
+    fetchQueueBackoffMs: v4FetchQueueBackoffMs,
   }
 }
 
@@ -205,15 +305,89 @@ function createScenarioTopicName(name: string, run: number): string {
   return `${topic}-${normalized}-${run}-${suffix}`.slice(0, 249)
 }
 
-const BENCHMARK_SEED_PAYLOAD = Buffer.from(
-  '{"message":"message index 0","index":0,"date":"2024-01-01T00:00:00.000Z"}',
-)
+const BENCHMARK_SEED_PAYLOAD = Buffer.from('{"message":"message index 0","index":0,"date":"2024-01-01T00:00:00.000Z"}')
+const BENCHMARK_BATCH_HEADER_VALUE = Buffer.from('benchmark-header-value')
+const BENCHMARK_BATCH_HEADER_KEY = 'benchmark-header'
 
 function buildScenarioMessagePayload(): Buffer {
   return BENCHMARK_SEED_PAYLOAD
 }
 
-async function prepareScenarioTopic(name: string, run: number): Promise<string> {
+function parseBrokerAddress(broker: string): { host: string; port: number } {
+  const separatorIndex = broker.lastIndexOf(':')
+  if (separatorIndex <= 0 || separatorIndex === broker.length - 1) {
+    throw new Error(`Invalid Kafka broker address: ${broker}`)
+  }
+
+  const host = broker.slice(0, separatorIndex)
+  const port = Number(broker.slice(separatorIndex + 1))
+  if (!Number.isInteger(port) || port < 1) {
+    throw new Error(`Invalid Kafka broker port: ${broker}`)
+  }
+
+  return { host, port }
+}
+
+function canConnectToBroker(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port })
+    const finish = (connected: boolean) => {
+      socket.removeAllListeners()
+      socket.destroy()
+      resolve(connected)
+    }
+
+    socket.setTimeout(Math.min(1_000, brokerReadyIntervalMs))
+    socket.once('connect', () => finish(true))
+    socket.once('timeout', () => finish(false))
+    socket.once('error', () => finish(false))
+  })
+}
+
+async function waitForBrokersReady() {
+  const parsedBrokers = brokers.map(parseBrokerAddress)
+  const startedAt = Date.now()
+  let pendingBrokers: string[] = []
+
+  do {
+    const readiness = await Promise.all(
+      parsedBrokers.map(async ({ host, port }) => ({
+        broker: `${host}:${port}`,
+        ready: await canConnectToBroker(host, port),
+      })),
+    )
+    pendingBrokers = readiness.filter((result) => !result.ready).map((result) => result.broker)
+
+    if (pendingBrokers.length === 0) {
+      return
+    }
+
+    if (Date.now() - startedAt >= brokerReadyTimeoutMs) {
+      throw new Error(
+        `Kafka brokers did not become ready within ${brokerReadyTimeoutMs}ms: ${pendingBrokers.join(', ')}`,
+      )
+    }
+
+    await sleep(brokerReadyIntervalMs)
+  } while (true)
+}
+
+function datasetIncludesHeaders(datasetKey: string): boolean {
+  return datasetKey === 'batch-shared'
+}
+
+function isRetryableSetupError(error: unknown): boolean {
+  const message = toError(error).message.toLowerCase()
+  return (
+    message.includes('brokertransportfailure') ||
+    message.includes('connection refused') ||
+    message.includes('unknown topic or partition') ||
+    message.includes('leader not available') ||
+    message.includes('timed out')
+  )
+}
+
+async function prepareScenarioTopicOnce(name: string, run: number): Promise<string> {
   if (!isolatedTopics) {
     return topic
   }
@@ -223,6 +397,7 @@ async function prepareScenarioTopic(name: string, run: number): Promise<string> 
   }
 
   const scenarioTopic = createScenarioTopicName(name, run)
+  const includeHeaders = datasetIncludesHeaders(name)
   const consumer = setupClient.createConsumer({
     groupId: randomUUID(),
     configuration: {
@@ -248,6 +423,13 @@ async function prepareScenarioTopic(name: string, run: number): Promise<string> 
         return {
           payload: buildScenarioMessagePayload(),
           key: scenarioPartitionKeys[index % scenarioPartitionKeys.length],
+          ...(includeHeaders
+            ? {
+                headers: {
+                  [BENCHMARK_BATCH_HEADER_KEY]: BENCHMARK_BATCH_HEADER_VALUE,
+                },
+              }
+            : {}),
         }
       })
 
@@ -259,6 +441,10 @@ async function prepareScenarioTopic(name: string, run: number): Promise<string> 
 
     if (benchmarkDebugSetup) {
       console.log(`[setup:${name}#${run}] topic=${scenarioTopic} messages=${scenarioMessageCount}`)
+    }
+
+    if (scenarioTopicSettleMs > 0) {
+      await sleep(scenarioTopicSettleMs)
     }
 
     return scenarioTopic
@@ -277,9 +463,35 @@ async function prepareScenarioTopic(name: string, run: number): Promise<string> 
   }
 }
 
+async function prepareScenarioTopic(name: string, run: number): Promise<string> {
+  for (let attempt = 1; attempt <= scenarioSetupAttempts; attempt += 1) {
+    try {
+      return await prepareScenarioTopicOnce(name, run)
+    } catch (error) {
+      const normalizedError = toError(error)
+      if (attempt >= scenarioSetupAttempts || !isRetryableSetupError(normalizedError)) {
+        throw normalizedError
+      }
+
+      console.warn(
+        `[setup:${name}#${run}] transient failure on attempt ${attempt}/${scenarioSetupAttempts}; retrying: ${normalizedError.message}`,
+      )
+      await waitForBrokersReady()
+      await sleep(brokerReadyIntervalMs)
+    }
+  }
+
+  throw new Error(`[setup:${name}#${run}] failed after ${scenarioSetupAttempts} attempts`)
+}
+
 async function resolveScenarioTopics(name: string): Promise<string[]> {
   if (!isolatedTopics) {
     return Array.from({ length: benchmarkRuns }, () => topic)
+  }
+
+  if (reuseScenarioTopicPerDataset) {
+    const scenarioTopic = await prepareScenarioTopic(name, 1)
+    return Array.from({ length: benchmarkRuns }, () => scenarioTopic)
   }
 
   const scenarioTopics: string[] = []
@@ -306,7 +518,7 @@ async function runScenario(
   for (let run = 1; run <= benchmarkRuns; run += 1) {
     const scenarioTopic = scenarioTopics[run - 1] ?? topic
     maybeForceGc()
-    const result = await scenario(scenarioTopic)
+    const result = await runScenarioWithTimeout(name, run, scenario(scenarioTopic))
     runResults.push(result)
 
     if (scenarioCooldownMs > 0 && run < benchmarkRuns) {
@@ -317,11 +529,30 @@ async function runScenario(
   const median = selectMedianResult(runResults)
 
   if (process.env.BENCHMARK_DEBUG_MEDIAN === '1') {
-    const throughputs = runResults.map(result => throughput(result).toFixed(2)).join(', ')
+    const throughputs = runResults.map((result) => throughput(result).toFixed(2)).join(', ')
     console.log(`[${name}] runs op/sec: ${throughputs}; median=${throughput(median).toFixed(2)}`)
   }
 
   return median
+}
+
+function runScenarioWithTimeout(scenarioName: string, run: number, scenarioPromise: Promise<Result>): Promise<Result> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`[${scenarioName}] run ${run} timed out after ${scenarioTimeoutMs}ms`))
+    }, scenarioTimeoutMs)
+
+    scenarioPromise.then(
+      (result) => {
+        clearTimeout(timeout)
+        resolve(result)
+      },
+      (error) => {
+        clearTimeout(timeout)
+        reject(error)
+      },
+    )
+  })
 }
 
 async function destroyReadableStream(stream: {
@@ -346,20 +577,19 @@ async function destroyReadableStream(stream: {
     return
   }
 
-  const closePromise = once(stream as never, 'close').then(() => undefined).catch(() => undefined)
+  const closePromise = once(stream as never, 'close')
+    .then(() => undefined)
+    .catch(() => undefined)
   stream.destroy()
   await Promise.race([
     closePromise,
-    new Promise<void>(resolve => {
+    new Promise<void>((resolve) => {
       setTimeout(resolve, 250)
     }),
   ])
 }
 
-async function disconnectV3StreamConsumer(streamConsumer: {
-  unsubscribe(): void
-  disconnect(): Promise<void>
-}) {
+async function disconnectV3StreamConsumer(streamConsumer: { unsubscribe(): void; disconnect(): Promise<void> }) {
   try {
     streamConsumer.unsubscribe()
   } catch {
@@ -470,10 +700,7 @@ async function kafkaCrabJsV3(scenarioTopic: string, useBatchMode = false): Promi
   return promise
 }
 
-async function disconnectV4Consumer(consumer: {
-  unsubscribe(): void
-  disconnect(): Promise<void>
-}) {
+async function disconnectV4Consumer(consumer: { unsubscribe(): void; disconnect(): Promise<void> }) {
   try {
     consumer.unsubscribe()
   } catch {
@@ -487,20 +714,16 @@ async function disconnectV4Consumer(consumer: {
   }
 }
 
-async function kafkaCrabJsV4(
-  scenarioTopic: string,
-  useBatchMode = false,
-  payloadOnlyBatch = useBatchMode,
-): Promise<Result> {
+async function kafkaCrabJsV4(scenarioTopic: string, useBatchMode = false): Promise<Result> {
   const tracker = new Tracker()
   const measurement = createMeasurementState()
   const collectorStats: BatchCollectorStats | undefined = useBatchMode
     ? {
-      chunks: 0,
-      messages: 0,
-      minChunk: Number.POSITIVE_INFINITY,
-      maxChunk: 0,
-    }
+        chunks: 0,
+        messages: 0,
+        minChunk: Number.POSITIVE_INFINITY,
+        maxChunk: 0,
+      }
     : undefined
 
   const client = new KafkaClient({
@@ -512,20 +735,28 @@ async function kafkaCrabJsV4(
     diagnostics: false,
   })
 
+  const { batchSize: resolvedBatchSize, batchTimeoutMs: resolvedBatchTimeoutMs } =
+    resolveV4BatchStreamTuning(useBatchMode)
+  const { fetchMinBytes, fetchWaitMaxMs, fetchQueueBackoffMs } = resolveV4FetchTuning(useBatchMode)
+
   const webConsumer = client.createWebStreamConsumer({
     groupId: randomUUID(),
     enableAutoCommit: false,
-    batchSize: useBatchMode ? v4BatchSize : 1,
-    batchTimeout: useBatchMode ? v4BatchTimeoutMs : v4SerialPrefetchTimeoutMs,
+    batchSize: resolvedBatchSize,
+    batchTimeout: resolvedBatchTimeoutMs,
     serialPrefetchSize: v4SerialPrefetchSize,
     serialPrefetchTimeout: v4SerialPrefetchTimeoutMs,
-    payloadOnly: useBatchMode && payloadOnlyBatch,
     configuration: {
       'auto.offset.reset': 'earliest',
       'enable.auto.commit': false,
-      'fetch.min.bytes': v4FetchMinBytes,
+      'fetch.min.bytes': fetchMinBytes,
       'fetch.message.max.bytes': maxBytes,
-      'fetch.wait.max.ms': v4FetchWaitMaxMs,
+      'fetch.wait.max.ms': fetchWaitMaxMs,
+      ...(fetchQueueBackoffMs === undefined
+        ? {}
+        : {
+            'fetch.queue.backoff.ms': fetchQueueBackoffMs,
+          }),
     },
   })
 
@@ -644,9 +875,9 @@ async function kafkaCrabJsV4(
       const minChunk = Number.isFinite(collectorStats.minChunk) ? collectorStats.minChunk : 0
       const avgChunk = collectorStats.chunks > 0 ? collectorStats.messages / collectorStats.chunks : 0
       console.log(
-        `[v4-batch-collector] chunks=${collectorStats.chunks} messages=${collectorStats.messages} min=${minChunk} avg=${
-          avgChunk.toFixed(2)
-        } max=${collectorStats.maxChunk}`,
+        `[v4-batch-collector] chunks=${collectorStats.chunks} messages=${collectorStats.messages} min=${minChunk} avg=${avgChunk.toFixed(
+          2,
+        )} max=${collectorStats.maxChunk}`,
       )
     }
 
@@ -657,6 +888,174 @@ async function kafkaCrabJsV4(
     return tracker.results
   } finally {
     await disconnectV4Consumer(webConsumer.consumer)
+  }
+}
+
+async function kafkaCrabJsV4NativeMetadata(scenarioTopic: string, useBatchMode = false): Promise<Result> {
+  const tracker = new Tracker()
+  const measurement = createMeasurementState()
+  const collectorStats: BatchCollectorStats | undefined = useBatchMode
+    ? {
+        chunks: 0,
+        messages: 0,
+        minChunk: Number.POSITIVE_INFINITY,
+        maxChunk: 0,
+      }
+    : undefined
+
+  const client = new KafkaClient({
+    brokers: brokers.join(','),
+    clientId: 'benchmarks',
+    securityProtocol: 'Plaintext',
+    logLevel: 'warn',
+    brokerAddressFamily: 'v4',
+    diagnostics: false,
+  })
+
+  const { batchSize: resolvedBatchSize, batchTimeoutMs: resolvedBatchTimeoutMs } =
+    resolveV4BatchStreamTuning(useBatchMode)
+  const { fetchMinBytes, fetchWaitMaxMs, fetchQueueBackoffMs } = resolveV4FetchTuning(useBatchMode)
+  const consumer = client.createConsumer({
+    groupId: randomUUID(),
+    enableAutoCommit: false,
+    configuration: {
+      'auto.offset.reset': 'earliest',
+      'enable.auto.commit': false,
+      'fetch.min.bytes': fetchMinBytes,
+      'fetch.message.max.bytes': maxBytes,
+      'fetch.wait.max.ms': fetchWaitMaxMs,
+      ...(fetchQueueBackoffMs === undefined
+        ? {}
+        : {
+            'fetch.queue.backoff.ms': fetchQueueBackoffMs,
+          }),
+    },
+  })
+
+  await consumer.subscribe([{ topic: scenarioTopic, allOffsets: { position: 'Beginning' } }])
+
+  const stopError = new BenchmarkStopError()
+  const metadataBatchStream = useBatchMode
+    ? consumer.recvBatchStream(resolvedBatchSize, resolvedBatchTimeoutMs)
+    : undefined
+  const metadataStream = useBatchMode ? undefined : consumer.recvStream(v4SerialPrefetchSize, v4SerialPrefetchTimeoutMs)
+
+  try {
+    try {
+      if (useBatchMode) {
+        if (assertYieldMode === 'none') {
+          await metadataBatchStream!.pipeTo(
+            new WritableStream<Message[]>({
+              write(batch) {
+                if (collectorStats) {
+                  const batchLength = batch.length
+                  collectorStats.chunks += 1
+                  collectorStats.messages += batchLength
+                  if (batchLength < collectorStats.minChunk) {
+                    collectorStats.minChunk = batchLength
+                  }
+                  if (batchLength > collectorStats.maxChunk) {
+                    collectorStats.maxChunk = batchLength
+                  }
+                }
+
+                let index = 0
+                while (index < batch.length) {
+                  const message = batch[index] as Message
+                  assertPayloadSync(message.payload)
+                  if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
+                    throw stopError
+                  }
+                  index += 1
+                }
+              },
+            }),
+          )
+        } else {
+          await metadataBatchStream!.pipeTo(
+            new WritableStream<Message[]>({
+              async write(batch) {
+                if (collectorStats) {
+                  const batchLength = batch.length
+                  collectorStats.chunks += 1
+                  collectorStats.messages += batchLength
+                  if (batchLength < collectorStats.minChunk) {
+                    collectorStats.minChunk = batchLength
+                  }
+                  if (batchLength > collectorStats.maxChunk) {
+                    collectorStats.maxChunk = batchLength
+                  }
+                }
+
+                let index = 0
+                while (index < batch.length) {
+                  const message = batch[index] as Message
+                  const assertion = assertPayload(message.payload)
+                  if (assertion) {
+                    await assertion
+                  }
+
+                  if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
+                    throw stopError
+                  }
+                  index += 1
+                }
+              },
+            }),
+          )
+        }
+      } else {
+        if (assertYieldMode === 'none') {
+          await metadataStream!.pipeTo(
+            new WritableStream<Message>({
+              write(message) {
+                assertPayloadSync(message.payload)
+                if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
+                  throw stopError
+                }
+              },
+            }),
+          )
+        } else {
+          await metadataStream!.pipeTo(
+            new WritableStream<Message>({
+              async write(message) {
+                const assertion = assertPayload(message.payload)
+                if (assertion) {
+                  await assertion
+                }
+
+                if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
+                  throw stopError
+                }
+              },
+            }),
+          )
+        }
+      }
+    } catch (error) {
+      if (!(error instanceof BenchmarkStopError)) {
+        throw error
+      }
+    }
+
+    if (collectorStats && benchmarkDebugCollector) {
+      const minChunk = Number.isFinite(collectorStats.minChunk) ? collectorStats.minChunk : 0
+      const avgChunk = collectorStats.chunks > 0 ? collectorStats.messages / collectorStats.chunks : 0
+      console.log(
+        `[v4-native-metadata-collector] chunks=${collectorStats.chunks} messages=${collectorStats.messages} min=${minChunk} avg=${avgChunk.toFixed(
+          2,
+        )} max=${collectorStats.maxChunk}`,
+      )
+    }
+
+    if (!measurementDone(measurement)) {
+      throw new Error(`Stream ended before reaching iterations. ${measurementStatus(measurement)}`)
+    }
+
+    return tracker.results
+  } finally {
+    await disconnectV4Consumer(consumer)
   }
 }
 
@@ -700,7 +1099,7 @@ function rdkafkaEvented(scenarioTopic: string): Promise<Result> {
       // Noop
     }
 
-    await new Promise<void>(resolveDisconnect => {
+    await new Promise<void>((resolveDisconnect) => {
       setTimeout(() => {
         try {
           consumer.disconnect()
@@ -904,7 +1303,7 @@ async function kafkajs(scenarioTopic: string): Promise<Result> {
 
     const crashError = toError(
       event && typeof event === 'object' && 'payload' in event
-        ? (event as { payload?: { error?: unknown } }).payload?.error ?? event
+        ? ((event as { payload?: { error?: unknown } }).payload?.error ?? event)
         : event,
     )
     scheduleFinish(crashError)
@@ -941,128 +1340,157 @@ async function kafkajs(scenarioTopic: string): Promise<Result> {
   return promise
 }
 
-console.log('Starting consumer benchmark...')
-console.log(`Benchmark brokers: ${brokers.join(',')}`)
-console.log(`Benchmark iterations: ${iterations}`)
-console.log(`Benchmark warmup messages: ${warmupMessages}`)
-console.log(`Benchmark runs per scenario: ${benchmarkRuns}`)
-console.log(
-  `Benchmark assertion yield mode: ${assertYieldMode}${assertYieldMode === 'sleep' ? `(${assertSleepMs}ms)` : ''}`,
-)
-console.log(`Benchmark force GC before run: ${benchmarkForceGcBeforeRun}`)
-console.log(
-  `v4 stream tuning => serial prefetch ${v4SerialPrefetchSize}/${v4SerialPrefetchTimeoutMs}ms, batch ${v4BatchSize}/${v4BatchTimeoutMs}ms`,
-)
-console.log(
-  `v4 fetch tuning => min.bytes ${v4FetchMinBytes}, wait.max.ms ${v4FetchWaitMaxMs}`,
-)
-
-const benchmarkOnly = new Set(
-  (process.env.BENCHMARK_ONLY ?? '')
-    .split(',')
-    .map(value => value.trim())
-    .filter(Boolean),
-)
-
-const shouldRun = (id: string) => benchmarkOnly.size === 0 || benchmarkOnly.has(id)
-const scenariosToRun = [
-  'v3-serial',
-  'v4-serial',
-  'rdkafka-stream',
-  'rdkafka-evented',
-  'v3-batch',
-  'v4-batch',
-  'v4-batch-metadata',
-  'kafkajs',
-].filter(shouldRun)
-
 function scenarioDatasetKey(scenario: string): string {
-  if (scenario === 'v3-serial' || scenario === 'v4-serial') {
+  if (scenario === 'v3-serial' || scenario === 'v4-serial' || scenario === 'v4-serial-native') {
     return 'serial-shared'
   }
 
-  if (scenario === 'v3-batch' || scenario === 'v4-batch' || scenario === 'v4-batch-metadata') {
+  if (scenario === 'v3-batch' || scenario === 'v4-batch' || scenario === 'v4-batch-native' || scenario === 'kafkajs') {
     return 'batch-shared'
   }
 
   return scenario
 }
 
-const datasetKeys = Array.from(new Set(scenariosToRun.map(scenarioDatasetKey)))
-const scenarioTopicsByDatasetKey = new Map<string, string[]>()
-for (const datasetKey of datasetKeys) {
-  scenarioTopicsByDatasetKey.set(datasetKey, await resolveScenarioTopics(datasetKey))
-}
-
-const scenarioTopicsByName = new Map<string, string[]>()
-for (const scenario of scenariosToRun) {
-  scenarioTopicsByName.set(
-    scenario,
-    scenarioTopicsByDatasetKey.get(scenarioDatasetKey(scenario)) ?? [topic],
+async function main() {
+  console.log('Starting consumer benchmark...')
+  console.log(`Benchmark brokers: ${brokers.join(',')}`)
+  console.log(`Benchmark iterations: ${iterations}`)
+  console.log(`Benchmark warmup messages: ${warmupMessages}`)
+  console.log(`Benchmark runs per scenario: ${benchmarkRuns}`)
+  console.log(`Benchmark protocol: ${benchmarkProtocol}`)
+  console.log(
+    `Benchmark assertion yield mode: ${assertYieldMode}${assertYieldMode === 'sleep' ? `(${assertSleepMs}ms)` : ''}`,
   )
-}
+  console.log(`Benchmark force GC before run: ${benchmarkForceGcBeforeRun}`)
+  console.log(`Benchmark scenario timeout: ${scenarioTimeoutMs}ms`)
+  console.log(`Benchmark reuse dataset topic per run: ${reuseScenarioTopicPerDataset}`)
+  console.log(`Benchmark topic settle time: ${scenarioTopicSettleMs}ms`)
+  console.log(`Benchmark broker ready timeout: ${brokerReadyTimeoutMs}ms`)
+  console.log(`Benchmark setup attempts: ${scenarioSetupAttempts}`)
+  console.log(
+    `v4 stream tuning => serial prefetch ${v4SerialPrefetchSize}/${v4SerialPrefetchTimeoutMs}ms, batch ${v4BatchSize}/${v4BatchTimeoutMs}ms`,
+  )
+  console.log(
+    `v4 fetch tuning => default min.bytes ${v4FetchMinBytes}, wait.max.ms ${v4FetchWaitMaxMs}; batch min.bytes ${v4BatchFetchMinBytes}, wait.max.ms ${v4BatchFetchWaitMaxMs}`,
+  )
+  if (v4FetchQueueBackoffMs !== undefined || v4BatchFetchQueueBackoffMs !== undefined) {
+    console.log(
+      `v4 fetch queue backoff => default ${v4FetchQueueBackoffMs ?? 'unset'}ms; batch ${v4BatchFetchQueueBackoffMs ?? v4FetchQueueBackoffMs ?? 'unset'}ms`,
+    )
+  }
 
-const results: Record<string, Result> = {}
+  const benchmarkOnly = new Set(
+    (process.env.BENCHMARK_ONLY ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  )
 
-if (shouldRun('v3-serial')) {
-  results['v3 kafka-crab-js (serial)'] = await runScenario(
+  const shouldRun = (id: string) => benchmarkOnly.size === 0 || benchmarkOnly.has(id)
+  const scenariosToRun = [
     'v3-serial',
-    scenarioTopicsByName.get('v3-serial') ?? [topic],
-    scenarioTopic => kafkaCrabJsV3(scenarioTopic, false),
-  )
-}
-if (shouldRun('v4-serial')) {
-  results['kafka-crab-js v4 (stream, serial)'] = await runScenario(
     'v4-serial',
-    scenarioTopicsByName.get('v4-serial') ?? [topic],
-    scenarioTopic => kafkaCrabJsV4(scenarioTopic, false),
-  )
-}
-if (shouldRun('rdkafka-stream')) {
-  results['node-rdkafka (stream)'] = await runScenario(
+    'v4-serial-native',
     'rdkafka-stream',
-    scenarioTopicsByName.get('rdkafka-stream') ?? [topic],
-    scenarioTopic => rdkafkaStream(scenarioTopic),
-  )
-}
-if (shouldRun('rdkafka-evented')) {
-  results['node-rdkafka (evented)'] = await runScenario(
     'rdkafka-evented',
-    scenarioTopicsByName.get('rdkafka-evented') ?? [topic],
-    scenarioTopic => rdkafkaEvented(scenarioTopic),
-  )
-}
-if (shouldRun('v3-batch')) {
-  results['v3 kafka-crab-js (batch)'] = await runScenario(
     'v3-batch',
-    scenarioTopicsByName.get('v3-batch') ?? [topic],
-    scenarioTopic => kafkaCrabJsV3(scenarioTopic, true),
-  )
-}
-if (shouldRun('v4-batch')) {
-  results['kafka-crab-js v4 (stream, batch, payload-only)'] = await runScenario(
     'v4-batch',
-    scenarioTopicsByName.get('v4-batch') ?? [topic],
-    scenarioTopic => kafkaCrabJsV4(scenarioTopic, true, true),
-  )
-}
-if (shouldRun('v4-batch-metadata')) {
-  results['kafka-crab-js v4 (stream, batch, payload-and-metadata)'] = await runScenario(
-    'v4-batch-metadata',
-    scenarioTopicsByName.get('v4-batch-metadata') ?? [topic],
-    scenarioTopic => kafkaCrabJsV4(scenarioTopic, true, false),
-  )
-}
-if (shouldRun('kafkajs')) {
-  results.kafkajs = await runScenario(
+    'v4-batch-native',
     'kafkajs',
-    scenarioTopicsByName.get('kafkajs') ?? [topic],
-    scenarioTopic => kafkajs(scenarioTopic),
-  )
+  ].filter(shouldRun)
+
+  await waitForBrokersReady()
+
+  const datasetKeys = Array.from(new Set(scenariosToRun.map(scenarioDatasetKey)))
+  const scenarioTopicsByDatasetKey = new Map<string, string[]>()
+  for (const datasetKey of datasetKeys) {
+    scenarioTopicsByDatasetKey.set(datasetKey, await resolveScenarioTopics(datasetKey))
+  }
+
+  const scenarioTopicsByName = new Map<string, string[]>()
+  for (const scenario of scenariosToRun) {
+    scenarioTopicsByName.set(scenario, scenarioTopicsByDatasetKey.get(scenarioDatasetKey(scenario)) ?? [topic])
+  }
+
+  const results: Record<string, Result> = {}
+
+  if (shouldRun('v3-serial')) {
+    results['v3 kafka-crab-js (serial)'] = await runScenario(
+      'v3-serial',
+      scenarioTopicsByName.get('v3-serial') ?? [topic],
+      (scenarioTopic) => kafkaCrabJsV3(scenarioTopic, false),
+    )
+  }
+  if (shouldRun('v4-serial')) {
+    results['kafka-crab-js v4 (stream, serial)'] = await runScenario(
+      'v4-serial',
+      scenarioTopicsByName.get('v4-serial') ?? [topic],
+      (scenarioTopic) => kafkaCrabJsV4(scenarioTopic, false),
+    )
+  }
+  if (shouldRun('v4-serial-native')) {
+    results['kafka-crab-js v4 (stream, serial, native recvStream)'] = await runScenario(
+      'v4-serial-native',
+      scenarioTopicsByName.get('v4-serial-native') ?? [topic],
+      (scenarioTopic) => kafkaCrabJsV4NativeMetadata(scenarioTopic, false),
+    )
+  }
+  if (shouldRun('rdkafka-stream')) {
+    results['node-rdkafka (stream)'] = await runScenario(
+      'rdkafka-stream',
+      scenarioTopicsByName.get('rdkafka-stream') ?? [topic],
+      (scenarioTopic) => rdkafkaStream(scenarioTopic),
+    )
+  }
+  if (shouldRun('rdkafka-evented')) {
+    results['node-rdkafka (evented)'] = await runScenario(
+      'rdkafka-evented',
+      scenarioTopicsByName.get('rdkafka-evented') ?? [topic],
+      (scenarioTopic) => rdkafkaEvented(scenarioTopic),
+    )
+  }
+  if (shouldRun('v3-batch')) {
+    results['v3 kafka-crab-js (batch)'] = await runScenario(
+      'v3-batch',
+      scenarioTopicsByName.get('v3-batch') ?? [topic],
+      (scenarioTopic) => kafkaCrabJsV3(scenarioTopic, true),
+    )
+  }
+  if (shouldRun('v4-batch')) {
+    results['kafka-crab-js v4 (stream, batch)'] = await runScenario(
+      'v4-batch',
+      scenarioTopicsByName.get('v4-batch') ?? [topic],
+      (scenarioTopic) => kafkaCrabJsV4(scenarioTopic, true),
+    )
+  }
+  if (shouldRun('v4-batch-native')) {
+    results['kafka-crab-js v4 (stream, batch, native recvBatchStream)'] = await runScenario(
+      'v4-batch-native',
+      scenarioTopicsByName.get('v4-batch-native') ?? [topic],
+      (scenarioTopic) => kafkaCrabJsV4NativeMetadata(scenarioTopic, true),
+    )
+  }
+  if (shouldRun('kafkajs')) {
+    results.kafkajs = await runScenario('kafkajs', scenarioTopicsByName.get('kafkajs') ?? [topic], (scenarioTopic) =>
+      kafkajs(scenarioTopic),
+    )
+  }
+
+  printResults(results, true, true, 'previous')
 }
 
-printResults(results, true, true, 'previous')
+const benchmarkKeepAlive = setInterval(() => {}, 1_000)
 
-if (process.env.BENCHMARK_NO_FORCE_EXIT !== '1') {
-  process.exit(0)
-}
+main()
+  .then(() => {
+    clearInterval(benchmarkKeepAlive)
+    if (process.env.BENCHMARK_NO_FORCE_EXIT !== '1') {
+      process.exit(0)
+    }
+  })
+  .catch((error) => {
+    clearInterval(benchmarkKeepAlive)
+    console.error(error instanceof Error ? error : new Error(String(error)))
+    process.exit(1)
+  })

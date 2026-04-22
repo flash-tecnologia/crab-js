@@ -255,11 +255,7 @@ export function instrumentBatchReceive(
 ): (this: KafkaConsumer, size: number, timeoutMs: number) => Promise<Message[]> {
   const { clientId, serverAddress, serverPort } = config
 
-  return async function instrumentedBatchReceive(
-    this: KafkaConsumer,
-    size: number,
-    timeoutMs: number,
-  ) {
+  return async function instrumentedBatchReceive(this: KafkaConsumer, size: number, timeoutMs: number) {
     // Fast path: if no subscribers, just call original
     const hasReceiveSubscribers = batchReceiveStartChannel.hasSubscribers || batchReceiveEndChannel.hasSubscribers
     const hasProcessSubscribers = batchProcessStartChannel.hasSubscribers || batchProcessEndChannel.hasSubscribers

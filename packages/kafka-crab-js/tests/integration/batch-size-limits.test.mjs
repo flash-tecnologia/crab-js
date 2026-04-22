@@ -43,9 +43,11 @@ await test('Batch Size Limits Integration Tests', async (t) => {
     await sleep(2000)
 
     // Test with batch sizes larger than default max (use maxBatchMessages to avoid warnings)
-    const consumer = client.createConsumer(createConsumerConfig(`max-batch-${testId}`, {
-      maxBatchMessages: 50, // Allow larger batch sizes
-    }))
+    const consumer = client.createConsumer(
+      createConsumerConfig(`max-batch-${testId}`, {
+        maxBatchMessages: 50, // Allow larger batch sizes
+      }),
+    )
     await consumer.subscribe(topic)
 
     const receivedMessages = []
@@ -59,7 +61,7 @@ await test('Batch Size Limits Integration Tests', async (t) => {
 
       if (batch.length === 0) break
 
-      const testMessages = batch.filter(msg => isTestMessage(msg, testId))
+      const testMessages = batch.filter((msg) => isTestMessage(msg, testId))
       receivedMessages.push(...testMessages)
 
       // Verify batch size respects the configured maximum
@@ -96,7 +98,7 @@ await test('Batch Size Limits Integration Tests', async (t) => {
       console.warn = (...args) => {
         const message = args.join(' ')
         // Check if any expected warning patterns match
-        EXPECTED_WARNING_PATTERNS.some(pattern => pattern.test(message))
+        EXPECTED_WARNING_PATTERNS.some((pattern) => pattern.test(message))
         originalConsoleWarn(...args)
       }
 
@@ -149,9 +151,7 @@ await test('Batch Size Limits Integration Tests', async (t) => {
       batchTimeout: 2000,
     })
 
-    await streamConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     const receivedMessages = []
 
@@ -165,7 +165,8 @@ await test('Batch Size Limits Integration Tests', async (t) => {
           receivedMessages.push(message)
 
           // In stream mode, we receive individual messages but they're processed in batches internally
-          if (receivedMessages.length >= Math.min(messageCount, 20)) { // Stop after reasonable amount
+          if (receivedMessages.length >= Math.min(messageCount, 20)) {
+            // Stop after reasonable amount
             clearTimeout(timeout)
             resolve()
           }
@@ -186,7 +187,8 @@ await test('Batch Size Limits Integration Tests', async (t) => {
   })
 
   await t.test('Batch Timeout: Validate timeout boundary conditions', async () => {
-    for (const scenario of BATCH_TIMEOUT_SCENARIOS.slice(0, 4)) { // Test first 4 scenarios to save time
+    for (const scenario of BATCH_TIMEOUT_SCENARIOS.slice(0, 4)) {
+      // Test first 4 scenarios to save time
       const topic = createTestTopic(`timeout-${scenario.name}`)
       const testId = `timeout-${scenario.name}`
 
@@ -226,11 +228,7 @@ await test('Batch Size Limits Integration Tests', async (t) => {
       const topic = createTestTopic(`perf-${perfConfig.name}`)
       const testId = `perf-${perfConfig.name}`
 
-      const messages = createBatchTestMessages(
-        perfConfig.messageCount,
-        testId,
-        perfConfig.messageSize,
-      )
+      const messages = createBatchTestMessages(perfConfig.messageCount, testId, perfConfig.messageSize)
 
       await producer.send({ topic, messages })
       await sleep(2000)
@@ -248,7 +246,7 @@ await test('Batch Size Limits Integration Tests', async (t) => {
 
         if (batch.length === 0) break
 
-        const testMessages = batch.filter(msg => isTestMessage(msg, testId))
+        const testMessages = batch.filter((msg) => isTestMessage(msg, testId))
         receivedMessages.push(...testMessages)
       }
 

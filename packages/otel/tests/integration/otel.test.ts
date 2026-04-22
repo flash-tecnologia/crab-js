@@ -39,7 +39,7 @@ async function isKafkaReachable(brokers: string, timeoutMs = 750): Promise<boole
     return false
   }
 
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const socket = net.connect({ host, port })
 
     let done = false
@@ -183,7 +183,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
   const flushSpans = async () => {
     await spanProcessor.forceFlush()
     await provider.forceFlush()
-    await new Promise(resolve => setTimeout(resolve, 10))
+    await new Promise((resolve) => setTimeout(resolve, 10))
     return memoryExporter.getFinishedSpans()
   }
 
@@ -266,10 +266,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     // Should have at least one producer span
     assert(spans.length >= 1, `Expected at least 1 span, got ${spans.length}`)
 
-    const producerSpan = spans.find(span =>
-      span.kind === SpanKind.PRODUCER &&
-      span.name.includes(testTopic)
-    )
+    const producerSpan = spans.find((span) => span.kind === SpanKind.PRODUCER && span.name.includes(testTopic))
 
     assert(producerSpan, 'Should have a producer span')
     assert.equal(producerSpan.name, `send ${testTopic}`)
@@ -318,10 +315,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     await producer.flush()
 
     const spans = await flushSpans()
-    const producerSpan = spans.find(span =>
-      span.kind === SpanKind.PRODUCER &&
-      span.name.includes(testTopic)
-    )
+    const producerSpan = spans.find((span) => span.kind === SpanKind.PRODUCER && span.name.includes(testTopic))
 
     assert(producerSpan, 'Should have a producer span')
     const attributes = producerSpan.attributes
@@ -360,32 +354,30 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
-    receivedMessage = await consumer.recv() as MessageWithEndSpan
+    receivedMessage = (await consumer.recv()) as MessageWithEndSpan
     endOtelSpans(receivedMessage)
     await consumer.disconnect()
 
     parentSpan.end()
 
     const spans = await flushSpans()
-    const producerSpan = spans.find(span =>
-      span.kind === SpanKind.PRODUCER &&
-      span.name.includes(testTopic)
-    )
+    const producerSpan = spans.find((span) => span.kind === SpanKind.PRODUCER && span.name.includes(testTopic))
 
-    const consumerSpan = spans.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}`
-    )
+    const consumerSpan = spans.find((span) => span.kind === SpanKind.CONSUMER && span.name === `process ${testTopic}`)
 
     const traceparentHeader = receivedMessage?.headers?.traceparent?.toString('utf8')
     assert(traceparentHeader, 'Message headers should include traceparent')
-    assert(traceparentHeader.includes(parentSpan.spanContext().traceId),
-      'traceparent header should carry parent trace id')
+    assert(
+      traceparentHeader.includes(parentSpan.spanContext().traceId),
+      'traceparent header should carry parent trace id',
+    )
 
     assert(producerSpan, 'Should have a producer span')
 
@@ -421,13 +413,15 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
     // Receive the message
-    const receivedMessage = await consumer.recv() as MessageWithEndSpan
+    const receivedMessage = (await consumer.recv()) as MessageWithEndSpan
     endOtelSpans(receivedMessage)
     assert(receivedMessage, 'Should receive a message')
     assert.equal(receivedMessage.topic, testTopic)
@@ -436,17 +430,18 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
     const spans = await flushSpans()
     if (process.env.DEBUG_OTEL_TESTS === 'true') {
-      console.log('message-boundary spans', spans.map(s => ({
-        name: s.name,
-        kind: s.kind,
-        traceId: s.spanContext().traceId,
-        parent: s.parentSpanId,
-      })))
+      console.log(
+        'message-boundary spans',
+        spans.map((s) => ({
+          name: s.name,
+          kind: s.kind,
+          traceId: s.spanContext().traceId,
+          parent: s.parentSpanId,
+        })),
+      )
     }
-    const consumerSpan = spans.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name.startsWith('process ') &&
-      span.name.endsWith(testTopic)
+    const consumerSpan = spans.find(
+      (span) => span.kind === SpanKind.CONSUMER && span.name.startsWith('process ') && span.name.endsWith(testTopic),
     )
 
     assert(consumerSpan, 'Should have a consumer span')
@@ -478,30 +473,30 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
-    const receivedMessage = await consumer.recv() as MessageWithEndSpan
+    const receivedMessage = (await consumer.recv()) as MessageWithEndSpan
     assert(receivedMessage, 'Should receive a message')
     assert.equal(typeof receivedMessage.endSpan, 'function', 'Message should expose endSpan when OTEL is enabled')
 
     await consumer.disconnect()
 
     const spansBefore = await flushSpans()
-    const processBefore = spansBefore.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}`
+    const processBefore = spansBefore.find(
+      (span) => span.kind === SpanKind.CONSUMER && span.name === `process ${testTopic}`,
     )
     assert.equal(processBefore, undefined, 'Process span should not be finished without calling endSpan()')
 
     // Cleanup: end span after assertion so we don't leak spans across tests
     endOtelSpans(receivedMessage)
     const spansAfter = await flushSpans()
-    const processAfter = spansAfter.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}`
+    const processAfter = spansAfter.find(
+      (span) => span.kind === SpanKind.CONSUMER && span.name === `process ${testTopic}`,
     )
     assert(processAfter, 'Process span should finish after calling endSpan()')
   })
@@ -525,12 +520,14 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
-    const propagatedMessage = await consumer.recv() as MessageWithEndSpan
+    const propagatedMessage = (await consumer.recv()) as MessageWithEndSpan
     endOtelSpans(propagatedMessage)
     assert(propagatedMessage, 'Should receive a message for propagation check')
 
@@ -538,17 +535,11 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
     const spans = await flushSpans()
 
-    const producerSpan = spans.find(span =>
-      span.kind === SpanKind.PRODUCER &&
-      span.name === `send ${testTopic}`
-    )
+    const producerSpan = spans.find((span) => span.kind === SpanKind.PRODUCER && span.name === `send ${testTopic}`)
 
     assert(producerSpan, 'Producer span should be present for propagation test')
 
-    const consumerSpan = spans.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}`
-    )
+    const consumerSpan = spans.find((span) => span.kind === SpanKind.CONSUMER && span.name === `process ${testTopic}`)
 
     assert(consumerSpan, 'Consumer span should be present for propagation test')
 
@@ -591,16 +582,18 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
     const ambientSpan = trace.getTracer('test').startSpan('ambient-consumer-parent')
     let receivedMessage: MessageWithEndSpan | null = null
     try {
       await context.with(trace.setSpan(context.active(), ambientSpan), async () => {
-        receivedMessage = await consumer.recv() as MessageWithEndSpan
+        receivedMessage = (await consumer.recv()) as MessageWithEndSpan
       })
     } finally {
       ambientSpan.end()
@@ -610,10 +603,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     await consumer.disconnect()
 
     const spans = await flushSpans()
-    const consumerSpan = spans.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}`
-    )
+    const consumerSpan = spans.find((span) => span.kind === SpanKind.CONSUMER && span.name === `process ${testTopic}`)
 
     assert(consumerSpan, 'Should have consumer span for no-traceparent message')
     assert.notEqual(
@@ -655,20 +645,19 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
-    const receivedMessage = await consumer.recv() as MessageWithEndSpan
+    const receivedMessage = (await consumer.recv()) as MessageWithEndSpan
     endOtelSpans(receivedMessage)
     await consumer.disconnect()
 
     const spans = await flushSpans()
-    const consumerSpan = spans.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}`
-    )
+    const consumerSpan = spans.find((span) => span.kind === SpanKind.CONSUMER && span.name === `process ${testTopic}`)
 
     assert(consumerSpan, 'Should have consumer span for mixed-case TraceParent message')
     assert.equal(
@@ -705,13 +694,15 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
     // Receive messages in batch
-    const messages = await consumer.recvBatch(batchSize, 5000) as MessageWithEndSpan[]
+    const messages = (await consumer.recvBatch(batchSize, 5000)) as MessageWithEndSpan[]
     endOtelSpans(messages)
     assert(messages.length >= 1, `Should receive at least 1 message, got ${messages.length}`)
 
@@ -720,11 +711,12 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const spans = await flushSpans()
 
     // Should have batch span and individual message spans
-    const batchSpan = spans.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}` &&
-      (span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= 1 &&
-      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined
+    const batchSpan = spans.find(
+      (span) =>
+        span.kind === SpanKind.CONSUMER &&
+        span.name === `process ${testTopic}` &&
+        (span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= 1 &&
+        span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined,
     )
 
     assert(batchSpan, 'Should have a batch processing span')
@@ -737,10 +729,11 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert((batchAttributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= 1)
 
     // Should also have individual message spans
-    const messageSpans = spans.filter(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}` &&
-      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] !== undefined
+    const messageSpans = spans.filter(
+      (span) =>
+        span.kind === SpanKind.CONSUMER &&
+        span.name === `process ${testTopic}` &&
+        span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] !== undefined,
     )
 
     assert(messageSpans.length >= 1, 'Should have individual message spans')
@@ -772,11 +765,13 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert(spans.length >= 1, 'Expected at least one span for failing producer operation')
 
     // Look for spans with error status
-    const errorSpans = spans.filter(span => span.status.code === SpanStatusCode.ERROR)
-    assert(errorSpans.length >= 1,
-      `Expected error spans to be recorded. Spans: ${
-        spans.map(s => `${s.name}:${SpanStatusCode[s.status.code]}`).join(', ')
-      }`)
+    const errorSpans = spans.filter((span) => span.status.code === SpanStatusCode.ERROR)
+    assert(
+      errorSpans.length >= 1,
+      `Expected error spans to be recorded. Spans: ${spans
+        .map((s) => `${s.name}:${SpanStatusCode[s.status.code]}`)
+        .join(', ')}`,
+    )
   })
 
   test('should support topic filtering configuration', async () => {
@@ -805,8 +800,8 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const spans = await flushSpans()
 
     // Should have no spans for the ignored topic
-    const filteredSpans = spans.filter(span =>
-      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] === testTopic
+    const filteredSpans = spans.filter(
+      (span) => span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] === testTopic,
     )
 
     assert.equal(filteredSpans.length, 0, 'Should have no spans for ignored topic')
@@ -850,22 +845,22 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
-    const receivedMessage = await consumer.recv() as MessageWithEndSpan
+    const receivedMessage = (await consumer.recv()) as MessageWithEndSpan
     endOtelSpans(receivedMessage)
     assert(receivedMessage, 'Should receive a message')
 
     await consumer.disconnect()
 
     const spans = await flushSpans()
-    const consumerSpan = spans.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name.startsWith('process ') &&
-      span.name.endsWith(testTopic)
+    const consumerSpan = spans.find(
+      (span) => span.kind === SpanKind.CONSUMER && span.name.startsWith('process ') && span.name.endsWith(testTopic),
     )
 
     assert(consumerSpan, 'Should have a consumer span')
@@ -902,10 +897,12 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       streamConsumer.once('data', resolve)
     })
 
-    await streamConsumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await streamConsumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
     const streamMessage = await messagePromise
     endOtelSpans(streamMessage)
@@ -914,10 +911,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     await streamConsumer.disconnect()
 
     const spans = await flushSpans()
-    const streamSpan = spans.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}`
-    )
+    const streamSpan = spans.find((span) => span.kind === SpanKind.CONSUMER && span.name === `process ${testTopic}`)
 
     assert(streamSpan, 'Stream consumer should create a consumer span')
     assert.equal(
@@ -948,8 +942,8 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const spans = await flushSpans()
 
     // Should have no spans from the disabled client
-    const clientSpans = spans.filter(span =>
-      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] === testTopic
+    const clientSpans = spans.filter(
+      (span) => span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] === testTopic,
     )
 
     assert.equal(clientSpans.length, 0, 'Should have no spans when OTEL is disabled')
@@ -981,10 +975,12 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       groupId: `stream-group-${nanoid()}`,
     })
 
-    await streamConsumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await streamConsumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
     let receivedCount = 0
     const receivedMessages: MessageWithEndSpan[] = []
@@ -1026,10 +1022,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     })
 
     const spans = await flushSpans()
-    const consumerSpans = spans.filter(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name.includes(testTopic)
-    )
+    const consumerSpans = spans.filter((span) => span.kind === SpanKind.CONSUMER && span.name.includes(testTopic))
 
     assert(consumerSpans.length >= 1, `Should have at least 1 consumer span, got ${consumerSpans.length}`)
     assert.equal(receivedCount, messageCount, `Should receive all ${messageCount} messages`)
@@ -1052,7 +1045,8 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
               key: Buffer.from(`batch-stream-key-${i}`),
             },
           ],
-        }))
+        }),
+      )
     }
     await producer.flush()
     streamParent.end()
@@ -1069,10 +1063,12 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       streamOptions: { objectMode: true },
     })
 
-    await streamConsumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await streamConsumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
     let receivedCount = 0
     const receivedMessages: MessageWithEndSpan[] = []
@@ -1115,12 +1111,14 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
     const spans = await flushSpans()
 
-    const consumerSpans = spans.filter(span => span.kind === SpanKind.CONSUMER && span.name === `process ${testTopic}`)
+    const consumerSpans = spans.filter(
+      (span) => span.kind === SpanKind.CONSUMER && span.name === `process ${testTopic}`,
+    )
 
     assert(consumerSpans.length >= 1, `Should have consumer spans from stream batch mode, got ${consumerSpans.length}`)
     assert(receivedMessages.length >= batchSize, 'Should receive at least one batch worth of messages')
-    const allOnParentTrace = consumerSpans.every(span =>
-      span.spanContext().traceId === streamParent.spanContext().traceId
+    const allOnParentTrace = consumerSpans.every(
+      (span) => span.spanContext().traceId === streamParent.spanContext().traceId,
     )
     assert(allOnParentTrace, 'Stream batch consumer spans should stay on parent context trace')
   })
@@ -1147,10 +1145,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     await producer.flush()
 
     const spans = await flushSpans()
-    const producerSpan = spans.find(span =>
-      span.kind === SpanKind.PRODUCER &&
-      span.name.includes(testTopic)
-    )
+    const producerSpan = spans.find((span) => span.kind === SpanKind.PRODUCER && span.name.includes(testTopic))
 
     assert(producerSpan, 'Should have producer span')
     assert.equal(producerSpan.status.code, SpanStatusCode.OK, 'Span should have OK status')
@@ -1158,8 +1153,10 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     // Verify delivery report information is captured
     const attributes = producerSpan.attributes
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME], testTopic)
-    assert(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] !== undefined,
-      'Should have partition info')
+    assert(
+      attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] !== undefined,
+      'Should have partition info',
+    )
   })
 
   test('should trace complex producer-consumer flow with context propagation', async () => {
@@ -1193,12 +1190,14 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
         enableAutoCommit: false,
       })
 
-      await consumer.subscribe([{
-        topic: testTopic,
-        allOffsets: { position: 'Beginning' },
-      }])
+      await consumer.subscribe([
+        {
+          topic: testTopic,
+          allOffsets: { position: 'Beginning' },
+        },
+      ])
 
-      const receivedMessage = await consumer.recv() as MessageWithEndSpan
+      const receivedMessage = (await consumer.recv()) as MessageWithEndSpan
       endOtelSpans(receivedMessage)
       assert(receivedMessage, 'Should receive message')
 
@@ -1210,17 +1209,11 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const spans = await flushSpans()
 
     // Find producer and consumer spans
-    const producerSpan = spans.find(span =>
-      span.kind === SpanKind.PRODUCER &&
-      span.name.includes(testTopic)
-    )
+    const producerSpan = spans.find((span) => span.kind === SpanKind.PRODUCER && span.name.includes(testTopic))
 
-    consumerSpan = spans.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name.includes(testTopic)
-    )
+    consumerSpan = spans.find((span) => span.kind === SpanKind.CONSUMER && span.name.includes(testTopic))
 
-    const parentSpanFinished = spans.find(span => span.name === 'complex-flow-parent')
+    const parentSpanFinished = spans.find((span) => span.name === 'complex-flow-parent')
 
     assert(producerSpan, 'Should have producer span')
     assert(consumerSpan, 'Should have consumer span')
@@ -1279,10 +1272,10 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       consumer2.subscribe([{ topic: topicB, allOffsets: { position: 'Beginning' } }]),
     ])
 
-    const [messageA, messageB] = await Promise.all([
-      consumer1.recv(),
-      consumer2.recv(),
-    ]) as [MessageWithEndSpan, MessageWithEndSpan]
+    const [messageA, messageB] = (await Promise.all([consumer1.recv(), consumer2.recv()])) as [
+      MessageWithEndSpan,
+      MessageWithEndSpan,
+    ]
 
     endOtelSpans(messageA)
     endOtelSpans(messageB)
@@ -1294,24 +1287,27 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const spans = await flushSpans()
 
     // Verify spans for both topics
-    const topicASpans = spans.filter(span =>
-      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] === topicA
+    const topicASpans = spans.filter(
+      (span) => span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] === topicA,
     )
 
-    const topicBSpans = spans.filter(span =>
-      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] === topicB
+    const topicBSpans = spans.filter(
+      (span) => span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] === topicB,
     )
 
     assert(topicASpans.length >= 2, 'Should have producer and consumer spans for topic A')
     assert(topicBSpans.length >= 2, 'Should have producer and consumer spans for topic B')
 
     // Verify spans have different trace IDs (isolated)
-    const topicAProducer = topicASpans.find(s => s.kind === SpanKind.PRODUCER)
-    const topicBProducer = topicBSpans.find(s => s.kind === SpanKind.PRODUCER)
+    const topicAProducer = topicASpans.find((s) => s.kind === SpanKind.PRODUCER)
+    const topicBProducer = topicBSpans.find((s) => s.kind === SpanKind.PRODUCER)
 
     assert(topicAProducer && topicBProducer, 'Should have producer spans for both topics')
-    assert.notEqual(topicAProducer.spanContext().traceId, topicBProducer.spanContext().traceId,
-      'Producer spans for different topics should have isolated traces')
+    assert.notEqual(
+      topicAProducer.spanContext().traceId,
+      topicBProducer.spanContext().traceId,
+      'Producer spans for different topics should have isolated traces',
+    )
   })
 
   test('should handle consumer group rebalancing with proper span cleanup', async () => {
@@ -1338,13 +1334,15 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer1.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer1.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
     // Receive some messages
-    const message1 = await consumer1.recv() as MessageWithEndSpan
+    const message1 = (await consumer1.recv()) as MessageWithEndSpan
     assert(message1, 'First consumer should receive message')
 
     // Create second consumer to trigger rebalancing
@@ -1353,16 +1351,18 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer2.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer2.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
     // Give some time for rebalancing
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
     // Try to receive from both consumers
-    const message2 = await consumer2.recv() as MessageWithEndSpan
+    const message2 = (await consumer2.recv()) as MessageWithEndSpan
     endOtelSpans(message1)
     endOtelSpans(message2)
     assert(message2, 'Second consumer should receive message after rebalancing')
@@ -1370,10 +1370,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     await Promise.all([consumer1.disconnect(), consumer2.disconnect()])
 
     const spans = await flushSpans()
-    const consumerSpans = spans.filter(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name.includes(testTopic)
-    )
+    const consumerSpans = spans.filter((span) => span.kind === SpanKind.CONSUMER && span.name.includes(testTopic))
 
     assert(consumerSpans.length >= 2, 'Should have spans from both consumers')
   })
@@ -1413,10 +1410,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     await producer.flush()
 
     const spans = await flushSpans()
-    const producerSpan = spans.find(span =>
-      span.kind === SpanKind.PRODUCER &&
-      span.name.includes(testTopic)
-    )
+    const producerSpan = spans.find((span) => span.kind === SpanKind.PRODUCER && span.name.includes(testTopic))
 
     assert(producerSpan, 'Should have producer span')
     assert(producerHookCalled, 'Producer hook should have been called')
@@ -1454,10 +1448,10 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     await producer.flush()
 
     const spans = await flushSpans()
-    const producerSpan = spans.find(s => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
-    const rootSpanFinished = spans.find(s => s.name === 'async-root-operation')
+    const producerSpan = spans.find((s) => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
+    const rootSpanFinished = spans.find((s) => s.name === 'async-root-operation')
 
-    assert(producerSpan, `Should have producer span. Spans: ${spans.map(s => s.name).join(', ')}`)
+    assert(producerSpan, `Should have producer span. Spans: ${spans.map((s) => s.name).join(', ')}`)
     assert(childSpan, 'Child span should be created')
     const childSpanContext = childSpan.spanContext()
     assert(childSpanContext, 'Child span should have context')
@@ -1486,10 +1480,12 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
         await context.with(operationContext, async () => {
           await producer.send({
             topic: testTopic,
-            messages: [{
-              payload: Buffer.from(`concurrent message ${i}`),
-              key: Buffer.from(`key-${i}`),
-            }],
+            messages: [
+              {
+                payload: Buffer.from(`concurrent message ${i}`),
+                key: Buffer.from(`key-${i}`),
+              },
+            ],
           })
         })
 
@@ -1502,27 +1498,35 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     await producer.flush()
 
     const spans = await flushSpans()
-    const producerSpans = spans.filter(s => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
+    const producerSpans = spans.filter((s) => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
 
-    assert(producerSpans.length >= concurrentCount,
-      `Should have producer spans for all operations. Producer spans: ${producerSpans.length}, names: ${
-        producerSpans.map(s => s.name).join(', ')
-      }`)
+    assert(
+      producerSpans.length >= concurrentCount,
+      `Should have producer spans for all operations. Producer spans: ${producerSpans.length}, names: ${producerSpans
+        .map((s) => s.name)
+        .join(', ')}`,
+    )
 
     for (let i = 0; i < concurrentCount; i++) {
       const opSpan = operationSpans[i]
       assert(opSpan, `Missing operation span for op ${i}`)
 
       const expectedKey = `key-${i}`
-      const producerSpan = producerSpans.find(s =>
-        s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY] === expectedKey
+      const producerSpan = producerSpans.find(
+        (s) => s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY] === expectedKey,
       )
 
       assert(producerSpan, `Missing producer span for op ${i}`)
-      assert.equal(producerSpan.spanContext().traceId, opSpan.spanContext().traceId,
-        `Producer span for op ${i} should share trace with operation span`)
-      assert.equal(producerSpan.parentSpanId, opSpan.spanContext().spanId,
-        `Producer span for op ${i} should be child of operation span`)
+      assert.equal(
+        producerSpan.spanContext().traceId,
+        opSpan.spanContext().traceId,
+        `Producer span for op ${i} should share trace with operation span`,
+      )
+      assert.equal(
+        producerSpan.parentSpanId,
+        opSpan.spanContext().spanId,
+        `Producer span for op ${i} should be child of operation span`,
+      )
     }
   })
 
@@ -1549,10 +1553,12 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
         groupId: `stream-context-group-${nanoid()}`,
       })
 
-      await streamConsumer.subscribe([{
-        topic: testTopic,
-        allOffsets: { position: 'Beginning' },
-      }])
+      await streamConsumer.subscribe([
+        {
+          topic: testTopic,
+          allOffsets: { position: 'Beginning' },
+        },
+      ])
 
       streamConsumer.on('data', (message: MessageWithEndSpan) => {
         endOtelSpans(message)
@@ -1602,15 +1608,21 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
     const spans = await flushSpans()
 
-    const consumerSpan = spans.find(s => s.kind === SpanKind.CONSUMER && s.name.includes(testTopic))
-    const parentSpanFinished = spans.find(s => s.name === 'stream-processing-parent')
+    const consumerSpan = spans.find((s) => s.kind === SpanKind.CONSUMER && s.name.includes(testTopic))
+    const parentSpanFinished = spans.find((s) => s.name === 'stream-processing-parent')
 
-    assert(consumerSpan, `Should have consumer span. Spans: ${spans.map(s => s.name).join(', ')}`)
+    assert(consumerSpan, `Should have consumer span. Spans: ${spans.map((s) => s.name).join(', ')}`)
     if (parentSpanFinished) {
-      assert.equal(consumerSpan.spanContext().traceId, parentSpanFinished.spanContext().traceId,
-        'Consumer span should propagate parent stream context')
-      assert.equal(consumerSpan.parentSpanId, parentSpanFinished.spanContext().spanId,
-        'Consumer span should be child of stream parent span')
+      assert.equal(
+        consumerSpan.spanContext().traceId,
+        parentSpanFinished.spanContext().traceId,
+        'Consumer span should propagate parent stream context',
+      )
+      assert.equal(
+        consumerSpan.parentSpanId,
+        parentSpanFinished.spanContext().spanId,
+        'Consumer span should be child of stream parent span',
+      )
     }
     assert(streamProcessingComplete, 'Stream processing should complete')
   })
@@ -1629,11 +1641,13 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     await context.with(producerContext, async () => {
       await producer.send({
         topic: testTopic,
-        messages: [{
-          payload: Buffer.from('boundary test message'),
-          key: Buffer.from('boundary-key'),
-          headers: { 'custom-header': Buffer.from('custom-value') },
-        }],
+        messages: [
+          {
+            payload: Buffer.from('boundary test message'),
+            key: Buffer.from('boundary-key'),
+            headers: { 'custom-header': Buffer.from('custom-value') },
+          },
+        ],
       })
     })
 
@@ -1647,19 +1661,21 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
-    receivedMessage = await consumer.recv() as MessageWithEndSpan
+    receivedMessage = (await consumer.recv()) as MessageWithEndSpan
     endOtelSpans(receivedMessage)
     await consumer.disconnect()
 
     const spans = await flushSpans()
 
-    const kafkaProducerSpan = spans.find(s => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
-    const kafkaConsumerSpan = spans.find(s => s.kind === SpanKind.CONSUMER && s.name.includes(testTopic))
+    const kafkaProducerSpan = spans.find((s) => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
+    const kafkaConsumerSpan = spans.find((s) => s.kind === SpanKind.CONSUMER && s.name.includes(testTopic))
 
     assert(kafkaProducerSpan, 'Should have Kafka producer span')
     assert(kafkaConsumerSpan, 'Should have Kafka consumer span')
@@ -1669,8 +1685,10 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert(receivedMessage.headers, 'Message should have headers')
     const traceparentHeader = receivedMessage.headers?.traceparent?.toString('utf8')
     assert(traceparentHeader, 'Traceparent header should be present on received message')
-    assert(traceparentHeader.includes(kafkaProducerSpan.spanContext().traceId),
-      'Traceparent header should include producer trace id')
+    assert(
+      traceparentHeader.includes(kafkaProducerSpan.spanContext().traceId),
+      'Traceparent header should include producer trace id',
+    )
   })
 
   test('should handle nested async operations with proper context isolation', async () => {
@@ -1698,10 +1716,12 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
           // Level 3: Kafka message sending
           await producer.send({
             topic: testTopic,
-            messages: [{
-              payload: Buffer.from('nested operation result'),
-              key: Buffer.from('nested-key'),
-            }],
+            messages: [
+              {
+                payload: Buffer.from('nested operation result'),
+                key: Buffer.from('nested-key'),
+              },
+            ],
           })
         })
 
@@ -1716,13 +1736,19 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
     const spans = await flushSpans()
 
-    const kafkaSpanRecorded = spans.find(s => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
+    const kafkaSpanRecorded = spans.find((s) => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
     assert(kafkaSpanRecorded, 'Should have Kafka span')
     assert(businessSpan, 'Business span should be created')
-    assert.equal(kafkaSpanRecorded.spanContext().traceId, rootSpan.spanContext().traceId,
-      'Kafka span should stay on root trace')
-    assert.equal(kafkaSpanRecorded.parentSpanId, businessSpan.spanContext().spanId,
-      'Kafka span should be child of business logic span')
+    assert.equal(
+      kafkaSpanRecorded.spanContext().traceId,
+      rootSpan.spanContext().traceId,
+      'Kafka span should stay on root trace',
+    )
+    assert.equal(
+      kafkaSpanRecorded.parentSpanId,
+      businessSpan.spanContext().spanId,
+      'Kafka span should be child of business logic span',
+    )
   })
 
   test('should maintain context across batch operations', async () => {
@@ -1753,13 +1779,15 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
         enableAutoCommit: false,
       })
 
-      await consumer.subscribe([{
-        topic: testTopic,
-        allOffsets: { position: 'Beginning' },
-      }])
+      await consumer.subscribe([
+        {
+          topic: testTopic,
+          allOffsets: { position: 'Beginning' },
+        },
+      ])
 
       // Receive messages in batch
-      const messages = await consumer.recvBatch(batchSize, 5000) as MessageWithEndSpan[]
+      const messages = (await consumer.recvBatch(batchSize, 5000)) as MessageWithEndSpan[]
       processedMessages = messages
 
       // Process each message in the context
@@ -1782,18 +1810,20 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
     const spans = await flushSpans()
 
-    const kafkaBatchSpan = spans.find(s =>
-      s.kind === SpanKind.CONSUMER &&
-      s.name === `process ${testTopic}` &&
-      (s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= 1 &&
-      s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined
+    const kafkaBatchSpan = spans.find(
+      (s) =>
+        s.kind === SpanKind.CONSUMER &&
+        s.name === `process ${testTopic}` &&
+        (s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= 1 &&
+        s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined,
     )
 
-    assert(kafkaBatchSpan, `Should have Kafka batch span. Spans: ${spans.map(s => s.name).join(', ')}`)
-    const messageSpans = spans.filter(s =>
-      s.kind === SpanKind.CONSUMER &&
-      s.name === `process ${testTopic}` &&
-      s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] !== undefined
+    assert(kafkaBatchSpan, `Should have Kafka batch span. Spans: ${spans.map((s) => s.name).join(', ')}`)
+    const messageSpans = spans.filter(
+      (s) =>
+        s.kind === SpanKind.CONSUMER &&
+        s.name === `process ${testTopic}` &&
+        s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] !== undefined,
     )
     assert(messageSpans.length >= 1, 'Should have individual message spans within batch processing')
     assert(processedMessages.length >= 1, 'Should process at least one message')
@@ -1820,28 +1850,32 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       enableAutoCommit: false,
     })
 
-    await consumer.subscribe([{
-      topic: testTopic,
-      allOffsets: { position: 'Beginning' },
-    }])
+    await consumer.subscribe([
+      {
+        topic: testTopic,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
 
-    const messages = await consumer.recvBatch(batchSize, 10000) as MessageWithEndSpan[]
+    const messages = (await consumer.recvBatch(batchSize, 10000)) as MessageWithEndSpan[]
     endOtelSpans(messages)
     await consumer.disconnect()
 
     const spans = await flushSpans()
 
-    const batchSpan = spans.find(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}` &&
-      (span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= batchSize &&
-      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined
+    const batchSpan = spans.find(
+      (span) =>
+        span.kind === SpanKind.CONSUMER &&
+        span.name === `process ${testTopic}` &&
+        (span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= batchSize &&
+        span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined,
     )
 
-    const messageSpans = spans.filter(span =>
-      span.kind === SpanKind.CONSUMER &&
-      span.name === `process ${testTopic}` &&
-      span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] !== undefined
+    const messageSpans = spans.filter(
+      (span) =>
+        span.kind === SpanKind.CONSUMER &&
+        span.name === `process ${testTopic}` &&
+        span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] !== undefined,
     )
 
     assert(messages.length >= batchSize, `Should receive at least ${batchSize} messages`)

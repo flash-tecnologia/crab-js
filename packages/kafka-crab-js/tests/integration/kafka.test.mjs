@@ -22,12 +22,14 @@ const config = {
 const testMessages = Array.from({ length: 3 }, (_, i) => ({
   key: Buffer.from(`key-${TEST_ID}-${i}`),
   headers: { 'test-header': Buffer.from(`header-value-${i}`) },
-  payload: Buffer.from(JSON.stringify({
-    _id: i,
-    testId: TEST_ID,
-    name: `Test Message ${i}`,
-    timestamp: Date.now(),
-  })),
+  payload: Buffer.from(
+    JSON.stringify({
+      _id: i,
+      testId: TEST_ID,
+      name: `Test Message ${i}`,
+      timestamp: Date.now(),
+    }),
+  ),
 }))
 
 await test('Kafka Crab JS Integration Tests', async (t) => {
@@ -157,7 +159,7 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
       if (Object.keys(msg.headers || {}).length > 0) {
         ok(msg.headers['test-header'], 'Message should have test header')
         // Check header content if needed
-        const expectedHeaderIndex = testMessages.findIndex(tm => tm.key.equals(msg.key))
+        const expectedHeaderIndex = testMessages.findIndex((tm) => tm.key.equals(msg.key))
         if (expectedHeaderIndex !== -1) {
           equal(
             msg.headers['test-header'].toString(),
@@ -186,9 +188,7 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
     ok(streamConsumer, 'Stream consumer should be created')
 
     // Subscribe using the array format from your examples
-    await streamConsumer.subscribe([
-      { topic: TEST_TOPIC, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic: TEST_TOPIC, allOffsets: { position: 'Beginning' } }])
 
     // Set up promise to collect messages
     const receivedMessages = []
@@ -316,7 +316,9 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
       // Check if the error message indicates a connection or timeout issue
       const errMsg = error.message.toLowerCase()
       ok(
-        errMsg.includes('broker') || errMsg.includes('connect') || errMsg.includes('timeout') ||
+        errMsg.includes('broker') ||
+          errMsg.includes('connect') ||
+          errMsg.includes('timeout') ||
           errMsg.includes('failed'),
         `Error message should indicate connection/broker/timeout issue (got: ${error.message})`,
       )
@@ -330,7 +332,8 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
           console.warn('Error disconnecting invalid producer:', e.message)
         }
       }
-      if (invalidClient && typeof invalidClient.disconnect === 'function') { // Assuming client has disconnect
+      if (invalidClient && typeof invalidClient.disconnect === 'function') {
+        // Assuming client has disconnect
         try {
           await invalidClient.disconnect()
         } catch (e) {
@@ -425,13 +428,17 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
     console.log(`Multi-topic test: Sending message to ${SECOND_TOPIC}`)
     await producer.send({
       topic: SECOND_TOPIC,
-      messages: [{
-        key: Buffer.from(`key-${TEST_ID}-second-0`), // Unique key
-        payload: Buffer.from(JSON.stringify({
-          testId: TEST_ID,
-          fromTopic: SECOND_TOPIC,
-        })),
-      }],
+      messages: [
+        {
+          key: Buffer.from(`key-${TEST_ID}-second-0`), // Unique key
+          payload: Buffer.from(
+            JSON.stringify({
+              testId: TEST_ID,
+              fromTopic: SECOND_TOPIC,
+            }),
+          ),
+        },
+      ],
     })
     console.log(`Multi-topic test: Message sent to ${SECOND_TOPIC}`)
 
@@ -458,9 +465,9 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
       const timeoutDuration = 15000 // Increased timeout slightly
       const timeout = setTimeout(() => {
         console.log(
-          `Multi-topic test: Timeout reached after ${timeoutDuration}ms. Received from topics: ${
-            [...receivedTopics].join(', ')
-          }`,
+          `Multi-topic test: Timeout reached after ${timeoutDuration}ms. Received from topics: ${[
+            ...receivedTopics,
+          ].join(', ')}`,
         )
         resolve() // Resolve on timeout, verification happens later
       }, timeoutDuration)
@@ -468,7 +475,8 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
       streamConsumer.on('data', (message) => {
         try {
           const payload = JSON.parse(message.payload.toString())
-          if (payload.testId === TEST_ID) { // Filter for current test run
+          if (payload.testId === TEST_ID) {
+            // Filter for current test run
             console.log(`Multi-topic test: Received message from topic ${message.topic} (Offset ${message.offset})`)
             receivedTopics.add(message.topic)
             receivedMessages.push(message)
@@ -510,9 +518,12 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
     ok(receivedTopics.has(SECOND_TOPIC), `Should receive from second topic (${SECOND_TOPIC})`)
 
     // Optional: Verify specific message content if needed
-    ok(receivedMessages.some(m => m.topic === TEST_TOPIC), 'Should have at least one message object from TEST_TOPIC')
     ok(
-      receivedMessages.some(m => m.topic === SECOND_TOPIC),
+      receivedMessages.some((m) => m.topic === TEST_TOPIC),
+      'Should have at least one message object from TEST_TOPIC',
+    )
+    ok(
+      receivedMessages.some((m) => m.topic === SECOND_TOPIC),
       'Should have at least one message object from SECOND_TOPIC',
     )
   })
@@ -531,18 +542,20 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
     const complexHeaders = {
       'correlation-id': Buffer.from(correlationId),
       'message-type': Buffer.from('test-message'),
-      'timestamp': Buffer.from(timestampStr),
+      timestamp: Buffer.from(timestampStr),
       'json-header': Buffer.from(nestedJson),
     }
 
     console.log(`Headers test: Sending message with headers to ${HEADER_TOPIC}`)
     await producer.send({
       topic: HEADER_TOPIC,
-      messages: [{
-        key: Buffer.from(`key-header-${TEST_ID}`), // Unique key
-        headers: complexHeaders,
-        payload: Buffer.from(JSON.stringify({ testId: TEST_ID, withHeaders: true })),
-      }],
+      messages: [
+        {
+          key: Buffer.from(`key-header-${TEST_ID}`), // Unique key
+          headers: complexHeaders,
+          payload: Buffer.from(JSON.stringify({ testId: TEST_ID, withHeaders: true })),
+        },
+      ],
     })
     console.log(`Headers test: Message sent.`)
 
@@ -583,21 +596,9 @@ await test('Kafka Crab JS Integration Tests', async (t) => {
       'test-message',
       'Header "message-type" content should match string',
     )
-    equal(
-      message.headers['correlation-id'].toString(),
-      correlationId,
-      'Header "correlation-id" content should match',
-    )
-    equal(
-      message.headers['timestamp'].toString(),
-      timestampStr,
-      'Header "timestamp" content should match',
-    )
-    equal(
-      message.headers['json-header'].toString(),
-      nestedJson,
-      'Header "json-header" content should match',
-    )
+    equal(message.headers['correlation-id'].toString(), correlationId, 'Header "correlation-id" content should match')
+    equal(message.headers['timestamp'].toString(), timestampStr, 'Header "timestamp" content should match')
+    equal(message.headers['json-header'].toString(), nestedJson, 'Header "json-header" content should match')
     // Verify payload testId as well
     try {
       const payload = JSON.parse(message.payload.toString())

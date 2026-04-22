@@ -100,12 +100,12 @@ enableOtelInstrumentation({
   captureMessageHeaders: true,          // Include message headers in spans (default: true)
   maxPayloadSize: 1024,                 // Max payload bytes to capture (default: 1024)
   enableBatchInstrumentation: true,     // Instrument batch operations (default: true)
-  
+
   // Topic filtering
   ignoreTopics: ['__consumer_offsets'], // Topics to exclude from tracing
   // Or use a function:
   ignoreTopics: (topic) => topic.startsWith('_'),
-  
+
   // Metrics
   metrics: {
     enabled: true,                       // Enable metrics collection (default: false)
@@ -115,7 +115,7 @@ enableOtelInstrumentation({
     serverPort: 9092,                    // Broker port for attribution
     histogramBuckets: [0.005, 0.01, ...], // Custom latency buckets
   },
-  
+
   // Hooks for custom attributes
   messageHook: (span, message) => {
     span.setAttribute('custom.key', message.key?.toString())
@@ -130,67 +130,67 @@ enableOtelInstrumentation({
 
 ### Main Functions
 
-| Function | Description |
-|----------|-------------|
-| `enableOtelInstrumentation(config)` | Enable OTEL instrumentation with configuration |
-| `getOtelAdapter()` | Get the singleton OtelAdapter instance |
-| `resetOtelAdapter()` | Reset the adapter (for testing) |
-| `endSpan(message)` | End the processing span for a consumed message |
-| `withMessageContext(message, fn)` | Run framework code under the message OTEL context |
-| `withBatchContext(batch, fn)` | Run framework code under the batch OTEL context |
+| Function                            | Description                                       |
+| ----------------------------------- | ------------------------------------------------- |
+| `enableOtelInstrumentation(config)` | Enable OTEL instrumentation with configuration    |
+| `getOtelAdapter()`                  | Get the singleton OtelAdapter instance            |
+| `resetOtelAdapter()`                | Reset the adapter (for testing)                   |
+| `endSpan(message)`                  | End the processing span for a consumed message    |
+| `withMessageContext(message, fn)`   | Run framework code under the message OTEL context |
+| `withBatchContext(batch, fn)`       | Run framework code under the batch OTEL context   |
 
 ### Instrumentation Functions
 
-| Function | Description |
-|----------|-------------|
-| `getKafkaInstrumentation()` | Get the KafkaCrabInstrumentation instance |
-| `resetKafkaInstrumentation()` | Reset instrumentation (for testing) |
+| Function                      | Description                               |
+| ----------------------------- | ----------------------------------------- |
+| `getKafkaInstrumentation()`   | Get the KafkaCrabInstrumentation instance |
+| `resetKafkaInstrumentation()` | Reset instrumentation (for testing)       |
 
 ### Utility Functions
 
-| Function | Description |
-|----------|-------------|
-| `getTracer(name?)` | Get a tracer instance |
-| `createProducerSpan(tracer, topic, config)` | Create a producer span |
-| `createConsumerSpan(tracer, message, config)` | Create a consumer span |
-| `createBatchSpan(tracer, messages, config)` | Create a batch processing span |
-| `injectTraceContext(headers)` | Inject trace context into headers |
-| `extractTraceContext(headers)` | Extract trace context from headers |
-| `shouldIgnoreTopic(topic, config)` | Check if topic should be ignored |
+| Function                                      | Description                        |
+| --------------------------------------------- | ---------------------------------- |
+| `getTracer(name?)`                            | Get a tracer instance              |
+| `createProducerSpan(tracer, topic, config)`   | Create a producer span             |
+| `createConsumerSpan(tracer, message, config)` | Create a consumer span             |
+| `createBatchSpan(tracer, messages, config)`   | Create a batch processing span     |
+| `injectTraceContext(headers)`                 | Inject trace context into headers  |
+| `extractTraceContext(headers)`                | Extract trace context from headers |
+| `shouldIgnoreTopic(topic, config)`            | Check if topic should be ignored   |
 
 ### Constants
 
-| Export | Description |
-|--------|-------------|
-| `KAFKA_SEMANTIC_CONVENTIONS` | OpenTelemetry semantic convention attribute names |
-| `KAFKA_OPERATION_TYPES` | Operation type values (send, receive, process, etc.) |
-| `KAFKA_OPERATION_NAMES` | Operation name values |
-| `KAFKA_SPAN_NAMES` | Span name templates |
-| `KAFKA_METRICS` | Metric names |
-| `KAFKA_DEFAULTS` | Default configuration values |
+| Export                       | Description                                          |
+| ---------------------------- | ---------------------------------------------------- |
+| `KAFKA_SEMANTIC_CONVENTIONS` | OpenTelemetry semantic convention attribute names    |
+| `KAFKA_OPERATION_TYPES`      | Operation type values (send, receive, process, etc.) |
+| `KAFKA_OPERATION_NAMES`      | Operation name values                                |
+| `KAFKA_SPAN_NAMES`           | Span name templates                                  |
+| `KAFKA_METRICS`              | Metric names                                         |
+| `KAFKA_DEFAULTS`             | Default configuration values                         |
 
 ## Metrics
 
 When metrics are enabled, the following metrics are collected:
 
-| Metric | Type | Description |
-|--------|------|-------------|
+| Metric                                | Type      | Description                          |
+| ------------------------------------- | --------- | ------------------------------------ |
 | `messaging.client.operation.duration` | Histogram | Producer/consumer operation duration |
-| `messaging.client.sent.messages` | Counter | Number of messages sent |
-| `messaging.client.consumed.messages` | Counter | Number of messages consumed |
-| `messaging.process.duration` | Histogram | Message processing duration |
+| `messaging.client.sent.messages`      | Counter   | Number of messages sent              |
+| `messaging.client.consumed.messages`  | Counter   | Number of messages consumed          |
+| `messaging.process.duration`          | Histogram | Message processing duration          |
 
 ## Spans
 
 The instrumentation creates the following spans:
 
-| Span Name | Kind | Description |
-|-----------|------|-------------|
-| `send <topic>` | PRODUCER | Producer send operation |
-| `poll <topic>` | CONSUMER | Consumer receive operation |
-| `process <topic>` | CONSUMER | Message processing |
-| `batch receive` | CONSUMER | Batch receive operation |
-| `batch process` | CONSUMER | Batch processing |
+| Span Name         | Kind     | Description                |
+| ----------------- | -------- | -------------------------- |
+| `send <topic>`    | PRODUCER | Producer send operation    |
+| `poll <topic>`    | CONSUMER | Consumer receive operation |
+| `process <topic>` | CONSUMER | Message processing         |
+| `batch receive`   | CONSUMER | Batch receive operation    |
+| `batch process`   | CONSUMER | Batch processing           |
 
 ## Integration with OpenTelemetry SDK
 
@@ -287,13 +287,13 @@ process.on('SIGINT', async () => {
 
 kafka-crab-js with OTEL instrumentation maintains excellent performance:
 
-| Mode | Ops/sec | Notes |
-|------|---------|-------|
-| Serial (no OTEL) | 43,214 | Baseline |
-| Batch (no OTEL) | 205,985 | 4.8x improvement |
-| With OTEL | Near-zero overhead | Uses diagnostics_channel |
+| Mode             | Ops/sec            | Notes                    |
+| ---------------- | ------------------ | ------------------------ |
+| Serial (no OTEL) | 43,214             | Baseline                 |
+| Batch (no OTEL)  | 205,985            | 4.8x improvement         |
+| With OTEL        | Near-zero overhead | Uses diagnostics_channel |
 
-*Benchmarks run on macOS with Apple M1 chip (December 2024)*
+_Benchmarks run on macOS with Apple M1 chip (December 2024)_
 
 ## Examples
 
@@ -308,6 +308,7 @@ See the [example](https://github.com/inaiat/kafka-crab-js/tree/main/example) dir
 If you're migrating from kafka-crab-js v2.x where OTEL was built-in:
 
 **Before (v2.x):**
+
 ```javascript
 const client = new KafkaClient({
   brokers: 'localhost:9092',
@@ -319,6 +320,7 @@ const client = new KafkaClient({
 ```
 
 **After (v3.x):**
+
 ```javascript
 import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
 

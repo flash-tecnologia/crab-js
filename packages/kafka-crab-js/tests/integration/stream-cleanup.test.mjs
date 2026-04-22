@@ -23,7 +23,7 @@ test('Stream Resource Cleanup Integration Tests', async (t) => {
     // Track if disconnect was called
     let disconnectCalled = false
     const originalDisconnect = rawConsumer.disconnect
-    rawConsumer.disconnect = async function() {
+    rawConsumer.disconnect = async function () {
       disconnectCalled = true
       return originalDisconnect.call(this)
     }
@@ -65,7 +65,7 @@ test('Stream Resource Cleanup Integration Tests', async (t) => {
     let disconnectCalled = false
     const rawConsumer = streamConsumer.rawConsumer()
     const originalDisconnect = rawConsumer.disconnect
-    rawConsumer.disconnect = async function() {
+    rawConsumer.disconnect = async function () {
       disconnectCalled = true
       return originalDisconnect.call(this)
     }
@@ -98,7 +98,7 @@ test('Stream Resource Cleanup Integration Tests', async (t) => {
 
     // Mock disconnect to throw error
     const rawConsumer = streamConsumer.rawConsumer()
-    rawConsumer.disconnect = async function() {
+    rawConsumer.disconnect = async function () {
       throw new Error('Disconnect failed')
     }
 
@@ -140,7 +140,7 @@ test('Stream Resource Cleanup Integration Tests', async (t) => {
     }
 
     // Destroy all streams
-    const cleanupPromises = streams.map(stream => {
+    const cleanupPromises = streams.map((stream) => {
       const promise = new Promise((resolve) => {
         stream.once('close', resolve)
       })
@@ -178,7 +178,7 @@ test('Stream Resource Cleanup Integration Tests', async (t) => {
     let disconnectCalled = false
     const rawConsumer = batchStreamConsumer.rawConsumer()
     const originalDisconnect = rawConsumer.disconnect
-    rawConsumer.disconnect = async function() {
+    rawConsumer.disconnect = async function () {
       disconnectCalled = true
       return originalDisconnect.call(this)
     }
@@ -210,13 +210,13 @@ test('Stream Resource Cleanup Integration Tests', async (t) => {
 
     // Mock unsubscribe to throw error
     const rawConsumer = streamConsumer.rawConsumer()
-    rawConsumer.unsubscribe = function() {
+    rawConsumer.unsubscribe = function () {
       throw new Error('Unsubscribe failed')
     }
 
     // Mock disconnect to succeed
     let disconnectCalled = false
-    rawConsumer.disconnect = async function() {
+    rawConsumer.disconnect = async function () {
       disconnectCalled = true
       return Promise.resolve()
     }

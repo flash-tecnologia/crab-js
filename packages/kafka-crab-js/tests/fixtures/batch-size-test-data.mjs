@@ -76,15 +76,17 @@ export function createBatchTestMessages(count, testId = nanoid(6), messageSize =
       'batch-size': Buffer.from(count.toString()),
       'message-size': Buffer.from(messageSize),
     },
-    payload: Buffer.from(JSON.stringify({
-      _id: i,
-      testId,
-      batchIndex: i,
-      totalBatchSize: count,
-      messageSize,
-      timestamp: Date.now(),
-      padding,
-    })),
+    payload: Buffer.from(
+      JSON.stringify({
+        _id: i,
+        testId,
+        batchIndex: i,
+        totalBatchSize: count,
+        messageSize,
+        timestamp: Date.now(),
+        padding,
+      }),
+    ),
   }))
 }
 

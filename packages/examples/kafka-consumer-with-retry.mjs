@@ -21,10 +21,7 @@ async function createConsumer() {
       'auto.offset.reset': 'earliest',
     },
   })
-  await kafkaStream.subscribe([
-    { topic: 'foo' },
-    { topic: 'bar' },
-  ])
+  await kafkaStream.subscribe([{ topic: 'foo' }, { topic: 'bar' }])
   return kafkaStream
 }
 

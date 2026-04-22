@@ -56,9 +56,10 @@ export class KafkaCrabInstrumentation {
       delete config.maxPayloadSize
     }
 
-    const metricsConfig = config.metrics && typeof config.metrics === 'object'
-      ? { ...(this._kafkaConfig.metrics ?? DEFAULT_OTEL_CONFIG.metrics), ...config.metrics }
-      : undefined
+    const metricsConfig =
+      config.metrics && typeof config.metrics === 'object'
+        ? { ...(this._kafkaConfig.metrics ?? DEFAULT_OTEL_CONFIG.metrics), ...config.metrics }
+        : undefined
 
     this._kafkaConfig = {
       ...this._kafkaConfig,
@@ -139,7 +140,7 @@ export class KafkaCrabInstrumentation {
       cloneWithDescriptors(message) as InstrumentedMessage
 
     const toInstrumentedBatch = (batch: Message[]): InstrumentedMessageBatch => {
-      const cloned = batch.map(message => toInstrumentedMessage(message)) as InstrumentedMessageBatch
+      const cloned = batch.map((message) => toInstrumentedMessage(message)) as InstrumentedMessageBatch
 
       const spanDescriptor = Object.getOwnPropertyDescriptor(batch, 'span')
       if (spanDescriptor) {
@@ -264,10 +265,10 @@ export class KafkaCrabInstrumentation {
           existingEndSpan(error)
         }
       },
-      toInstrumentedMessage: message => cloneWithDescriptors(message) as InstrumentedMessage,
-      toInstrumentedBatch: batch => {
-        const cloned = batch.map(message =>
-          cloneWithDescriptors(message) as InstrumentedMessage
+      toInstrumentedMessage: (message) => cloneWithDescriptors(message) as InstrumentedMessage,
+      toInstrumentedBatch: (batch) => {
+        const cloned = batch.map(
+          (message) => cloneWithDescriptors(message) as InstrumentedMessage,
         ) as InstrumentedMessageBatch
 
         const spanDescriptor = Object.getOwnPropertyDescriptor(batch, 'span')
@@ -290,9 +291,7 @@ export class KafkaCrabInstrumentation {
           capturedError = error instanceof Error ? error : new Error(String(error))
           throw error
         } finally {
-          const existingEndSpan = message
-            ? (message as InstrumentedMessage).endSpan
-            : undefined
+          const existingEndSpan = message ? (message as InstrumentedMessage).endSpan : undefined
           if (typeof existingEndSpan === 'function') {
             existingEndSpan(capturedError)
           }

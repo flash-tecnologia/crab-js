@@ -52,11 +52,12 @@ console.log('🔧 Configuring OpenTelemetry Metrics...\n')
 // Default: OTLP gRPC to Prometheus/Grafana at localhost:4317
 // Set OTEL_EXPORTER_TYPE=console to use console exporter instead
 
-const metricExporter = process.env.OTEL_EXPORTER_TYPE === 'console'
-  ? new ConsoleMetricExporter()
-  : new OTLPMetricExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
-  })
+const metricExporter =
+  process.env.OTEL_EXPORTER_TYPE === 'console'
+    ? new ConsoleMetricExporter()
+    : new OTLPMetricExporter({
+        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+      })
 
 const meterProvider = new MeterProvider({
   resource: new Resource({
@@ -137,17 +138,21 @@ async function produceWithMetrics() {
     try {
       await producer.send({
         topic,
-        messages: [{
-          key: Buffer.from(`key-${i}`),
-          headers: {
-            'message-id': Buffer.from(nanoid()),
+        messages: [
+          {
+            key: Buffer.from(`key-${i}`),
+            headers: {
+              'message-id': Buffer.from(nanoid()),
+            },
+            payload: Buffer.from(
+              JSON.stringify({
+                id: i,
+                timestamp: Date.now(),
+                data: `Message ${i}`,
+              }),
+            ),
           },
-          payload: Buffer.from(JSON.stringify({
-            id: i,
-            timestamp: Date.now(),
-            data: `Message ${i}`,
-          })),
-        }],
+        ],
       })
 
       if ((i + 1) % 5 === 0) {
@@ -155,7 +160,7 @@ async function produceWithMetrics() {
       }
 
       // Simulate variable latency
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 100))
+      await new Promise((resolve) => setTimeout(resolve, Math.random() * 100))
     } catch (error) {
       console.error(`❌ Failed to send message ${i}:`, error.message)
     }
@@ -200,7 +205,7 @@ async function consumeWithMetrics() {
 
       // Simulate processing time
       const processingTime = Math.random() * 200
-      await new Promise(resolve => setTimeout(resolve, processingTime))
+      await new Promise((resolve) => setTimeout(resolve, processingTime))
 
       await consumer.commitMessage(message, 'Async')
 
@@ -264,10 +269,12 @@ async function batchProcessWithMetrics() {
     console.log(`✅ Batch ${batch + 1}: Received ${messages.length} messages`)
 
     // Process batch
-    await Promise.all(messages.map(async (message) => {
-      await new Promise(resolve => setTimeout(resolve, 50))
-      await consumer.commitMessage(message, 'Async')
-    }))
+    await Promise.all(
+      messages.map(async (message) => {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        await consumer.commitMessage(message, 'Async')
+      }),
+    )
   }
 
   console.log(`\n✅ Processed ${totalMessages} messages in batches\n`)
@@ -349,7 +356,7 @@ async function main() {
     console.log()
 
     // Wait for final metrics export
-    await new Promise(resolve => setTimeout(resolve, 15000))
+    await new Promise((resolve) => setTimeout(resolve, 15000))
 
     console.log('='.repeat(80))
     console.log('✅ Example completed!')

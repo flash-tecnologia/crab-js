@@ -112,7 +112,7 @@ export const ERROR_TYPES = {
 } as const
 
 // Package information
-// Values are injected at build time by esbuild (see build.mjs)
+// Values are injected at build time by the pack config in vite.config.ts
 // Fallbacks exist so unbundled execution doesn't throw.
 const PACKAGE_NAME = typeof __PACKAGE_NAME__ !== 'undefined' ? __PACKAGE_NAME__ : 'kafka-crab-js'
 const PACKAGE_VERSION = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : '0.0.0'

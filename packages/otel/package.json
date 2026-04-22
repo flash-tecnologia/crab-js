@@ -2,50 +2,54 @@
   "name": "kafka-crab-js-otel",
   "version": "1.1.0",
   "description": "OpenTelemetry instrumentation for kafka-crab-js",
-  "type": "module",
-  "engines": {
-    "node": ">=22"
+  "keywords": [
+    "instrumentation",
+    "kafka",
+    "metrics",
+    "observability",
+    "opentelemetry",
+    "otel",
+    "tracing"
+  ],
+  "homepage": "https://github.com/flash-tecnologia/kafka-crab-js",
+  "license": "MIT",
+  "author": "inaiat@gmail.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flash-tecnologia/kafka-crab-js.git",
+    "directory": "packages/kafka-crab-js-otel"
   },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
   },
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
-  "license": "MIT",
-  "author": "inaiat@gmail.com",
-  "homepage": "https://github.com/flash-tecnologia/kafka-crab-js",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/flash-tecnologia/kafka-crab-js.git",
-    "directory": "packages/kafka-crab-js-otel"
-  },
-  "keywords": [
-    "kafka",
-    "opentelemetry",
-    "otel",
-    "tracing",
-    "metrics",
-    "observability",
-    "instrumentation"
-  ],
   "scripts": {
+    "check": "vp check --no-error-on-unmatched-pattern src tests vite.config.ts tsconfig.json package.json README.md",
+    "fmt": "vp fmt src tests vite.config.ts tsconfig.json package.json README.md",
+    "fmt:check": "vp fmt --check src tests vite.config.ts tsconfig.json package.json README.md",
+    "lint": "vp lint src tests vite.config.ts",
+    "lint:fix": "vp lint --fix src tests vite.config.ts",
     "typecheck": "tsc -p . --noEmit",
-    "prebuild": "rimraf dist",
-    "build": "node build.mjs",
-    "postbuild": "tsc -p tsconfig.json --emitDeclarationOnly --declaration --outDir dist",
-    "test": "node --test __test__/unit/*.test.*",
-    "test:integration": "node --test __test__/integration/*.test.*"
+    "build": "vp pack",
+    "test": "vp test",
+    "test:integration": "node --test tests/integration/*.test.*"
+  },
+  "devDependencies": {
+    "kafka-crab-js": "workspace:*",
+    "vite-plus": "0.1.19"
   },
   "peerDependencies": {
     "@opentelemetry/api": ">=1.9",
     "kafka-crab-js": ">=3"
   },
-  "devDependencies": {
-    "kafka-crab-js": "workspace:*"
+  "engines": {
+    "node": ">=22"
   }
 }

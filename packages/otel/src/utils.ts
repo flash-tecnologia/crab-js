@@ -64,7 +64,7 @@ function setClientAndServerAttributes(
 
 function getPayloadSize(payload: unknown): number | undefined {
   if (Buffer.isBuffer(payload)) {
-    return payload.length
+    return (payload as Buffer).length
   }
 
   if (typeof payload === 'string') {
@@ -120,13 +120,7 @@ export function getMessageAttributes(
     maxPayloadSize?: number
   } = {},
 ): Attributes {
-  const {
-    clientId,
-    serverAddress,
-    serverPort,
-    capturePayload,
-    maxPayloadSize,
-  } = options
+  const { clientId, serverAddress, serverPort, capturePayload, maxPayloadSize } = options
 
   const attributes: Attributes = {
     // Required attributes - SHOULD be provided at span creation time
@@ -182,13 +176,7 @@ export function getProducerRecordAttributes(
     maxPayloadSize?: number
   } = {},
 ): Attributes {
-  const {
-    clientId,
-    serverAddress,
-    serverPort,
-    capturePayload,
-    maxPayloadSize,
-  } = options
+  const { clientId, serverAddress, serverPort, capturePayload, maxPayloadSize } = options
 
   const attributes: Attributes = {
     // Required attributes - SHOULD be provided at span creation time
@@ -333,16 +321,14 @@ export function getCapturedHeaderAttributes(
 
 // Extract trace context from Kafka headers (supports both Buffer and string headers)
 // Returns root context when traceparent is missing to avoid inheriting unrelated ambient spans
-export function extractTraceContext(
-  headers: Record<string, Buffer | string | string[] | undefined> = {},
-): Context {
+export function extractTraceContext(headers: Record<string, Buffer | string | string[] | undefined> = {}): Context {
   const hasTraceparent = Object.entries(headers).some(([key, value]) => {
     if (key.toLowerCase() !== 'traceparent') {
       return false
     }
 
     if (Array.isArray(value)) {
-      return value.some(headerValue => String(headerValue).trim().length > 0)
+      return value.some((headerValue) => String(headerValue).trim().length > 0)
     }
 
     if (Buffer.isBuffer(value)) {
@@ -391,10 +377,7 @@ export function extractTraceContext(
 }
 
 // Check if topic should be ignored based on filter configuration
-export function shouldIgnoreTopic(
-  topic: string,
-  ignoreTopics?: string[] | ((topic: string) => boolean),
-): boolean {
+export function shouldIgnoreTopic(topic: string, ignoreTopics?: string[] | ((topic: string) => boolean)): boolean {
   if (!ignoreTopics) {
     return false
   }
@@ -437,30 +420,19 @@ export function createProducerSpan(
   if (!tracer) {
     return null
   }
-  const {
-    operationName = KAFKA_OPERATION_NAMES.SEND,
-    parentContext,
-    clientId,
-    serverAddress,
-    serverPort,
-  } = options
+  const { operationName = KAFKA_OPERATION_NAMES.SEND, parentContext, clientId, serverAddress, serverPort } = options
 
   const parent = parentContext ?? context.active()
 
   // Span name: "<operation> <destination>" (e.g., "send my-topic")
   const spanName = `${operationName} ${record.topic}`
-  const attributes = getProducerRecordAttributes(
-    record,
-    operationName,
-    KAFKA_OPERATION_TYPES.SEND,
-    {
-      clientId,
-      serverAddress,
-      serverPort,
-      capturePayload: options.capturePayload,
-      maxPayloadSize: options.maxPayloadSize,
-    },
-  )
+  const attributes = getProducerRecordAttributes(record, operationName, KAFKA_OPERATION_TYPES.SEND, {
+    clientId,
+    serverAddress,
+    serverPort,
+    capturePayload: options.capturePayload,
+    maxPayloadSize: options.maxPayloadSize,
+  })
 
   const spanOptions = {
     kind: SpanKind.PRODUCER,
@@ -485,11 +457,7 @@ export interface ConsumerSpanOptions {
 // Create span for consumer process operation
 // Span name follows: "<operation> <destination>" per semantic conventions
 // https://opentelemetry.io/docs/specs/semconv/messaging/kafka/
-export function createConsumerSpan(
-  tracer: Tracer,
-  message: Message,
-  options: ConsumerSpanOptions = {},
-): Span | null {
+export function createConsumerSpan(tracer: Tracer, message: Message, options: ConsumerSpanOptions = {}): Span | null {
   if (!tracer) {
     return null
   }
@@ -505,18 +473,13 @@ export function createConsumerSpan(
 
   // Span name: "<operation> <destination>" (e.g., "process my-topic")
   const spanName = `${operationName} ${message.topic}`
-  const attributes = getMessageAttributes(
-    message,
-    operationName,
-    operationType,
-    {
-      clientId,
-      serverAddress,
-      serverPort,
-      capturePayload: options.capturePayload,
-      maxPayloadSize: options.maxPayloadSize,
-    },
-  )
+  const attributes = getMessageAttributes(message, operationName, operationType, {
+    clientId,
+    serverAddress,
+    serverPort,
+    capturePayload: options.capturePayload,
+    maxPayloadSize: options.maxPayloadSize,
+  })
 
   const spanOptions = {
     kind: SpanKind.CONSUMER,
@@ -543,11 +506,7 @@ export interface BatchSpanOptions {
 
 // Create batch span for batch processing operations
 // https://opentelemetry.io/docs/specs/semconv/messaging/kafka/
-export function createBatchSpan(
-  tracer: Tracer,
-  batchSize: number,
-  options: BatchSpanOptions = {},
-): Span | null {
+export function createBatchSpan(tracer: Tracer, batchSize: number, options: BatchSpanOptions = {}): Span | null {
   if (!tracer) {
     return null
   }

@@ -26,15 +26,15 @@ new KafkaClient(config: KafkaConfiguration)
 
 ### KafkaConfiguration
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `brokers` | `string` | **required** | Comma-separated list of broker addresses |
-| `clientId` | `string` | `"rdkafka"` | Client identifier |
-| `logLevel` | `'debug' \| 'info' \| 'warning' \| 'error'` | `'info'` | Log level |
-| `brokerAddressFamily` | `'v4' \| 'v6'` | `'v4'` | IP address family |
-| `securityProtocol` | `SecurityProtocol` | `'Plaintext'` | Security protocol |
-| `diagnostics` | `boolean` | `false` | **v3.0.0+**: Enable diagnostics channel for OTEL |
-| `configuration` | `Record<string, any>` | `{}` | Additional librdkafka configuration |
+| Property              | Type                                        | Default       | Description                                      |
+| --------------------- | ------------------------------------------- | ------------- | ------------------------------------------------ |
+| `brokers`             | `string`                                    | **required**  | Comma-separated list of broker addresses         |
+| `clientId`            | `string`                                    | `"rdkafka"`   | Client identifier                                |
+| `logLevel`            | `'debug' \| 'info' \| 'warning' \| 'error'` | `'info'`      | Log level                                        |
+| `brokerAddressFamily` | `'v4' \| 'v6'`                              | `'v4'`        | IP address family                                |
+| `securityProtocol`    | `SecurityProtocol`                          | `'Plaintext'` | Security protocol                                |
+| `diagnostics`         | `boolean`                                   | `false`       | **v3.0.0+**: Enable diagnostics channel for OTEL |
+| `configuration`       | `Record<string, any>`                       | `{}`          | Additional librdkafka configuration              |
 
 ### Methods
 
@@ -83,11 +83,11 @@ Kafka producer for sending messages.
 
 ### ProducerConfiguration
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `queueTimeout` | `number` | `5000` | Queue timeout in milliseconds |
-| `autoFlush` | `boolean` | `true` | Enable automatic message flushing |
-| `configuration` | `Record<string, any>` | `{}` | Additional producer configuration |
+| Property        | Type                  | Default | Description                       |
+| --------------- | --------------------- | ------- | --------------------------------- |
+| `queueTimeout`  | `number`              | `5000`  | Queue timeout in milliseconds     |
+| `autoFlush`     | `boolean`             | `true`  | Enable automatic message flushing |
+| `configuration` | `Record<string, any>` | `{}`    | Additional producer configuration |
 
 ### Methods
 
@@ -139,16 +139,18 @@ const producer = client.createProducer({
     'batch.size': 16384,
     'compression.type': 'snappy',
     'enable.idempotence': true,
-  }
+  },
 })
 
 const result = await producer.send({
   topic: 'my-topic',
-  messages: [{
-    key: Buffer.from('key-1'),
-    payload: Buffer.from(JSON.stringify({ id: 1 })),
-    headers: { 'correlation-id': Buffer.from('123') }
-  }]
+  messages: [
+    {
+      key: Buffer.from('key-1'),
+      payload: Buffer.from(JSON.stringify({ id: 1 })),
+      headers: { 'correlation-id': Buffer.from('123') },
+    },
+  ],
 })
 
 await producer.disconnect()
@@ -162,13 +164,13 @@ Kafka consumer for receiving messages.
 
 ### ConsumerConfiguration
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `groupId` | `string` | **required** | Consumer group ID |
-| `enableAutoCommit` | `boolean` | `true` | Enable automatic offset commits |
-| `fetchMetadataTimeout` | `number` | `60000` | Timeout for fetching metadata (ms) |
-| `maxBatchMessages` | `number` | `1000` | Maximum messages in a batch operation |
-| `configuration` | `Record<string, any>` | `{}` | Additional consumer configuration |
+| Property               | Type                  | Default      | Description                           |
+| ---------------------- | --------------------- | ------------ | ------------------------------------- |
+| `groupId`              | `string`              | **required** | Consumer group ID                     |
+| `enableAutoCommit`     | `boolean`             | `true`       | Enable automatic offset commits       |
+| `fetchMetadataTimeout` | `number`              | `60000`      | Timeout for fetching metadata (ms)    |
+| `maxBatchMessages`     | `number`              | `1000`       | Maximum messages in a batch operation |
+| `configuration`        | `Record<string, any>` | `{}`         | Additional consumer configuration     |
 
 ### Methods
 
@@ -244,12 +246,10 @@ const consumer = client.createConsumer({
   enableAutoCommit: false,
   configuration: {
     'auto.offset.reset': 'earliest',
-  }
+  },
 })
 
-await consumer.subscribe([
-  { topic: 'my-topic', createTopic: true }
-])
+await consumer.subscribe([{ topic: 'my-topic', createTopic: true }])
 
 while (true) {
   const message = await consumer.recv()
@@ -272,8 +272,8 @@ Stream-based consumer that extends Node.js Readable interface. Created when `bat
 
 Extends `ConsumerConfiguration` with:
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
+| Property        | Type              | Default                | Description            |
+| --------------- | ----------------- | ---------------------- | ---------------------- |
 | `streamOptions` | `ReadableOptions` | `{ objectMode: true }` | Node.js stream options |
 
 ### Methods
@@ -290,10 +290,10 @@ Properly destroy the stream. **This is the recommended way to clean up stream co
 
 ### Events
 
-| Event | Description |
-|-------|-------------|
-| `data` | Emitted for each message |
-| `error` | Emitted on errors |
+| Event   | Description              |
+| ------- | ------------------------ |
+| `data`  | Emitted for each message |
+| `error` | Emitted on errors        |
 | `close` | Emitted when stream ends |
 
 ### Proper Cleanup Pattern
@@ -346,10 +346,10 @@ Batch stream consumer that extends `KafkaStreamReadable`. Created when `batchSiz
 
 Extends `StreamConsumerConfiguration` with:
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `batchSize` | `number` | **required** | Number of messages to fetch per batch |
-| `batchTimeout` | `number` | `1000` | Timeout for batch collection (ms) |
+| Property       | Type     | Default      | Description                           |
+| -------------- | -------- | ------------ | ------------------------------------- |
+| `batchSize`    | `number` | **required** | Number of messages to fetch per batch |
+| `batchTimeout` | `number` | `1000`       | Timeout for batch collection (ms)     |
 
 ### Additional Methods
 
@@ -411,9 +411,9 @@ interface TopicPartitionConfig {
   topic: string
   allOffsets?: OffsetModel
   partitionOffset?: PartitionOffset[]
-  createTopic?: boolean      // Create topic if it doesn't exist
-  numPartitions?: number     // Number of partitions (when creating)
-  replicas?: number          // Number of replicas (when creating)
+  createTopic?: boolean // Create topic if it doesn't exist
+  numPartitions?: number // Number of partitions (when creating)
+  replicas?: number // Number of replicas (when creating)
 }
 ```
 
@@ -422,7 +422,7 @@ interface TopicPartitionConfig {
 ```typescript
 interface OffsetModel {
   position: 'Beginning' | 'End' | 'Stored'
-  offset?: number  // For specific offset
+  offset?: number // For specific offset
 }
 ```
 
@@ -483,48 +483,48 @@ endSpan(message)
 
 ### enableOtelInstrumentation Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `tracerProvider` | `TracerProvider` | global | Custom tracer provider |
-| `captureMessagePayload` | `boolean` | `false` | Include payload in spans |
-| `captureMessageHeaders` | `boolean` | `true` | Include headers in spans |
-| `maxPayloadSize` | `number` | `1024` | Max payload bytes to capture |
-| `enableBatchInstrumentation` | `boolean` | `true` | Instrument batch operations |
-| `ignoreTopics` | `string[] \| (topic: string) => boolean` | `[]` | Topics to exclude |
-| `metrics.enabled` | `boolean` | `false` | Enable metrics collection |
-| `metrics.meterProvider` | `MeterProvider` | global | Custom meter provider |
-| `messageHook` | `(span, message) => void` | - | Hook for custom attributes |
-| `producerHook` | `(span, record, metadata) => void` | - | Hook for producer spans |
+| Option                       | Type                                     | Default | Description                  |
+| ---------------------------- | ---------------------------------------- | ------- | ---------------------------- |
+| `tracerProvider`             | `TracerProvider`                         | global  | Custom tracer provider       |
+| `captureMessagePayload`      | `boolean`                                | `false` | Include payload in spans     |
+| `captureMessageHeaders`      | `boolean`                                | `true`  | Include headers in spans     |
+| `maxPayloadSize`             | `number`                                 | `1024`  | Max payload bytes to capture |
+| `enableBatchInstrumentation` | `boolean`                                | `true`  | Instrument batch operations  |
+| `ignoreTopics`               | `string[] \| (topic: string) => boolean` | `[]`    | Topics to exclude            |
+| `metrics.enabled`            | `boolean`                                | `false` | Enable metrics collection    |
+| `metrics.meterProvider`      | `MeterProvider`                          | global  | Custom meter provider        |
+| `messageHook`                | `(span, message) => void`                | -       | Hook for custom attributes   |
+| `producerHook`               | `(span, record, metadata) => void`       | -       | Hook for producer spans      |
 
 ### API Functions
 
-| Function | Description |
-|----------|-------------|
-| `enableOtelInstrumentation(config)` | Enable instrumentation |
-| `getOtelAdapter()` | Get singleton adapter |
-| `resetOtelAdapter()` | Reset adapter (testing) |
-| `endSpan(message)` | End processing span |
-| `getKafkaInstrumentation()` | Get instrumentation instance |
-| `resetKafkaInstrumentation()` | Reset instrumentation (testing) |
+| Function                            | Description                     |
+| ----------------------------------- | ------------------------------- |
+| `enableOtelInstrumentation(config)` | Enable instrumentation          |
+| `getOtelAdapter()`                  | Get singleton adapter           |
+| `resetOtelAdapter()`                | Reset adapter (testing)         |
+| `endSpan(message)`                  | End processing span             |
+| `getKafkaInstrumentation()`         | Get instrumentation instance    |
+| `resetKafkaInstrumentation()`       | Reset instrumentation (testing) |
 
 ### Spans Created
 
-| Span Name | Kind | Description |
-|-----------|------|-------------|
-| `send <topic>` | PRODUCER | Producer send operation |
-| `poll <topic>` | CONSUMER | Consumer receive operation |
-| `process <topic>` | CONSUMER | Message processing |
-| `batch receive` | CONSUMER | Batch receive operation |
-| `batch process` | CONSUMER | Batch processing |
+| Span Name         | Kind     | Description                |
+| ----------------- | -------- | -------------------------- |
+| `send <topic>`    | PRODUCER | Producer send operation    |
+| `poll <topic>`    | CONSUMER | Consumer receive operation |
+| `process <topic>` | CONSUMER | Message processing         |
+| `batch receive`   | CONSUMER | Batch receive operation    |
+| `batch process`   | CONSUMER | Batch processing           |
 
 ### Metrics
 
-| Metric | Type | Description |
-|--------|------|-------------|
-| `messaging.client.operation.duration` | Histogram | Operation duration |
-| `messaging.client.sent.messages` | Counter | Messages sent |
-| `messaging.client.consumed.messages` | Counter | Messages consumed |
-| `messaging.process.duration` | Histogram | Processing duration |
+| Metric                                | Type      | Description         |
+| ------------------------------------- | --------- | ------------------- |
+| `messaging.client.operation.duration` | Histogram | Operation duration  |
+| `messaging.client.sent.messages`      | Counter   | Messages sent       |
+| `messaging.client.consumed.messages`  | Counter   | Messages consumed   |
+| `messaging.process.duration`          | Histogram | Processing duration |
 
 ---
 

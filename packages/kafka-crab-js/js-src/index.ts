@@ -15,15 +15,8 @@ export type {
   TopicPartitionConfig,
 } from '../js-binding.js'
 
-export {
-  CommitMode,
-  KafkaClientConfig,
-  KafkaConsumer,
-  KafkaEventName,
-  KafkaProducer,
-  PartitionPosition,
-  SecurityProtocol,
-} from '../js-binding.js'
+export { KafkaClientConfig, KafkaConsumer, KafkaProducer } from '../js-binding.js'
+export type { CommitMode, KafkaEventName, PartitionPosition, SecurityProtocol } from '../js-binding.js'
 export { KafkaClient } from './kafka-client.js'
 export { BaseKafkaStreamReadable } from './streams/base-kafka-stream-readable.js'
 export { KafkaBatchStreamReadable } from './streams/kafka-batch-stream-readable.js'

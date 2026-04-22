@@ -10,7 +10,7 @@
     "simple": "node simple.mjs"
   },
   "dependencies": {
-    "@faker-js/faker": "^10.3",
+    "@faker-js/faker": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/exporter-metrics-otlp-grpc": "catalog:",
     "@opentelemetry/exporter-trace-otlp-grpc": "catalog:",
@@ -21,6 +21,6 @@
     "@opentelemetry/semantic-conventions": "catalog:",
     "kafka-crab-js": "workspace:*",
     "kafka-crab-js-otel": "workspace:*",
-    "nanoid": "^5.0.0"
+    "nanoid": "catalog:"
   }
 }

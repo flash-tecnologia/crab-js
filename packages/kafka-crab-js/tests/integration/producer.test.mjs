@@ -41,8 +41,10 @@ await test('Producer Integration Tests', async (t) => {
 
     ok(Array.isArray(results), 'Send should return array of results')
     equal(results.length, 1, 'Should have one result')
-    ok(typeof results[0] === 'number' || (results[0] && typeof results[0].offset === 'number'),
-      'Result should contain offset')
+    ok(
+      typeof results[0] === 'number' || (results[0] && typeof results[0].offset === 'number'),
+      'Result should contain offset',
+    )
   })
 
   await t.test('Producer: Send batch of messages', async () => {
@@ -57,8 +59,10 @@ await test('Producer Integration Tests', async (t) => {
     equal(results.length, messages.length, 'Should have results for all messages')
 
     for (const result of results) {
-      ok(typeof result === 'number' || (result && typeof result.offset === 'number'),
-        'Each result should contain offset')
+      ok(
+        typeof result === 'number' || (result && typeof result.offset === 'number'),
+        'Each result should contain offset',
+      )
     }
   })
 
@@ -66,14 +70,16 @@ await test('Producer Integration Tests', async (t) => {
     const topic = createTestTopic('headers')
     const complexMessage = {
       key: Buffer.from('complex-key'),
-      payload: Buffer.from(JSON.stringify({
-        data: 'complex payload',
-        nested: { value: 42 },
-      })),
+      payload: Buffer.from(
+        JSON.stringify({
+          data: 'complex payload',
+          nested: { value: 42 },
+        }),
+      ),
       headers: {
         'content-type': Buffer.from('application/json'),
         'correlation-id': Buffer.from('12345-67890'),
-        'timestamp': Buffer.from(Date.now().toString()),
+        timestamp: Buffer.from(Date.now().toString()),
         'binary-data': Buffer.from([0x01, 0x02, 0x03, 0x04]),
       },
     }

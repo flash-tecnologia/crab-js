@@ -4,13 +4,7 @@ import { peekKafkaInstrumentation } from './instrumentation.js'
 import type { InstrumentedMessage, InstrumentedMessageBatch } from './types.js'
 import { extractTraceContext } from './utils.js'
 
-export type EndSpanTarget =
-  | Message
-  | Message[]
-  | InstrumentedMessage
-  | InstrumentedMessageBatch
-  | null
-  | undefined
+export type EndSpanTarget = Message | Message[] | InstrumentedMessage | InstrumentedMessageBatch | null | undefined
 
 export type MessageContextTarget = Message | InstrumentedMessage | null | undefined
 export type BatchContextTarget = Message[] | InstrumentedMessageBatch | null | undefined

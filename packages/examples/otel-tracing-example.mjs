@@ -50,11 +50,12 @@ console.log('🔧 Configuring OpenTelemetry SDK...\n')
 // Default: OTLP gRPC to Grafana Tempo at localhost:4317
 // Set OTEL_EXPORTER_TYPE=console to use console exporter instead
 
-const traceExporter = process.env.OTEL_EXPORTER_TYPE === 'console'
-  ? new ConsoleSpanExporter()
-  : new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
-  })
+const traceExporter =
+  process.env.OTEL_EXPORTER_TYPE === 'console'
+    ? new ConsoleSpanExporter()
+    : new OTLPTraceExporter({
+        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+      })
 
 const sdk = new NodeSDK({
   resource: new Resource({
@@ -69,7 +70,8 @@ console.log(`📊 Trace Exporter: ${process.env.OTEL_EXPORTER_TYPE === 'console'
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
-  sdk.shutdown()
+  sdk
+    .shutdown()
     .then(() => console.log('✅ OpenTelemetry SDK shut down successfully'))
     .catch((error) => console.error('❌ Error shutting down OpenTelemetry SDK', error))
     .finally(() => process.exit(0))
@@ -160,19 +162,23 @@ async function produceMessagesWithTracing() {
         // Trace context is automatically injected into message headers
         const result = await producer.send({
           topic,
-          messages: [{
-            key: Buffer.from(`key-${i}`),
-            headers: {
-              'correlation-id': Buffer.from(messageId),
-              'user-id': Buffer.from('user-123'),
+          messages: [
+            {
+              key: Buffer.from(`key-${i}`),
+              headers: {
+                'correlation-id': Buffer.from(messageId),
+                'user-id': Buffer.from('user-123'),
+              },
+              payload: Buffer.from(
+                JSON.stringify({
+                  id: i,
+                  userId: 'user-123',
+                  timestamp: Date.now(),
+                  data: `Message ${i}`,
+                }),
+              ),
             },
-            payload: Buffer.from(JSON.stringify({
-              id: i,
-              userId: 'user-123',
-              timestamp: Date.now(),
-              data: `Message ${i}`,
-            })),
-          }],
+          ],
         })
 
         console.log(`✅ Message ${i} sent to partition ${result[0].partition}, offset ${result[0].offset}`)
@@ -245,9 +251,10 @@ async function consumeMessagesWithTracing() {
       console.log(`   Partition: ${message.partition}`)
       console.log(`   Offset: ${message.offset}`)
       console.log(`   Data: ${JSON.stringify(data)}`)
-      console.log(`   Headers:`, Object.fromEntries(
-        Object.entries(message.headers || {}).map(([k, v]) => [k, v.toString()]),
-      ))
+      console.log(
+        `   Headers:`,
+        Object.fromEntries(Object.entries(message.headers || {}).map(([k, v]) => [k, v.toString()])),
+      )
       console.log()
 
       // Add custom attributes to the processing span
@@ -255,7 +262,7 @@ async function consumeMessagesWithTracing() {
       processingSpan.setAttribute('business.message_id', data.id)
 
       // Simulate some processing time
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 100))
 
       // Commit the offset
       await consumer.commitMessage(message, 'Async')
@@ -312,17 +319,21 @@ async function demonstrateManualOTELUsage() {
 
     await producer.send({
       topic,
-      messages: [{
-        key: Buffer.from('manual-key'),
-        headers: {
-          ...headers,
-          'custom-header': Buffer.from('custom-value'),
+      messages: [
+        {
+          key: Buffer.from('manual-key'),
+          headers: {
+            ...headers,
+            'custom-header': Buffer.from('custom-value'),
+          },
+          payload: Buffer.from(
+            JSON.stringify({
+              manual: true,
+              message: 'Manually traced message',
+            }),
+          ),
         },
-        payload: Buffer.from(JSON.stringify({
-          manual: true,
-          message: 'Manually traced message',
-        })),
-      }],
+      ],
     })
 
     otelContext.endSpan(manualSpan)

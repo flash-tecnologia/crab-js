@@ -2,20 +2,20 @@
   "name": "kafka-crab-js-benchmark",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "description": "Benchmark suite for kafka-crab-js",
+  "type": "module",
+  "scripts": {
+    "setup:consumer": "tsx utils/setup.ts",
+    "benchmark": "node --expose-gc --import tsx consumer.ts",
+    "benchmark:batch": "BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=5 node --expose-gc --import tsx consumer.ts",
+    "benchmark:batch:quick": "BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts"
+  },
   "dependencies": {
     "cronometro": "^6.0.0",
     "kafka-crab-js": "workspace:*",
     "kafka-crab-js-v3": "npm:kafka-crab-js@3.1.0",
     "kafkajs": "^2.2.4",
-    "nanoid": "^5.1.6",
+    "nanoid": "catalog:",
     "node-rdkafka": "^3.6.1"
-  },
-  "scripts": {
-    "setup:consumer": "tsx utils/setup.ts",
-    "benchmark": "node --expose-gc --import tsx consumer.ts",
-    "benchmark:batch-only": "BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=5 node --expose-gc --import tsx consumer.ts",
-    "benchmark:batch-only:quick": "BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts"
   }
 }

@@ -5,12 +5,13 @@ This directory contains benchmark tests for kafka-crab-js performance comparison
 ## Setup
 
 1. Install benchmark dependencies:
+
 ```bash
-cd benchmark
-pnpm install
+vp install
 ```
 
 2. Make sure you have Kafka running (use the integration test setup):
+
 ```bash
 cd ../__test__/integration
 docker-compose up -d
@@ -18,11 +19,16 @@ docker-compose up -d
 podman-compose up -d
 ```
 
+3. Prepare the benchmark data:
+
+```bash
+vp run setup:consumer
+```
+
 ## Running Benchmarks
 
 ```bash
-cd benchmark
-node consumer.ts
+vp run benchmark
 ```
 
 ## Dependencies

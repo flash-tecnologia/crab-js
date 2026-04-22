@@ -14,9 +14,9 @@ async function produce(topic, messages = 1) {
   const records = []
   for (let i = index ?? 0; i < index + messages; i++) {
     const payload = {
-      '_id': i,
-      'name': fakerPT_BR.person.fullName(),
-      'phone': fakerPT_BR.phone.number(),
+      _id: i,
+      name: fakerPT_BR.person.fullName(),
+      phone: fakerPT_BR.phone.number(),
     }
     records.push({
       payload: Buffer.from(JSON.stringify(payload)),
@@ -39,11 +39,13 @@ async function startConsumer(topic) {
     enableAutoCommit: true,
   })
 
-  await kafkaStream.subscribe([{
-    topic,
-    createTopic: true,
-    allOffsets: { position: 'Beginning' },
-  }])
+  await kafkaStream.subscribe([
+    {
+      topic,
+      createTopic: true,
+      allOffsets: { position: 'Beginning' },
+    },
+  ])
 
   let counter = 0
   console.log('Starting consumer')

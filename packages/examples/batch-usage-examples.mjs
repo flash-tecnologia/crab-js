@@ -44,7 +44,7 @@ async function populateTestTopic() {
     await producer.send({ topic: TOPIC_NAME, messages })
 
     if ((i + currentBatchSize) % 50000 === 0) {
-      const progress = ((i + currentBatchSize) / MESSAGE_COUNT * 100).toFixed(1)
+      const progress = (((i + currentBatchSize) / MESSAGE_COUNT) * 100).toFixed(1)
       console.log(`   Progress: ${progress}%`)
     }
   }
@@ -92,11 +92,11 @@ async function batchConsumptionDemo() {
     if (totalProcessed % 1000 === 0 || totalProcessed < 100) {
       const elapsed = Date.now() - startTime
       const rate = (totalProcessed / elapsed) * 1000
-      const progress = (totalProcessed / MESSAGE_COUNT * 100).toFixed(1)
+      const progress = ((totalProcessed / MESSAGE_COUNT) * 100).toFixed(1)
       console.log(
-        `   Processed: ${totalProcessed.toLocaleString()}/${MESSAGE_COUNT.toLocaleString()} (${progress}%) - ${
-          rate.toFixed(0)
-        } msg/sec`,
+        `   Processed: ${totalProcessed.toLocaleString()}/${MESSAGE_COUNT.toLocaleString()} (${progress}%) - ${rate.toFixed(
+          0,
+        )} msg/sec`,
       )
     }
   }
@@ -104,9 +104,9 @@ async function batchConsumptionDemo() {
   const totalTime = Date.now() - startTime
   const finalRate = totalProcessed > 0 ? (totalProcessed / totalTime) * 1000 : 0
   console.log(
-    `✅ Batch processing: ${totalProcessed.toLocaleString()} messages in ${totalTime}ms (${
-      finalRate.toFixed(0)
-    } msg/sec)\n`,
+    `✅ Batch processing: ${totalProcessed.toLocaleString()} messages in ${totalTime}ms (${finalRate.toFixed(
+      0,
+    )} msg/sec)\n`,
   )
 
   consumer.unsubscribe()
@@ -120,7 +120,7 @@ try {
   await populateTestTopic()
 
   console.log('⏳ Waiting for commit...')
-  await new Promise(resolve => setTimeout(resolve, 2000))
+  await new Promise((resolve) => setTimeout(resolve, 2000))
 
   await batchConsumptionDemo()
 

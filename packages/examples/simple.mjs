@@ -27,9 +27,10 @@ if (process.env.KAFKA_AVAILABLE !== 'true') {
 const otelEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317'
 const otelServiceName = process.env.OTEL_SERVICE_NAME || 'kafka-crab-js-example'
 
-const resource = typeof resourceFromAttributes === 'function'
-  ? resourceFromAttributes({ [SEMRESATTRS_SERVICE_NAME]: otelServiceName })
-  : new Resource({ [SEMRESATTRS_SERVICE_NAME]: otelServiceName })
+const resource =
+  typeof resourceFromAttributes === 'function'
+    ? resourceFromAttributes({ [SEMRESATTRS_SERVICE_NAME]: otelServiceName })
+    : new Resource({ [SEMRESATTRS_SERVICE_NAME]: otelServiceName })
 
 const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({ url: otelEndpoint }),
@@ -55,16 +56,16 @@ async function produce(count) {
   const producer = kafkaClient.createProducer({ configuration: { 'message.timeout.ms': '5000' } })
   for (let i = 0; i < count; i++) {
     try {
-      const result = await producer.send(
-        {
-          topic,
-          messages: [{
+      const result = await producer.send({
+        topic,
+        messages: [
+          {
             key: Buffer.from(nanoid()),
             headers: { 'correlation-id': Buffer.from(nanoid()) },
             payload: Buffer.from(`{"_id":"${i}","name":"Elizeu Drummond","phone":"1234567890"}`),
-          }],
-        },
-      )
+          },
+        ],
+      })
       console.log('Js message sent. Offset:', result)
     } catch (error) {
       console.error('Js Error on send', error)

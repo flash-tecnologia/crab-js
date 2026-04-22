@@ -117,11 +117,14 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
 
     // Verify results
     equal(receivedMessages.length, messages.length, 'Should receive all sent messages')
-    ok(receivedMessages.every(msg => msg.offset !== undefined), 'All messages should have offsets')
+    ok(
+      receivedMessages.every((msg) => msg.offset !== undefined),
+      'All messages should have offsets',
+    )
 
     // Verify that events were captured (if any)
     console.log(`Captured ${events.length} events during sync commit test`)
-    events.forEach(event => console.log(`Event: ${event.name}`))
+    events.forEach((event) => console.log(`Event: ${event.name}`))
   })
 
   await t.test('Consumer: Manual commit async with offset verification', async () => {
@@ -218,11 +221,14 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
 
     // Verify results
     equal(receivedMessages.length, messages.length, 'Should receive all sent messages')
-    ok(receivedMessages.every(msg => msg.offset !== undefined), 'All messages should have offsets')
+    ok(
+      receivedMessages.every((msg) => msg.offset !== undefined),
+      'All messages should have offsets',
+    )
 
     // Verify that events were captured (if any)
     console.log(`Captured ${events.length} events during async commit test`)
-    events.forEach(event => console.log(`Event: ${event.name}`))
+    events.forEach((event) => console.log(`Event: ${event.name}`))
   })
 
   await t.test('Consumer: Verify committed offsets persist across consumer restarts', async () => {
@@ -308,7 +314,7 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
     const maxPolls = 15
     let polls = 0
 
-    while (remainingMessages.length < (messages.length - halfCount) && polls < maxPolls) {
+    while (remainingMessages.length < messages.length - halfCount && polls < maxPolls) {
       polls++
       const message = await consumer2.recv()
 
@@ -325,8 +331,10 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
 
         if (committedOffset !== undefined) {
           // Verify this message's offset is >= committed offset for the same partition
-          ok(message.offset >= committedOffset,
-            `Message offset ${message.offset} should be >= last committed offset ${committedOffset} for partition ${message.partition}`)
+          ok(
+            message.offset >= committedOffset,
+            `Message offset ${message.offset} should be >= last committed offset ${committedOffset} for partition ${message.partition}`,
+          )
         }
       }
 
@@ -380,12 +388,12 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
     await producer.send({ topic, messages })
     await sleep(1000)
 
-    const streamConsumer = client.createStreamConsumer(createConsumerConfig(`stream-manual-commit-${testId}`, {
-      configuration: { 'enable.auto.commit': 'false' },
-    }))
-    await streamConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    const streamConsumer = client.createStreamConsumer(
+      createConsumerConfig(`stream-manual-commit-${testId}`, {
+        configuration: { 'enable.auto.commit': 'false' },
+      }),
+    )
+    await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     let firstMessage = null
 
@@ -482,23 +490,18 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
         break
       }
 
-      const testMessagesBatch = batch.filter(msg => isTestMessage(msg, testId))
+      const testMessagesBatch = batch.filter((msg) => isTestMessage(msg, testId))
       if (testMessagesBatch.length > 0) {
         totalReceived += testMessagesBatch.length
 
         // Find the highest offset in this batch
-        const highestOffsetMessage = testMessagesBatch.reduce((max, msg) => msg.offset > max.offset ? msg : max)
+        const highestOffsetMessage = testMessagesBatch.reduce((max, msg) => (msg.offset > max.offset ? msg : max))
 
         // Commit the highest offset + 1
         try {
           const commitOffset = highestOffsetMessage.offset + 1
           console.log(`Committing batch with highest offset ${commitOffset}`)
-          await consumer.commit(
-            highestOffsetMessage.topic,
-            highestOffsetMessage.partition,
-            commitOffset,
-            'Sync',
-          )
+          await consumer.commit(highestOffsetMessage.topic, highestOffsetMessage.partition, commitOffset, 'Sync')
           lastCommittedOffset = commitOffset
           console.log(`Successfully committed batch offset ${commitOffset}`)
         } catch (error) {

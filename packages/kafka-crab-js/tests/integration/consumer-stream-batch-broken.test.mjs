@@ -110,9 +110,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
       batchTimeout: 2000, // Small batch size for testing
     })
 
-    await streamConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     const receivedMessages = []
     const batchPromise = new Promise((resolve, reject) => {
@@ -153,16 +151,12 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     const { topic, testId } = await setupTestEnvironment()
 
     // Send initial messages
-    const initialMessages = [
-      { payload: Buffer.from(JSON.stringify({ testId, mode: 'single' })) },
-    ]
+    const initialMessages = [{ payload: Buffer.from(JSON.stringify({ testId, mode: 'single' })) }]
     await producer.send({ topic, messages: initialMessages })
     await sleep(1000)
 
     const singleConsumer = client.createStreamConsumer(createConsumerConfig(`mode-single-${testId}`))
-    await singleConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await singleConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     equal(typeof singleConsumer.getBatchConfig, 'undefined', 'Single mode stream should not expose getBatchConfig')
     await cleanupStreamConsumer(singleConsumer)
@@ -173,9 +167,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
       batchTimeout: 1000,
     })
 
-    await batchConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await batchConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     const config = batchConsumer.getBatchConfig()
     equal(config.batchSize, 2, 'Batch size should match configured value')
@@ -199,9 +191,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
 
     // Test single mode performance
     const singleModeConsumer = client.createStreamConsumer(createConsumerConfig(`single-perf-${testId}`))
-    await singleModeConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await singleModeConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     const singleModeStart = Date.now()
     const singleModeMessages = []
@@ -228,9 +218,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
       batchTimeout: 500, // Reasonable batch size
     })
 
-    await batchModeConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await batchModeConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     const batchModeStart = Date.now()
     const batchModeMessages = []
@@ -258,7 +246,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     console.log(`Performance comparison:`)
     console.log(`  Single mode: ${singleModeDuration}ms`)
     console.log(`  Batch mode: ${batchModeDuration}ms`)
-    console.log(`  Improvement: ${((singleModeDuration - batchModeDuration) / singleModeDuration * 100).toFixed(1)}%`)
+    console.log(`  Improvement: ${(((singleModeDuration - batchModeDuration) / singleModeDuration) * 100).toFixed(1)}%`)
 
     // Both should complete within reasonable time
     ok(singleModeDuration < 30000, 'Single mode should complete within 30 seconds')
@@ -273,11 +261,13 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
     // Create large batch of messages
     const largeMessageBatch = Array.from({ length: messageCount }, (_, i) => ({
       key: Buffer.from(`large-key-${i}`),
-      payload: Buffer.from(JSON.stringify({
-        testId,
-        index: i,
-        data: 'x'.repeat(500), // Make messages larger
-      })),
+      payload: Buffer.from(
+        JSON.stringify({
+          testId,
+          index: i,
+          data: 'x'.repeat(500), // Make messages larger
+        }),
+      ),
     }))
 
     await producer.send({ topic, messages: largeMessageBatch })
@@ -290,9 +280,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
       batchTimeout: 2000, // Use max allowed batch size
     })
 
-    await streamConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     const receivedMessages = []
     const largeProcessingPromise = new Promise((resolve, reject) => {
@@ -342,9 +330,7 @@ await test('Consumer Stream Batch Mode Integration Tests', async (t) => {
       batchTimeout: 500, // Large batch size, small timeout
     })
 
-    await streamConsumer.subscribe([
-      { topic, allOffsets: { position: 'Beginning' } },
-    ])
+    await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
     const receivedMessages = []
     const timeoutStart = Date.now()

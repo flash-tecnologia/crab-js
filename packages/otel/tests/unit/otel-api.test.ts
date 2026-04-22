@@ -1,5 +1,5 @@
 import assert from 'node:assert'
-import { afterEach, beforeEach, describe, test } from 'node:test'
+import { afterEach, beforeEach, describe, test } from 'vite-plus/test'
 
 // OpenTelemetry test infrastructure
 import { context, propagation, trace } from '@opentelemetry/api'
@@ -14,7 +14,7 @@ import {
   type Message,
 } from 'kafka-crab-js'
 
-// Import from the built package
+// Import from source so unit tests do not depend on a prebuilt dist/
 import {
   enableOtelInstrumentation,
   endSpan,
@@ -29,7 +29,7 @@ import {
   resetOtelAdapter,
   withBatchContext,
   withMessageContext,
-} from '../../dist/index.js'
+} from '../../src/index.ts'
 
 describe('kafka-crab-js-otel Public API Tests', () => {
   let memoryExporter: InMemorySpanExporter
@@ -416,12 +416,14 @@ describe('kafka-crab-js-otel Public API Tests', () => {
     test('withBatchContext should use decorated batch span when available', () => {
       const tracer = provider.getTracer('kafka-crab-js-otel-test')
       const batchSpan = tracer.startSpan('decorated-batch-parent')
-      const batch = [{
-        topic: 'test-topic',
-        partition: 0,
-        offset: '0',
-        payload: Buffer.from('test'),
-      }] as unknown as Record<string, unknown>[]
+      const batch = [
+        {
+          topic: 'test-topic',
+          partition: 0,
+          offset: '0',
+          payload: Buffer.from('test'),
+        },
+      ] as unknown as Record<string, unknown>[]
       Object.defineProperty(batch, 'span', {
         value: batchSpan,
         enumerable: false,
@@ -481,8 +483,10 @@ describe('kafka-crab-js-otel Public API Tests', () => {
       assert(decoratedMessage.otelContext, 'message should have otelContext decoration')
       assert.equal(Object.prototype.propertyIsEnumerable.call(message, 'span'), false)
       assert.equal(Object.prototype.propertyIsEnumerable.call(message, 'otelContext'), false)
-      assert.equal(trace.getSpan(decoratedMessage.otelContext as Parameters<typeof trace.getSpan>[0]),
-        decoratedMessage.span)
+      assert.equal(
+        trace.getSpan(decoratedMessage.otelContext as Parameters<typeof trace.getSpan>[0]),
+        decoratedMessage.span,
+      )
 
       consumerProcessEndChannel.publish({
         timestamp: Date.now(),
@@ -495,19 +499,22 @@ describe('kafka-crab-js-otel Public API Tests', () => {
     test('adapter should decorate batch and contained messages with non-enumerable span and otelContext', () => {
       enableOtelInstrumentation()
 
-      const messages = [{
-        topic: 'test-topic',
-        partition: 0,
-        offset: '1',
-        payload: Buffer.from('batch-1'),
-        headers: {},
-      }, {
-        topic: 'test-topic',
-        partition: 0,
-        offset: '2',
-        payload: Buffer.from('batch-2'),
-        headers: {},
-      }]
+      const messages = [
+        {
+          topic: 'test-topic',
+          partition: 0,
+          offset: '1',
+          payload: Buffer.from('batch-1'),
+          headers: {},
+        },
+        {
+          topic: 'test-topic',
+          partition: 0,
+          offset: '2',
+          payload: Buffer.from('batch-2'),
+          headers: {},
+        },
+      ]
       const eventContext: Record<PropertyKey, unknown> = {}
 
       batchProcessStartChannel.publish({
@@ -516,24 +523,21 @@ describe('kafka-crab-js-otel Public API Tests', () => {
         context: eventContext,
       })
 
-      const decoratedBatch = Object
-        .getOwnPropertySymbols(eventContext)
-        .map(symbolKey => eventContext[symbolKey])
-        .find(value => (
-          Array.isArray(value) &&
-          value.length === messages.length &&
-          value[0] === messages[0] &&
-          value[1] === messages[1]
-        )) as (
-          & {
-            span?: unknown
-            otelContext?: unknown
-          }
-          & {
-            span?: unknown
-            otelContext?: unknown
-          }[]
-        )
+      const decoratedBatch = Object.getOwnPropertySymbols(eventContext)
+        .map((symbolKey) => eventContext[symbolKey])
+        .find(
+          (value) =>
+            Array.isArray(value) &&
+            value.length === messages.length &&
+            value[0] === messages[0] &&
+            value[1] === messages[1],
+        ) as {
+        span?: unknown
+        otelContext?: unknown
+      } & {
+        span?: unknown
+        otelContext?: unknown
+      }[]
 
       assert(decoratedBatch, 'event context should include instrumented batch array')
       assert.notEqual(decoratedBatch, messages, 'instrumented batch should be a filtered array instance')
@@ -541,8 +545,10 @@ describe('kafka-crab-js-otel Public API Tests', () => {
       assert(decoratedBatch.otelContext, 'batch should have otelContext decoration')
       assert.equal(Object.prototype.propertyIsEnumerable.call(decoratedBatch, 'span'), false)
       assert.equal(Object.prototype.propertyIsEnumerable.call(decoratedBatch, 'otelContext'), false)
-      assert.equal(trace.getSpan(decoratedBatch.otelContext as Parameters<typeof trace.getSpan>[0]),
-        decoratedBatch.span)
+      assert.equal(
+        trace.getSpan(decoratedBatch.otelContext as Parameters<typeof trace.getSpan>[0]),
+        decoratedBatch.span,
+      )
 
       const decoratedMessages = decoratedBatch as {
         span?: unknown

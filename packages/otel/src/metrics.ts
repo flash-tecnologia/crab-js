@@ -40,7 +40,7 @@ function getErrorType(error: Error | unknown): string {
   // Check for Kafka-specific error codes in the message
   if (err?.message) {
     const message = err.message.toUpperCase()
-    const matchedPattern = ERROR_MESSAGE_PATTERNS.find(({ terms }) => terms.some(term => message.includes(term)))
+    const matchedPattern = ERROR_MESSAGE_PATTERNS.find(({ terms }) => terms.some((term) => message.includes(term)))
     if (matchedPattern) {
       return matchedPattern.type
     }
@@ -165,7 +165,8 @@ export class KafkaMetrics {
       KafkaMetrics._validateHistogramBuckets(config.histogramBuckets)
     }
 
-    const bucketsChanged = Array.isArray(config.histogramBuckets) &&
+    const bucketsChanged =
+      Array.isArray(config.histogramBuckets) &&
       (this._config.histogramBuckets?.length !== config.histogramBuckets.length ||
         this._config.histogramBuckets?.some((bucket, index) => bucket !== config.histogramBuckets?.[index]))
 
@@ -198,8 +199,12 @@ export class KafkaMetrics {
       return
     }
 
-    const attributes = this._buildProducerAttributes(topic, KAFKA_OPERATION_NAMES.SEND, KAFKA_OPERATION_TYPES.SEND,
-      options)
+    const attributes = this._buildProducerAttributes(
+      topic,
+      KAFKA_OPERATION_NAMES.SEND,
+      KAFKA_OPERATION_TYPES.SEND,
+      options,
+    )
     this._operationDuration.record(durationSeconds, attributes)
   }
 

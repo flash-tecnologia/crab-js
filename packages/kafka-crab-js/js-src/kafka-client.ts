@@ -1,5 +1,6 @@
 import type { ReadableOptions } from 'node:stream'
 import {
+  type CompactMessageBatch,
   type ConsumerConfiguration,
   KafkaClientConfig,
   type KafkaConfiguration,
@@ -26,9 +27,9 @@ const LEGACY_STREAM_SERIAL_COLLECTOR_SIZE = 1
 const LEGACY_STREAM_SERIAL_COLLECTOR_TIMEOUT = 1000
 
 type KafkaConsumerWithWebStream = KafkaConsumer & {
-  recvStream(): ReadableStream<Message>
+  recvStream(prefetchSize?: number, prefetchTimeoutMs?: number): ReadableStream<Message>
   recvBatchStream(size: number, timeoutMs: number): ReadableStream<Message[]>
-  recvBatchStreamPayload(size: number, timeoutMs: number): ReadableStream<Message[]>
+  recvBatchStreamCompact(size: number, timeoutMs: number): ReadableStream<CompactMessageBatch>
 }
 
 export interface StreamConsumerConfiguration extends ConsumerConfiguration {
@@ -42,24 +43,24 @@ export interface WebStreamConsumerConfiguration extends ConsumerConfiguration {
   batchTimeout?: number // Default 1000ms
   serialPrefetchSize?: number // Default 64, only used in serial mode
   serialPrefetchTimeout?: number // Default 1ms, only used in serial mode
-  payloadOnly?: boolean // Default false. Omits message metadata fields for maximum transfer throughput.
 }
 
 export type WebStreamConsumer =
   | {
-    mode: 'serial'
-    consumer: KafkaConsumer
-    stream: ReadableStream<Message>
-  }
+      mode: 'serial'
+      consumer: KafkaConsumer
+      stream: ReadableStream<Message>
+    }
   | {
-    mode: 'batch'
-    consumer: KafkaConsumer
-    stream: ReadableStream<Message[]>
-  }
+      mode: 'batch'
+      consumer: KafkaConsumer
+      stream: ReadableStream<Message[]>
+    }
 
 type SerialBatchSize = 0 | 1 | undefined
 type NumericLiteral<BatchSizeValue extends number> = number extends BatchSizeValue ? never : BatchSizeValue
-type BatchLiteralSize<BatchSizeValue extends number> = BatchSizeValue extends 0 | 1 ? never
+type BatchLiteralSize<BatchSizeValue extends number> = BatchSizeValue extends 0 | 1
+  ? never
   : NumericLiteral<BatchSizeValue>
 
 type SerialWebStreamConsumer = Extract<WebStreamConsumer, { mode: 'serial' }>
@@ -69,14 +70,12 @@ type SerialWebStreamConsumerConfiguration = Omit<WebStreamConsumerConfiguration,
   batchSize?: SerialBatchSize
 }
 
-type BatchLiteralWebStreamConsumerConfiguration<BatchSizeValue extends number> =
-  & Omit<
-    WebStreamConsumerConfiguration,
-    'batchSize'
-  >
-  & {
-    batchSize: BatchLiteralSize<BatchSizeValue>
-  }
+type BatchLiteralWebStreamConsumerConfiguration<BatchSizeValue extends number> = Omit<
+  WebStreamConsumerConfiguration,
+  'batchSize'
+> & {
+  batchSize: BatchLiteralSize<BatchSizeValue>
+}
 
 type DynamicBatchWebStreamConsumerConfiguration = Omit<WebStreamConsumerConfiguration, 'batchSize'> & {
   batchSize: number
@@ -120,6 +119,425 @@ function flattenBatchStream(batchStream: ReadableStream<Message[]>): ReadableStr
       await reader.cancel(reason)
     },
   })
+}
+
+function expandCompactBatch(batch: CompactMessageBatch): Message[] {
+  const {
+    payloads,
+    keys,
+    denseKeys,
+    sharedKey,
+    keyDictionary,
+    keyDictionaryIndexes,
+    topic,
+    topics,
+    partitions,
+    offsets,
+    sharedHeaderKey,
+    sharedHeaderValue,
+    sharedHeaderValues,
+    denseSharedHeaderValues,
+    headerValueDictionary,
+    headerValueDictionaryIndexes,
+    headers,
+  } = batch
+
+  if (
+    topic !== undefined &&
+    topics === undefined &&
+    keyDictionary !== undefined &&
+    keyDictionaryIndexes !== undefined &&
+    sharedHeaderKey !== undefined &&
+    sharedHeaderValue !== undefined &&
+    sharedHeaderValues === undefined &&
+    denseSharedHeaderValues === undefined &&
+    headerValueDictionary === undefined &&
+    headerValueDictionaryIndexes === undefined &&
+    headers === undefined
+  ) {
+    return expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
+      payloads,
+      keyDictionary,
+      keyDictionaryIndexes,
+      topic,
+      partitions,
+      offsets,
+      sharedHeaderKey,
+      sharedHeaderValue,
+    )
+  }
+
+  if (
+    topic !== undefined &&
+    topics === undefined &&
+    sharedKey !== undefined &&
+    sharedHeaderKey !== undefined &&
+    sharedHeaderValue !== undefined &&
+    sharedHeaderValues === undefined &&
+    denseSharedHeaderValues === undefined &&
+    headerValueDictionary === undefined &&
+    headerValueDictionaryIndexes === undefined &&
+    headers === undefined
+  ) {
+    return expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
+      payloads,
+      sharedKey,
+      topic,
+      partitions,
+      offsets,
+      sharedHeaderKey,
+      sharedHeaderValue,
+    )
+  }
+
+  if (
+    topic !== undefined &&
+    topics === undefined &&
+    denseKeys !== undefined &&
+    sharedKey === undefined &&
+    keyDictionary === undefined &&
+    keyDictionaryIndexes === undefined &&
+    sharedHeaderKey !== undefined &&
+    sharedHeaderValue === undefined &&
+    denseSharedHeaderValues !== undefined &&
+    headerValueDictionary === undefined &&
+    headerValueDictionaryIndexes === undefined &&
+    headers === undefined
+  ) {
+    return expandCompactBatchSharedTopicWithDenseKeysAndSharedHeaders(
+      payloads,
+      denseKeys,
+      topic,
+      partitions,
+      offsets,
+      sharedHeaderKey,
+      denseSharedHeaderValues,
+    )
+  }
+
+  if (
+    topic !== undefined &&
+    topics === undefined &&
+    denseKeys !== undefined &&
+    sharedKey === undefined &&
+    keyDictionary === undefined &&
+    keyDictionaryIndexes === undefined &&
+    sharedHeaderKey === undefined &&
+    sharedHeaderValue === undefined &&
+    sharedHeaderValues === undefined &&
+    denseSharedHeaderValues === undefined &&
+    headerValueDictionary === undefined &&
+    headerValueDictionaryIndexes === undefined &&
+    headers === undefined
+  ) {
+    return expandCompactBatchSharedTopicWithDenseKeys(payloads, denseKeys, topic, partitions, offsets)
+  }
+
+  if (
+    topic !== undefined &&
+    topics === undefined &&
+    keys === undefined &&
+    denseKeys === undefined &&
+    sharedKey === undefined &&
+    keyDictionary === undefined &&
+    keyDictionaryIndexes === undefined &&
+    sharedHeaderKey !== undefined &&
+    sharedHeaderValue === undefined &&
+    denseSharedHeaderValues !== undefined &&
+    headerValueDictionary === undefined &&
+    headerValueDictionaryIndexes === undefined &&
+    headers === undefined
+  ) {
+    return expandCompactBatchSharedTopicWithSharedHeaders(
+      payloads,
+      topic,
+      partitions,
+      offsets,
+      sharedHeaderKey,
+      denseSharedHeaderValues,
+    )
+  }
+
+  if (
+    topic !== undefined &&
+    topics === undefined &&
+    keys === undefined &&
+    denseKeys === undefined &&
+    sharedKey === undefined &&
+    keyDictionary === undefined &&
+    keyDictionaryIndexes === undefined &&
+    sharedHeaderKey === undefined &&
+    sharedHeaderValue === undefined &&
+    sharedHeaderValues === undefined &&
+    denseSharedHeaderValues === undefined &&
+    headerValueDictionary === undefined &&
+    headerValueDictionaryIndexes === undefined &&
+    headers === undefined
+  ) {
+    return expandCompactBatchSharedTopic(payloads, topic, partitions, offsets)
+  }
+
+  const messages = new Array<Message>(payloads.length)
+
+  for (let index = 0; index < payloads.length; index += 1) {
+    const payload = payloads[index] as Buffer
+    const key =
+      sharedKey ??
+      denseKeys?.[index] ??
+      (keyDictionaryIndexes?.[index] === undefined
+        ? undefined
+        : keyDictionary?.[keyDictionaryIndexes[index] as number]) ??
+      keys?.[index]
+    const denseSharedHeaderValue = denseSharedHeaderValues?.[index]
+    const dictionaryHeaderValue =
+      headerValueDictionaryIndexes?.[index] === undefined
+        ? undefined
+        : headerValueDictionary?.[headerValueDictionaryIndexes[index] as number]
+    const messageHeaders =
+      headers?.[index] ??
+      (sharedHeaderKey &&
+      (sharedHeaderValue !== undefined ||
+        denseSharedHeaderValue !== undefined ||
+        dictionaryHeaderValue !== undefined ||
+        sharedHeaderValues?.[index] !== undefined)
+        ? {
+            [sharedHeaderKey]: (sharedHeaderValue ??
+              denseSharedHeaderValue ??
+              dictionaryHeaderValue ??
+              sharedHeaderValues?.[index]) as Buffer,
+          }
+        : undefined)
+    const messageTopic = (topic ?? topics?.[index]) as string
+    const partition = partitions[index] as number
+    const offset = offsets[index] as number
+
+    if (key === undefined && messageHeaders === undefined) {
+      messages[index] = {
+        payload,
+        topic: messageTopic,
+        partition,
+        offset,
+      }
+      continue
+    }
+
+    if (messageHeaders === undefined) {
+      messages[index] = {
+        payload,
+        key,
+        topic: messageTopic,
+        partition,
+        offset,
+      }
+      continue
+    }
+
+    if (key === undefined) {
+      messages[index] = {
+        payload,
+        headers: messageHeaders,
+        topic: messageTopic,
+        partition,
+        offset,
+      }
+      continue
+    }
+
+    messages[index] = {
+      payload,
+      key,
+      headers: messageHeaders,
+      topic: messageTopic,
+      partition,
+      offset,
+    }
+  }
+
+  return messages
+}
+
+function expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
+  payloads: Buffer[],
+  sharedKey: Buffer,
+  topic: string,
+  partitions: number[],
+  offsets: number[],
+  sharedHeaderKey: string,
+  sharedHeaderValue: Buffer,
+): Message[] {
+  const messages = new Array<Message>(payloads.length)
+
+  for (let index = 0; index < payloads.length; index += 1) {
+    messages[index] = {
+      payload: payloads[index] as Buffer,
+      key: sharedKey,
+      headers: {
+        [sharedHeaderKey]: sharedHeaderValue,
+      },
+      topic,
+      partition: partitions[index] as number,
+      offset: offsets[index] as number,
+    }
+  }
+
+  return messages
+}
+
+function expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
+  payloads: Buffer[],
+  keyDictionary: Buffer[],
+  keyDictionaryIndexes: number[],
+  topic: string,
+  partitions: number[],
+  offsets: number[],
+  sharedHeaderKey: string,
+  sharedHeaderValue: Buffer,
+): Message[] {
+  const messages = new Array<Message>(payloads.length)
+
+  for (let index = 0; index < payloads.length; index += 1) {
+    messages[index] = {
+      payload: payloads[index] as Buffer,
+      key: keyDictionary[keyDictionaryIndexes[index] as number] as Buffer,
+      headers: {
+        [sharedHeaderKey]: sharedHeaderValue,
+      },
+      topic,
+      partition: partitions[index] as number,
+      offset: offsets[index] as number,
+    }
+  }
+
+  return messages
+}
+
+function expandCompactBatchSharedTopicWithDenseKeysAndSharedHeaders(
+  payloads: Buffer[],
+  denseKeys: Buffer[],
+  topic: string,
+  partitions: number[],
+  offsets: number[],
+  sharedHeaderKey: string,
+  denseSharedHeaderValues: Buffer[],
+): Message[] {
+  const messages = new Array<Message>(payloads.length)
+
+  for (let index = 0; index < payloads.length; index += 1) {
+    messages[index] = {
+      payload: payloads[index] as Buffer,
+      key: denseKeys[index] as Buffer,
+      headers: {
+        [sharedHeaderKey]: denseSharedHeaderValues[index] as Buffer,
+      },
+      topic,
+      partition: partitions[index] as number,
+      offset: offsets[index] as number,
+    }
+  }
+
+  return messages
+}
+
+function expandCompactBatchSharedTopicWithDenseKeys(
+  payloads: Buffer[],
+  denseKeys: Buffer[],
+  topic: string,
+  partitions: number[],
+  offsets: number[],
+): Message[] {
+  const messages = new Array<Message>(payloads.length)
+
+  for (let index = 0; index < payloads.length; index += 1) {
+    messages[index] = {
+      payload: payloads[index] as Buffer,
+      key: denseKeys[index] as Buffer,
+      topic,
+      partition: partitions[index] as number,
+      offset: offsets[index] as number,
+    }
+  }
+
+  return messages
+}
+
+function expandCompactBatchSharedTopicWithSharedHeaders(
+  payloads: Buffer[],
+  topic: string,
+  partitions: number[],
+  offsets: number[],
+  sharedHeaderKey: string,
+  denseSharedHeaderValues: Buffer[],
+): Message[] {
+  const messages = new Array<Message>(payloads.length)
+
+  for (let index = 0; index < payloads.length; index += 1) {
+    messages[index] = {
+      payload: payloads[index] as Buffer,
+      headers: {
+        [sharedHeaderKey]: denseSharedHeaderValues[index] as Buffer,
+      },
+      topic,
+      partition: partitions[index] as number,
+      offset: offsets[index] as number,
+    }
+  }
+
+  return messages
+}
+
+function expandCompactBatchSharedTopic(
+  payloads: Buffer[],
+  topic: string,
+  partitions: number[],
+  offsets: number[],
+): Message[] {
+  const messages = new Array<Message>(payloads.length)
+
+  for (let index = 0; index < payloads.length; index += 1) {
+    messages[index] = {
+      payload: payloads[index] as Buffer,
+      topic,
+      partition: partitions[index] as number,
+      offset: offsets[index] as number,
+    }
+  }
+
+  return messages
+}
+
+function expandCompactBatchStream(compactStream: ReadableStream<CompactMessageBatch>): ReadableStream<Message[]> {
+  const reader = compactStream.getReader()
+  let closed = false
+
+  return new ReadableStream<Message[]>({
+    async pull(controller) {
+      if (closed) {
+        controller.close()
+        return
+      }
+
+      const { value, done } = await reader.read()
+      if (done || !value) {
+        closed = true
+        controller.close()
+        return
+      }
+
+      controller.enqueue(expandCompactBatch(value))
+    },
+    async cancel(reason) {
+      closed = true
+      await reader.cancel(reason)
+    },
+  })
+}
+
+function createMetadataBatchStream(
+  consumer: KafkaConsumerWithWebStream,
+  batchSize: number,
+  batchTimeout: number,
+): ReadableStream<Message[]> {
+  return expandCompactBatchStream(consumer.recvBatchStreamCompact(batchSize, batchTimeout))
 }
 
 export interface KafkaClientConfiguration extends Omit<KafkaConfiguration, 'clientId'> {
@@ -234,15 +652,15 @@ export class KafkaClient {
 
     if (batchSize && batchSize > 1) {
       const resolvedBatchTimeout = batchTimeout ?? DEFAULT_WEB_STREAM_BATCH_TIMEOUT
-      const batchStream = webStreamConsumer.recvBatchStream(batchSize, resolvedBatchTimeout)
+      const batchStream = createMetadataBatchStream(webStreamConsumer, batchSize, resolvedBatchTimeout)
       const instrumentedBatchStream = this._diagnosticsEnabled
         ? instrumentBatchReadableStream(
-          batchStream,
-          consumerConfiguration.groupId,
-          batchSize,
-          resolvedBatchTimeout,
-          this._diagnosticsConfig,
-        )
+            batchStream,
+            consumerConfiguration.groupId,
+            batchSize,
+            resolvedBatchTimeout,
+            this._diagnosticsConfig,
+          )
         : batchStream
 
       return new KafkaBatchStreamReadable({
@@ -254,7 +672,8 @@ export class KafkaClient {
       })
     }
 
-    const serialBatchStream = webStreamConsumer.recvBatchStream(
+    const serialBatchStream = createMetadataBatchStream(
+      webStreamConsumer,
       LEGACY_STREAM_SERIAL_COLLECTOR_SIZE,
       LEGACY_STREAM_SERIAL_COLLECTOR_TIMEOUT,
     )
@@ -279,18 +698,10 @@ export class KafkaClient {
   createWebStreamConsumer<const BatchSizeValue extends number>(
     streamConfiguration: BatchLiteralWebStreamConsumerConfiguration<BatchSizeValue>,
   ): BatchWebStreamConsumer
-  createWebStreamConsumer(
-    streamConfiguration: DynamicBatchWebStreamConsumerConfiguration,
-  ): WebStreamConsumer
+  createWebStreamConsumer(streamConfiguration: DynamicBatchWebStreamConsumerConfiguration): WebStreamConsumer
   createWebStreamConsumer(streamConfiguration: WebStreamConsumerConfiguration): WebStreamConsumer {
-    const {
-      batchSize,
-      batchTimeout,
-      serialPrefetchSize,
-      serialPrefetchTimeout,
-      payloadOnly,
-      ...consumerConfiguration
-    } = streamConfiguration
+    const { batchSize, batchTimeout, serialPrefetchSize, serialPrefetchTimeout, ...consumerConfiguration } =
+      streamConfiguration
 
     const kafkaConsumer = this.kafkaClientConfig.createConsumer(consumerConfiguration)
     const instrumentedConsumer = this._diagnosticsEnabled
@@ -300,17 +711,15 @@ export class KafkaClient {
 
     if (batchSize && batchSize > 1) {
       const resolvedBatchTimeout = batchTimeout ?? DEFAULT_WEB_STREAM_BATCH_TIMEOUT
-      const stream = payloadOnly
-        ? webStreamConsumer.recvBatchStreamPayload(batchSize, resolvedBatchTimeout)
-        : webStreamConsumer.recvBatchStream(batchSize, resolvedBatchTimeout)
+      const stream = createMetadataBatchStream(webStreamConsumer, batchSize, resolvedBatchTimeout)
       const instrumentedStream = this._diagnosticsEnabled
         ? instrumentBatchReadableStream(
-          stream,
-          consumerConfiguration.groupId,
-          batchSize,
-          resolvedBatchTimeout,
-          this._diagnosticsConfig,
-        )
+            stream,
+            consumerConfiguration.groupId,
+            batchSize,
+            resolvedBatchTimeout,
+            this._diagnosticsConfig,
+          )
         : stream
 
       return {
@@ -320,14 +729,12 @@ export class KafkaClient {
       }
     }
 
-    const resolvedPrefetchSize = serialPrefetchSize && serialPrefetchSize > 1
-      ? serialPrefetchSize
-      : DEFAULT_WEB_STREAM_SERIAL_PREFETCH_SIZE
+    const resolvedPrefetchSize =
+      serialPrefetchSize && serialPrefetchSize > 1 ? serialPrefetchSize : DEFAULT_WEB_STREAM_SERIAL_PREFETCH_SIZE
     const resolvedPrefetchTimeout = serialPrefetchTimeout ?? DEFAULT_WEB_STREAM_SERIAL_PREFETCH_TIMEOUT
-    const prefetchStream = payloadOnly
-      ? webStreamConsumer.recvBatchStreamPayload(resolvedPrefetchSize, resolvedPrefetchTimeout)
-      : webStreamConsumer.recvBatchStream(resolvedPrefetchSize, resolvedPrefetchTimeout)
-    const serialStream = flattenBatchStream(prefetchStream)
+    const serialStream = flattenBatchStream(
+      createMetadataBatchStream(webStreamConsumer, resolvedPrefetchSize, resolvedPrefetchTimeout),
+    )
     const instrumentedStream = this._diagnosticsEnabled
       ? instrumentConsumerReadableStream(serialStream, consumerConfiguration.groupId, this._diagnosticsConfig)
       : serialStream
@@ -359,37 +766,3 @@ export class KafkaClient {
     return consumer
   }
 }
-
-type Assert<Condition extends true> = Condition
-type IsEqual<LeftType, RightType> = [LeftType] extends [RightType] ? [RightType] extends [LeftType] ? true
-  : false
-  : false
-
-type _CreateWebStreamConsumer = KafkaClient['createWebStreamConsumer']
-
-type _AssertSerialConfigReturn = Assert<
-  _CreateWebStreamConsumer extends (
-    config: SerialWebStreamConsumerConfiguration,
-  ) => SerialWebStreamConsumer ? true
-    : false
->
-
-type _AssertBatchLiteralConfigReturn = Assert<
-  _CreateWebStreamConsumer extends <BatchSizeValue extends number>(
-    config: BatchLiteralWebStreamConsumerConfiguration<BatchSizeValue>,
-  ) => BatchWebStreamConsumer ? true
-    : false
->
-
-type _AssertDynamicBatchConfigReturn = Assert<
-  _CreateWebStreamConsumer extends (
-    config: DynamicBatchWebStreamConsumerConfiguration,
-  ) => WebStreamConsumer ? true
-    : false
->
-
-type _AssertBatchLiteralFor1024 = Assert<IsEqual<BatchLiteralSize<1024>, 1024>>
-type _AssertBatchLiteralForNumber = Assert<IsEqual<BatchLiteralSize<number>, never>>
-
-// @ts-expect-error batch size literal 1 must not be considered a batch literal
-type _AssertBatchLiteralRejectsOne = Assert<IsEqual<BatchLiteralSize<1>, 1>>

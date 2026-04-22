@@ -29,7 +29,7 @@ export async function prepareTopics() {
     console.log(`Topic ${topic} is ready`)
 
     // Wait a moment for topic to be fully created
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    await new Promise((resolve) => setTimeout(resolve, 2000))
   } catch (error) {
     console.error('Failed to prepare topic:', error)
     throw error
@@ -65,7 +65,7 @@ export async function prepareConsumerData() {
       await producer.send({ topic, messages })
 
       if ((i + batchEnd - i) % 2000 === 0) {
-        const progress = ((i + batchEnd - i) / max * 100).toFixed(1)
+        const progress = (((i + batchEnd - i) / max) * 100).toFixed(1)
         console.log(`Produced ${i + batchEnd - i}/${max} messages (${progress}%)`)
       }
     } catch (error) {
@@ -97,7 +97,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log('Setup complete!')
       process.exit(0)
     })
-    .catch(error => {
+    .catch((error) => {
       console.error('Setup failed:', error)
       process.exit(1)
     })
