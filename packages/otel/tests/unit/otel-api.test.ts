@@ -57,10 +57,10 @@ describe('kafka-crab-js-otel Public API Tests', () => {
     contextManager.enable()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     try {
       contextManager.disable()
-      spanProcessor.forceFlush()
+      await spanProcessor.forceFlush()
       memoryExporter.reset()
     } catch (error) {
       console.warn('Cleanup error:', (error as Error).message)
@@ -222,7 +222,7 @@ describe('kafka-crab-js-otel Public API Tests', () => {
       const message = {
         topic: 'test-topic',
         partition: 0,
-        offset: '0',
+        offset: 0,
         payload: Buffer.from('test'),
       }
 
@@ -373,7 +373,7 @@ describe('kafka-crab-js-otel Public API Tests', () => {
       const message = {
         topic: 'test-topic',
         partition: 0,
-        offset: '0',
+        offset: 0,
         payload: Buffer.from('test'),
         span: parentSpan,
       } as const
@@ -395,7 +395,7 @@ describe('kafka-crab-js-otel Public API Tests', () => {
       const message = {
         topic: 'test-topic',
         partition: 0,
-        offset: '1',
+        offset: 1,
         payload: Buffer.from('test'),
       } as const
 
@@ -445,7 +445,7 @@ describe('kafka-crab-js-otel Public API Tests', () => {
       const message = {
         topic: 'test-topic',
         partition: 0,
-        offset: '0',
+        offset: 0,
         payload: Buffer.from('test'),
       } as const
 
@@ -462,7 +462,7 @@ describe('kafka-crab-js-otel Public API Tests', () => {
       const message = {
         topic: 'test-topic',
         partition: 0,
-        offset: '0',
+        offset: 0,
         payload: Buffer.from('test'),
         headers: {},
       }
@@ -503,14 +503,14 @@ describe('kafka-crab-js-otel Public API Tests', () => {
         {
           topic: 'test-topic',
           partition: 0,
-          offset: '1',
+          offset: 1,
           payload: Buffer.from('batch-1'),
           headers: {},
         },
         {
           topic: 'test-topic',
           partition: 0,
-          offset: '2',
+          offset: 2,
           payload: Buffer.from('batch-2'),
           headers: {},
         },

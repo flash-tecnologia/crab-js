@@ -27,7 +27,7 @@ const KAFKA_BROKERS = process.env.KAFKA_BROKERS || 'localhost:9092'
 const TEST_TIMEOUT = 120000
 
 async function isKafkaReachable(brokers: string, timeoutMs = 750): Promise<boolean> {
-  const first = String(brokers).split(',')[0]?.trim()
+  const first = brokers.split(',')[0]?.trim()
   if (!first) {
     return false
   }
@@ -87,6 +87,10 @@ async function isKafkaReachable(brokers: string, timeoutMs = 750): Promise<boole
 
     let buffered = Buffer.alloc(0)
     socket.on('data', (chunk) => {
+      if (typeof chunk === 'string') {
+        finish(false)
+        return
+      }
       buffered = Buffer.concat([buffered, chunk])
       if (buffered.length < 4) {
         return
@@ -125,6 +129,19 @@ async function isKafkaReachable(brokers: string, timeoutMs = 750): Promise<boole
       finish(true)
     })
   })
+}
+
+function getNumericAttribute(attributes: Record<string, unknown>, key: string): number | undefined {
+  const value = attributes[key]
+  return typeof value === 'number' ? value : undefined
+}
+
+function requireSpan(span: Span | null, errorMessage: string): Span {
+  if (!span) {
+    throw new Error(errorMessage)
+  }
+
+  return span
 }
 
 interface MessageWithEndSpan {
@@ -170,7 +187,7 @@ const kafkaAvailable = await (async () => {
 
 const describeKafka = kafkaAvailable ? describe : describe.skip
 
-describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () => {
+void describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () => {
   let memoryExporter: InMemorySpanExporter
   let spanProcessor: SimpleSpanProcessor
   let provider: NodeTracerProvider
@@ -235,7 +252,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
       }
       await spanProcessor.forceFlush()
       memoryExporter.reset()
-      provider.forceFlush()
+      await provider.forceFlush()
     } catch (error) {
       console.warn('Cleanup error:', (error as Error).message)
     }
@@ -244,7 +261,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     resetOtelAdapter()
   })
 
-  test('should create producer spans for message sending', async () => {
+  void test('should create producer spans for message sending', async () => {
     const producer = kafkaClient.createProducer()
 
     const testMessage = {
@@ -280,10 +297,11 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME], 'send')
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_MESSAGE_KEY], 'test-key-1')
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT], 1)
-    assert((attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE] as number) > 0)
+    const messageBodySize = getNumericAttribute(attributes, KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE)
+    assert(messageBodySize !== undefined && messageBodySize > 0)
   })
 
-  test('should omit message body size when payload capture is disabled', async () => {
+  void test('should omit message body size when payload capture is disabled', async () => {
     // Reconfigure adapter with payload capture disabled
     otelAdapter.disable()
     resetOtelAdapter()
@@ -326,7 +344,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert.strictEqual(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_MESSAGE_BODY_SIZE], undefined)
   })
 
-  test('should inject trace context into message headers', async () => {
+  void test('should inject trace context into message headers', async () => {
     const producer = kafkaClient.createProducer()
 
     // Create a parent span to establish trace context
@@ -388,7 +406,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert.equal(consumerSpan.parentSpanId, producerSpan.spanContext().spanId)
   })
 
-  test('should create consumer spans for message processing', async () => {
+  void test('should create consumer spans for message processing', async () => {
     // First, send a message
     const producer = kafkaClient.createProducer()
     const testMessage = {
@@ -458,7 +476,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert.equal(attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET], receivedMessage.offset)
   })
 
-  test('should not finish process span until endSpan is invoked', async () => {
+  void test('should not finish process span until endSpan is invoked', async () => {
     const producer = kafkaClient.createProducer()
     await producer.send({
       topic: testTopic,
@@ -501,7 +519,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert(processAfter, 'Process span should finish after calling endSpan()')
   })
 
-  test('should propagate producer span context to consumers', async () => {
+  void test('should propagate producer span context to consumers', async () => {
     const producer = kafkaClient.createProducer()
 
     await producer.send({
@@ -555,7 +573,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     )
   })
 
-  test('should create a new consumer trace when message has no traceparent and ambient span exists', async () => {
+  void test('should create a new consumer trace when message has no traceparent and ambient span exists', async () => {
     // Use a producer without diagnostics instrumentation so headers are not auto-injected.
     const rawKafkaClient = new KafkaClient({
       brokers: KAFKA_BROKERS,
@@ -613,7 +631,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     )
   })
 
-  test('should continue trace when consumer receives mixed-case TraceParent header', async () => {
+  void test('should continue trace when consumer receives mixed-case TraceParent header', async () => {
     // Use a producer without diagnostics instrumentation and set a mixed-case TraceParent header manually.
     const rawKafkaClient = new KafkaClient({
       brokers: KAFKA_BROKERS,
@@ -667,7 +685,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     )
   })
 
-  test('should create batch spans for batch processing', async () => {
+  void test('should create batch spans for batch processing', async () => {
     // Send multiple messages
     const producer = kafkaClient.createProducer()
     const batchSize = 3
@@ -711,13 +729,20 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const spans = await flushSpans()
 
     // Should have batch span and individual message spans
-    const batchSpan = spans.find(
-      (span) =>
+    const batchSpan = spans.find((span) => {
+      const batchMessageCount = getNumericAttribute(
+        span.attributes,
+        KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT,
+      )
+
+      return (
         span.kind === SpanKind.CONSUMER &&
         span.name === `process ${testTopic}` &&
-        (span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= 1 &&
-        span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined,
-    )
+        batchMessageCount !== undefined &&
+        batchMessageCount >= 1 &&
+        span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined
+      )
+    })
 
     assert(batchSpan, 'Should have a batch processing span')
     assert.equal(batchSpan.kind, SpanKind.CONSUMER)
@@ -726,7 +751,11 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const batchAttributes = batchSpan.attributes
     assert.equal(batchAttributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM], 'kafka')
     assert.equal(batchAttributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME], 'process')
-    assert((batchAttributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= 1)
+    const batchMessageCount = getNumericAttribute(
+      batchAttributes,
+      KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT,
+    )
+    assert(batchMessageCount !== undefined && batchMessageCount >= 1)
 
     // Should also have individual message spans
     const messageSpans = spans.filter(
@@ -739,7 +768,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert(messageSpans.length >= 1, 'Should have individual message spans')
   })
 
-  test('should handle errors in spans correctly', async () => {
+  void test('should handle errors in spans correctly', async () => {
     // Create a client that will fail (OTEL is already enabled via adapter)
     const failingClient = new KafkaClient({
       brokers: 'invalid-broker:9092', // Invalid broker
@@ -774,7 +803,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     )
   })
 
-  test('should support topic filtering configuration', async () => {
+  void test('should support topic filtering configuration', async () => {
     // Reconfigure adapter with topic filtering
     otelAdapter.disable()
     resetOtelAdapter()
@@ -807,7 +836,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert.equal(filteredSpans.length, 0, 'Should have no spans for ignored topic')
   })
 
-  test('should support custom message hooks', async () => {
+  void test('should support custom message hooks', async () => {
     let hookCalled = false
     let hookMessage: unknown = null
 
@@ -869,7 +898,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert.equal(consumerSpan.attributes['custom.hook.executed'], 'true')
   })
 
-  test('should instrument stream consumers with OTEL spans', async () => {
+  void test('should instrument stream consumers with OTEL spans', async () => {
     const producer = kafkaClient.createProducer()
 
     await producer.send({
@@ -921,7 +950,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     )
   })
 
-  test('should work with disabled OTEL configuration', async () => {
+  void test('should work with disabled OTEL configuration', async () => {
     // Disable the OTEL adapter entirely
     otelAdapter.disable()
 
@@ -949,7 +978,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert.equal(clientSpans.length, 0, 'Should have no spans when OTEL is disabled')
   })
 
-  test('should trace stream consumer operations', async () => {
+  void test('should trace stream consumer operations', async () => {
     // Send test messages first
     const producer = kafkaClient.createProducer()
     const messageCount = 5
@@ -1028,7 +1057,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert.equal(receivedCount, messageCount, `Should receive all ${messageCount} messages`)
   })
 
-  test('should trace stream consumer with batch mode', async () => {
+  void test('should trace stream consumer with batch mode', async () => {
     // Send multiple messages
     const producer = kafkaClient.createProducer()
     const batchSize = 3
@@ -1036,7 +1065,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const streamParentContext = trace.setSpan(context.active(), streamParent) // Bound to producer sends for trace linkage
 
     for (let i = 0; i < batchSize * 2; i++) {
-      await context.with(streamParentContext, () =>
+      await context.with(streamParentContext, async () =>
         producer.send({
           topic: testTopic,
           messages: [
@@ -1123,7 +1152,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert(allOnParentTrace, 'Stream batch consumer spans should stay on parent context trace')
   })
 
-  test('should handle producer send with delivery reports in spans', async () => {
+  void test('should handle producer send with delivery reports in spans', async () => {
     // Reset spans
     memoryExporter.reset()
 
@@ -1159,7 +1188,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     )
   })
 
-  test('should trace complex producer-consumer flow with context propagation', async () => {
+  void test('should trace complex producer-consumer flow with context propagation', async () => {
     // Reset spans
     memoryExporter.reset()
 
@@ -1231,7 +1260,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     }
   })
 
-  test('should handle multiple producers and consumers with proper span isolation', async () => {
+  void test('should handle multiple producers and consumers with proper span isolation', async () => {
     const topicA = `${testTopic}-a`
     const topicB = `${testTopic}-b`
 
@@ -1310,7 +1339,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     )
   })
 
-  test('should handle consumer group rebalancing with proper span cleanup', async () => {
+  void test('should handle consumer group rebalancing with proper span cleanup', async () => {
     // Send initial messages
     const producer = kafkaClient.createProducer()
     const messageCount = 3
@@ -1375,7 +1404,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert(consumerSpans.length >= 2, 'Should have spans from both consumers')
   })
 
-  test('should handle producer configuration hooks correctly', async () => {
+  void test('should handle producer configuration hooks correctly', async () => {
     let producerHookCalled = false
     let hookRecord: unknown = null
 
@@ -1418,7 +1447,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert.equal(producerSpan.attributes['custom.producer.hook'], 'executed')
   })
 
-  test('should propagate context across async producer operations', async () => {
+  void test('should propagate context across async producer operations', async () => {
     // Reset spans
     memoryExporter.reset()
 
@@ -1452,8 +1481,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     const rootSpanFinished = spans.find((s) => s.name === 'async-root-operation')
 
     assert(producerSpan, `Should have producer span. Spans: ${spans.map((s) => s.name).join(', ')}`)
-    assert(childSpan, 'Child span should be created')
-    const childSpanContext = childSpan.spanContext()
+    const childSpanContext = requireSpan(childSpan, 'Child span should be created').spanContext()
     assert(childSpanContext, 'Child span should have context')
     assert.equal(producerSpan.spanContext().traceId, childSpanContext.traceId)
     assert.equal(producerSpan.parentSpanId, childSpanContext.spanId)
@@ -1462,7 +1490,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     }
   })
 
-  test('should handle context propagation in concurrent operations', async () => {
+  void test('should handle context propagation in concurrent operations', async () => {
     // Reset spans
     memoryExporter.reset()
 
@@ -1471,27 +1499,25 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
     // Create multiple concurrent operations with different contexts
     const operationSpans: Span[] = []
-    const operations = Array.from({ length: concurrentCount }, (_, i) => {
-      return new Promise<number>(async (resolve) => {
-        const operationSpan = trace.getTracer('test').startSpan(`concurrent-op-${i}`)
-        operationSpans[i] = operationSpan
-        const operationContext = trace.setSpan(context.active(), operationSpan)
+    const operations = Array.from({ length: concurrentCount }, async (_, i) => {
+      const operationSpan = trace.getTracer('test').startSpan(`concurrent-op-${i}`)
+      operationSpans[i] = operationSpan
+      const operationContext = trace.setSpan(context.active(), operationSpan)
 
-        await context.with(operationContext, async () => {
-          await producer.send({
-            topic: testTopic,
-            messages: [
-              {
-                payload: Buffer.from(`concurrent message ${i}`),
-                key: Buffer.from(`key-${i}`),
-              },
-            ],
-          })
+      await context.with(operationContext, async () => {
+        await producer.send({
+          topic: testTopic,
+          messages: [
+            {
+              payload: Buffer.from(`concurrent message ${i}`),
+              key: Buffer.from(`key-${i}`),
+            },
+          ],
         })
-
-        operationSpan.end()
-        resolve(i)
       })
+
+      operationSpan.end()
+      return i
     })
 
     await Promise.all(operations)
@@ -1530,7 +1556,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     }
   })
 
-  test('should propagate context through stream consumer processing', async () => {
+  void test('should propagate context through stream consumer processing', async () => {
     // Send test message first
     const producer = kafkaClient.createProducer()
     await producer.send({
@@ -1627,7 +1653,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert(streamProcessingComplete, 'Stream processing should complete')
   })
 
-  test('should handle context extraction and injection across message boundaries', async () => {
+  void test('should handle context extraction and injection across message boundaries', async () => {
     // Reset spans
     memoryExporter.reset()
 
@@ -1691,7 +1717,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     )
   })
 
-  test('should handle nested async operations with proper context isolation', async () => {
+  void test('should handle nested async operations with proper context isolation', async () => {
     // Reset spans
     memoryExporter.reset()
 
@@ -1738,7 +1764,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
     const kafkaSpanRecorded = spans.find((s) => s.kind === SpanKind.PRODUCER && s.name.includes(testTopic))
     assert(kafkaSpanRecorded, 'Should have Kafka span')
-    assert(businessSpan, 'Business span should be created')
+    const businessSpanContext = requireSpan(businessSpan, 'Business span should be created').spanContext()
     assert.equal(
       kafkaSpanRecorded.spanContext().traceId,
       rootSpan.spanContext().traceId,
@@ -1746,12 +1772,12 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     )
     assert.equal(
       kafkaSpanRecorded.parentSpanId,
-      businessSpan.spanContext().spanId,
+      businessSpanContext.spanId,
       'Kafka span should be child of business logic span',
     )
   })
 
-  test('should maintain context across batch operations', async () => {
+  void test('should maintain context across batch operations', async () => {
     // Send multiple test messages
     const producer = kafkaClient.createProducer()
     const batchSize = 3
@@ -1810,13 +1836,20 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
     const spans = await flushSpans()
 
-    const kafkaBatchSpan = spans.find(
-      (s) =>
+    const kafkaBatchSpan = spans.find((s) => {
+      const batchMessageCount = getNumericAttribute(
+        s.attributes,
+        KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT,
+      )
+
+      return (
         s.kind === SpanKind.CONSUMER &&
         s.name === `process ${testTopic}` &&
-        (s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= 1 &&
-        s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined,
-    )
+        batchMessageCount !== undefined &&
+        batchMessageCount >= 1 &&
+        s.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined
+      )
+    })
 
     assert(kafkaBatchSpan, `Should have Kafka batch span. Spans: ${spans.map((s) => s.name).join(', ')}`)
     const messageSpans = spans.filter(
@@ -1829,7 +1862,7 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
     assert(processedMessages.length >= 1, 'Should process at least one message')
   })
 
-  test('should handle large batch consumption with spans', async () => {
+  void test('should handle large batch consumption with spans', async () => {
     // Produce a large batch
     const producer = kafkaClient.createProducer()
     const batchSize = 100
@@ -1863,13 +1896,20 @@ describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }
 
     const spans = await flushSpans()
 
-    const batchSpan = spans.find(
-      (span) =>
+    const batchSpan = spans.find((span) => {
+      const batchMessageCount = getNumericAttribute(
+        span.attributes,
+        KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT,
+      )
+
+      return (
         span.kind === SpanKind.CONSUMER &&
         span.name === `process ${testTopic}` &&
-        (span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] as number) >= batchSize &&
-        span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined,
-    )
+        batchMessageCount !== undefined &&
+        batchMessageCount >= batchSize &&
+        span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === undefined
+      )
+    })
 
     const messageSpans = spans.filter(
       (span) =>

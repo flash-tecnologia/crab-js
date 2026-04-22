@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite-plus'
+import type { OxlintConfig } from 'vite-plus/lint'
 import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vite-plus.shared.ts'
 
 const fmtConfig = sharedFmtConfig ?? {}
@@ -10,6 +11,35 @@ const externalDependencies = [
   '@opentelemetry/core',
   '@opentelemetry/instrumentation',
   '@opentelemetry/semantic-conventions',
+]
+
+const otelSourceLintRules: NonNullable<OxlintConfig['rules']> = {
+  '@typescript-eslint/no-unsafe-type-assertion': 'off',
+  '@typescript-eslint/non-nullable-type-assertion-style': 'off',
+  '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+  '@typescript-eslint/no-unnecessary-type-conversion': 'off',
+  '@typescript-eslint/no-unnecessary-type-arguments': 'off',
+  '@typescript-eslint/no-redundant-type-constituents': 'off',
+  '@typescript-eslint/prefer-readonly': 'off',
+  '@typescript-eslint/use-unknown-in-catch-callback-variable': 'off',
+}
+
+const otelTestLintRules: NonNullable<OxlintConfig['rules']> = {
+  ...sharedTestLintRules,
+  '@typescript-eslint/promise-function-async': 'off',
+  '@typescript-eslint/use-unknown-in-catch-callback-variable': 'off',
+  'no-void': 'off',
+}
+
+const otelLintOverrides = [
+  {
+    files: ['src/**/*'],
+    rules: otelSourceLintRules,
+  },
+  {
+    files: ['tests/**'],
+    rules: otelTestLintRules,
+  },
 ]
 
 export default defineConfig({
@@ -38,12 +68,7 @@ export default defineConfig({
   },
   lint: {
     ...lintConfig,
-    overrides: [
-      {
-        files: ['tests/**'],
-        rules: sharedTestLintRules,
-      },
-    ],
+    overrides: otelLintOverrides,
   },
   test: {
     environment: 'node',

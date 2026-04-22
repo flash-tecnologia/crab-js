@@ -1,6 +1,6 @@
 {
   "name": "kafka-crab-js",
-  "version": "3.1.0",
+  "version": "4.0.0-beta.1",
   "keywords": [
     "N-API",
     "consumer",
@@ -37,15 +37,14 @@
     }
   },
   "scripts": {
-    "check": "vp check --no-error-on-unmatched-pattern js-src tests/unit vite.config.ts tsconfig.json package.json README.md",
+    "check": "pnpm run fmt:check && pnpm run lint",
     "artifacts": "napi artifacts",
-    "fmt": "vp fmt js-src tests/unit vite.config.ts tsconfig.json package.json README.md",
-    "fmt:check": "vp fmt --check js-src tests/unit vite.config.ts tsconfig.json package.json README.md",
-    "lint": "vp lint js-src tests/unit vite.config.ts",
-    "lint:fix": "vp lint --fix js-src tests/unit vite.config.ts",
-    "prebuild": "napi build --platform",
+    "fmt": "node ../../scripts/run-vite-ox-tool.mjs fmt js-src tests/unit vite.config.ts tsconfig.json package.json README.md",
+    "fmt:check": "node ../../scripts/run-vite-ox-tool.mjs fmt --check js-src tests/unit vite.config.ts tsconfig.json package.json README.md",
+    "lint": "node ../../scripts/run-vite-ox-tool.mjs lint js-src tests/unit vite.config.ts",
+    "lint:fix": "node ../../scripts/run-vite-ox-tool.mjs lint --fix js-src tests/unit vite.config.ts",
+    "prebuild": "node build.mjs",
     "build": "vp pack",
-    "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vp test",

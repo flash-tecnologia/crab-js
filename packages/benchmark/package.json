@@ -5,6 +5,10 @@
   "description": "Benchmark suite for kafka-crab-js",
   "type": "module",
   "scripts": {
+    "check": "pnpm run fmt:check && pnpm run lint",
+    "fmt": "node ../../scripts/run-vite-ox-tool.mjs fmt consumer.ts utils vite.config.ts tsconfig.json package.json README.md",
+    "fmt:check": "node ../../scripts/run-vite-ox-tool.mjs fmt --check consumer.ts utils vite.config.ts tsconfig.json package.json README.md",
+    "lint": "node ../../scripts/run-vite-ox-tool.mjs lint consumer.ts utils vite.config.ts",
     "setup:consumer": "tsx utils/setup.ts",
     "benchmark": "node --expose-gc --import tsx consumer.ts",
     "benchmark:batch": "BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=5 node --expose-gc --import tsx consumer.ts",

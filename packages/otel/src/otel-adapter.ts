@@ -5,6 +5,8 @@
  * OpenTelemetry spans and metrics. It provides backward-compatible OTEL
  * instrumentation while using the decoupled diagnostics_channel architecture.
  */
+/* eslint @typescript-eslint/no-unsafe-type-assertion: off */
+
 import {
   type Attributes,
   type Context,
@@ -111,7 +113,7 @@ export class OtelAdapter {
   private _metrics: KafkaMetrics | null = null
   private _config: OtelAdapterConfig
   private _enabled = false
-  private _handlers = new Map<string, (event: unknown, name: string) => void>()
+  private readonly _handlers = new Map<string, (event: unknown, name: string) => void>()
 
   constructor(config: OtelAdapterConfig = {}) {
     this._config = config

@@ -100,23 +100,30 @@ function flattenBatchStream(batchStream: ReadableStream<Message[]>): ReadableStr
         return
       }
 
-      const { value, done } = await reader.read()
-      if (done || !value) {
-        closed = true
-        controller.close()
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done || !value) {
+          closed = true
+          controller.close()
+          return
+        }
+
+        if (value.length === 0) {
+          continue
+        }
+
+        currentBatch = value
+        currentIndex = 1
+        controller.enqueue(currentBatch[0] as Message)
         return
       }
-
-      if (value.length > 0) {
-        currentBatch = value
-        currentIndex = 0
-      }
     },
-    async cancel(reason) {
+    cancel(reason) {
       closed = true
       currentBatch = []
       currentIndex = 0
-      await reader.cancel(reason)
+      // Avoid blocking downstream cancellation on the upstream batch reader.
+      void reader.cancel(reason).catch(() => undefined)
     },
   })
 }
@@ -318,10 +325,7 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
         partition,
         offset,
       }
-      continue
-    }
-
-    if (messageHeaders === undefined) {
+    } else if (messageHeaders === undefined) {
       messages[index] = {
         payload,
         key,
@@ -329,10 +333,7 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
         partition,
         offset,
       }
-      continue
-    }
-
-    if (key === undefined) {
+    } else if (key === undefined) {
       messages[index] = {
         payload,
         headers: messageHeaders,
@@ -340,16 +341,15 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
         partition,
         offset,
       }
-      continue
-    }
-
-    messages[index] = {
-      payload,
-      key,
-      headers: messageHeaders,
-      topic: messageTopic,
-      partition,
-      offset,
+    } else {
+      messages[index] = {
+        payload,
+        key,
+        headers: messageHeaders,
+        topic: messageTopic,
+        partition,
+        offset,
+      }
     }
   }
 
@@ -586,7 +586,7 @@ export class KafkaClient {
     this._diagnosticsEnabled = diagnostics !== false
 
     // Extract broker info for diagnostics
-    const firstBroker = String(this.kafkaConfiguration.brokers).split(',')[0]?.trim()
+    const firstBroker = this.kafkaConfiguration.brokers.split(',')[0]?.trim()
     const [brokerHostRaw, brokerPortRaw] = firstBroker ? firstBroker.split(':') : [undefined, undefined]
     const brokerHost = brokerHostRaw?.trim()
     const brokerPort = brokerPortRaw ? Number(brokerPortRaw) : undefined

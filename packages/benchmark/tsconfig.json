@@ -9,6 +9,7 @@
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "noEmit": true,
     "allowImportingTsExtensions": true
   },
   "include": ["**/*.ts"]

@@ -62,7 +62,10 @@ export function getBatchContext(batch: BatchContextTarget): Context {
   }
 
   if ((batch as InstrumentedMessageBatch).otelContext) {
-    return (batch as InstrumentedMessageBatch).otelContext as Context
+    const batchOtelContext = (batch as InstrumentedMessageBatch).otelContext
+    if (batchOtelContext) {
+      return batchOtelContext
+    }
   }
 
   const batchSpan = (batch as InstrumentedMessageBatch).span

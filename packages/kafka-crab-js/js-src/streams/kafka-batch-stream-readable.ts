@@ -51,7 +51,7 @@ export class KafkaBatchStreamReadable extends BaseKafkaStreamReadable {
 
   private drainPendingMessages(): boolean {
     while (this.pendingMessageIndex < this.pendingMessages.length) {
-      const message = this.pendingMessages[this.pendingMessageIndex] as Message
+      const message = this.pendingMessages[this.pendingMessageIndex]
       this.pendingMessageIndex += 1
       if (!this.push(message)) {
         return false

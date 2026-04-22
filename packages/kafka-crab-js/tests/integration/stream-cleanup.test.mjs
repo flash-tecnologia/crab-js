@@ -98,6 +98,7 @@ test('Stream Resource Cleanup Integration Tests', async (t) => {
 
     // Mock disconnect to throw error
     const rawConsumer = streamConsumer.rawConsumer()
+    const originalDisconnect = rawConsumer.disconnect
     rawConsumer.disconnect = async function () {
       throw new Error('Disconnect failed')
     }
@@ -112,19 +113,24 @@ test('Stream Resource Cleanup Integration Tests', async (t) => {
       streamConsumer.once('close', resolve)
     })
 
-    // Trigger destroy with original error
-    streamConsumer.destroy(new Error('Original error'))
+    try {
+      // Trigger destroy with original error
+      streamConsumer.destroy(new Error('Original error'))
 
-    // Wait for stream to be destroyed
-    await destroyPromise
+      // Wait for stream to be destroyed
+      await destroyPromise
 
-    // Verify that disconnect error is combined with original error
-    assert.ok(destroyError, 'Should emit combined error')
-    assert.ok(destroyError.message.includes('Original error'), 'Should include original error')
-    assert.ok(destroyError.message.includes('Disconnect failed'), 'Should include disconnect error')
+      // Verify that disconnect error is combined with original error
+      assert.ok(destroyError, 'Should emit combined error')
+      assert.ok(destroyError.message.includes('Original error'), 'Should include original error')
+      assert.ok(destroyError.message.includes('Disconnect failed'), 'Should include disconnect error')
 
-    // Verify stream is still properly destroyed despite disconnect error
-    assert.ok(streamConsumer.destroyed, 'Stream should be marked as destroyed even with disconnect error')
+      // Verify stream is still properly destroyed despite disconnect error
+      assert.ok(streamConsumer.destroyed, 'Stream should be marked as destroyed even with disconnect error')
+    } finally {
+      rawConsumer.disconnect = originalDisconnect
+      await originalDisconnect.call(rawConsumer).catch(() => undefined)
+    }
   })
 
   await t.test('Stream cleanup prevents memory leaks', async () => {
@@ -210,6 +216,8 @@ test('Stream Resource Cleanup Integration Tests', async (t) => {
 
     // Mock unsubscribe to throw error
     const rawConsumer = streamConsumer.rawConsumer()
+    const originalDisconnect = rawConsumer.disconnect
+    const originalUnsubscribe = rawConsumer.unsubscribe
     rawConsumer.unsubscribe = function () {
       throw new Error('Unsubscribe failed')
     }
@@ -221,18 +229,24 @@ test('Stream Resource Cleanup Integration Tests', async (t) => {
       return Promise.resolve()
     }
 
-    // Destroy the stream
-    const destroyPromise = new Promise((resolve) => {
-      streamConsumer.once('close', resolve)
-    })
+    try {
+      // Destroy the stream
+      const destroyPromise = new Promise((resolve) => {
+        streamConsumer.once('close', resolve)
+      })
 
-    streamConsumer.destroy()
+      streamConsumer.destroy()
 
-    // Wait for stream to be destroyed
-    await destroyPromise
+      // Wait for stream to be destroyed
+      await destroyPromise
 
-    // Verify that unsubscribe error doesn't prevent disconnect
-    assert.ok(disconnectCalled, 'Disconnect should still be called even if unsubscribe fails')
-    assert.ok(streamConsumer.destroyed, 'Stream should be destroyed despite unsubscribe error')
+      // Verify that unsubscribe error doesn't prevent disconnect
+      assert.ok(disconnectCalled, 'Disconnect should still be called even if unsubscribe fails')
+      assert.ok(streamConsumer.destroyed, 'Stream should be destroyed despite unsubscribe error')
+    } finally {
+      rawConsumer.disconnect = originalDisconnect
+      rawConsumer.unsubscribe = originalUnsubscribe
+      await originalDisconnect.call(rawConsumer).catch(() => undefined)
+    }
   })
 })

@@ -10,9 +10,12 @@
     "test:integration": "vp run --filter kafka-crab-js test:integration",
     "test:unit": "vp run --filter kafka-crab-js test",
     "typecheck": "vp run -r typecheck",
-    "check": "vp check",
-    "fmt": "vp fmt",
-    "lint": "vp lint",
+    "check:root": "vp check --no-error-on-unmatched-pattern vite.config.ts vite-plus.shared.ts package.json README.md",
+    "fmt:root": "vp fmt vite.config.ts vite-plus.shared.ts package.json README.md",
+    "lint:root": "vp lint vite.config.ts vite-plus.shared.ts",
+    "check": "sh -c 'pnpm run check:root \"$@\" && pnpm -r --filter \"./packages/**\" run check \"$@\"' --",
+    "fmt": "sh -c 'pnpm run fmt:root \"$@\" && pnpm -r --filter \"./packages/**\" run fmt \"$@\"' --",
+    "lint": "sh -c 'pnpm run lint:root \"$@\" && pnpm -r --filter \"./packages/**\" run lint \"$@\"' --",
     "trace:batch-example": "pnpm tsx example/otel-batch-trace.ts"
   },
   "devDependencies": {
@@ -39,5 +42,5 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@10.33.0"
+  "packageManager": "pnpm@10.33.1"
 }

@@ -891,174 +891,6 @@ async function kafkaCrabJsV4(scenarioTopic: string, useBatchMode = false): Promi
   }
 }
 
-async function kafkaCrabJsV4NativeMetadata(scenarioTopic: string, useBatchMode = false): Promise<Result> {
-  const tracker = new Tracker()
-  const measurement = createMeasurementState()
-  const collectorStats: BatchCollectorStats | undefined = useBatchMode
-    ? {
-        chunks: 0,
-        messages: 0,
-        minChunk: Number.POSITIVE_INFINITY,
-        maxChunk: 0,
-      }
-    : undefined
-
-  const client = new KafkaClient({
-    brokers: brokers.join(','),
-    clientId: 'benchmarks',
-    securityProtocol: 'Plaintext',
-    logLevel: 'warn',
-    brokerAddressFamily: 'v4',
-    diagnostics: false,
-  })
-
-  const { batchSize: resolvedBatchSize, batchTimeoutMs: resolvedBatchTimeoutMs } =
-    resolveV4BatchStreamTuning(useBatchMode)
-  const { fetchMinBytes, fetchWaitMaxMs, fetchQueueBackoffMs } = resolveV4FetchTuning(useBatchMode)
-  const consumer = client.createConsumer({
-    groupId: randomUUID(),
-    enableAutoCommit: false,
-    configuration: {
-      'auto.offset.reset': 'earliest',
-      'enable.auto.commit': false,
-      'fetch.min.bytes': fetchMinBytes,
-      'fetch.message.max.bytes': maxBytes,
-      'fetch.wait.max.ms': fetchWaitMaxMs,
-      ...(fetchQueueBackoffMs === undefined
-        ? {}
-        : {
-            'fetch.queue.backoff.ms': fetchQueueBackoffMs,
-          }),
-    },
-  })
-
-  await consumer.subscribe([{ topic: scenarioTopic, allOffsets: { position: 'Beginning' } }])
-
-  const stopError = new BenchmarkStopError()
-  const metadataBatchStream = useBatchMode
-    ? consumer.recvBatchStream(resolvedBatchSize, resolvedBatchTimeoutMs)
-    : undefined
-  const metadataStream = useBatchMode ? undefined : consumer.recvStream(v4SerialPrefetchSize, v4SerialPrefetchTimeoutMs)
-
-  try {
-    try {
-      if (useBatchMode) {
-        if (assertYieldMode === 'none') {
-          await metadataBatchStream!.pipeTo(
-            new WritableStream<Message[]>({
-              write(batch) {
-                if (collectorStats) {
-                  const batchLength = batch.length
-                  collectorStats.chunks += 1
-                  collectorStats.messages += batchLength
-                  if (batchLength < collectorStats.minChunk) {
-                    collectorStats.minChunk = batchLength
-                  }
-                  if (batchLength > collectorStats.maxChunk) {
-                    collectorStats.maxChunk = batchLength
-                  }
-                }
-
-                let index = 0
-                while (index < batch.length) {
-                  const message = batch[index] as Message
-                  assertPayloadSync(message.payload)
-                  if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
-                    throw stopError
-                  }
-                  index += 1
-                }
-              },
-            }),
-          )
-        } else {
-          await metadataBatchStream!.pipeTo(
-            new WritableStream<Message[]>({
-              async write(batch) {
-                if (collectorStats) {
-                  const batchLength = batch.length
-                  collectorStats.chunks += 1
-                  collectorStats.messages += batchLength
-                  if (batchLength < collectorStats.minChunk) {
-                    collectorStats.minChunk = batchLength
-                  }
-                  if (batchLength > collectorStats.maxChunk) {
-                    collectorStats.maxChunk = batchLength
-                  }
-                }
-
-                let index = 0
-                while (index < batch.length) {
-                  const message = batch[index] as Message
-                  const assertion = assertPayload(message.payload)
-                  if (assertion) {
-                    await assertion
-                  }
-
-                  if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
-                    throw stopError
-                  }
-                  index += 1
-                }
-              },
-            }),
-          )
-        }
-      } else {
-        if (assertYieldMode === 'none') {
-          await metadataStream!.pipeTo(
-            new WritableStream<Message>({
-              write(message) {
-                assertPayloadSync(message.payload)
-                if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
-                  throw stopError
-                }
-              },
-            }),
-          )
-        } else {
-          await metadataStream!.pipeTo(
-            new WritableStream<Message>({
-              async write(message) {
-                const assertion = assertPayload(message.payload)
-                if (assertion) {
-                  await assertion
-                }
-
-                if (recordMeasurementSample(measurement, tracker, process.hrtime.bigint())) {
-                  throw stopError
-                }
-              },
-            }),
-          )
-        }
-      }
-    } catch (error) {
-      if (!(error instanceof BenchmarkStopError)) {
-        throw error
-      }
-    }
-
-    if (collectorStats && benchmarkDebugCollector) {
-      const minChunk = Number.isFinite(collectorStats.minChunk) ? collectorStats.minChunk : 0
-      const avgChunk = collectorStats.chunks > 0 ? collectorStats.messages / collectorStats.chunks : 0
-      console.log(
-        `[v4-native-metadata-collector] chunks=${collectorStats.chunks} messages=${collectorStats.messages} min=${minChunk} avg=${avgChunk.toFixed(
-          2,
-        )} max=${collectorStats.maxChunk}`,
-      )
-    }
-
-    if (!measurementDone(measurement)) {
-      throw new Error(`Stream ended before reaching iterations. ${measurementStatus(measurement)}`)
-    }
-
-    return tracker.results
-  } finally {
-    await disconnectV4Consumer(consumer)
-  }
-}
-
 function rdkafkaEvented(scenarioTopic: string): Promise<Result> {
   const { promise, resolve, reject } = Promise.withResolvers<Result>()
   const tracker = new Tracker()
@@ -1341,11 +1173,11 @@ async function kafkajs(scenarioTopic: string): Promise<Result> {
 }
 
 function scenarioDatasetKey(scenario: string): string {
-  if (scenario === 'v3-serial' || scenario === 'v4-serial' || scenario === 'v4-serial-native') {
+  if (scenario === 'v3-serial' || scenario === 'v4-serial') {
     return 'serial-shared'
   }
 
-  if (scenario === 'v3-batch' || scenario === 'v4-batch' || scenario === 'v4-batch-native' || scenario === 'kafkajs') {
+  if (scenario === 'v3-batch' || scenario === 'v4-batch' || scenario === 'kafkajs') {
     return 'batch-shared'
   }
 
@@ -1391,12 +1223,10 @@ async function main() {
   const scenariosToRun = [
     'v3-serial',
     'v4-serial',
-    'v4-serial-native',
     'rdkafka-stream',
     'rdkafka-evented',
     'v3-batch',
     'v4-batch',
-    'v4-batch-native',
     'kafkajs',
   ].filter(shouldRun)
 
@@ -1429,13 +1259,6 @@ async function main() {
       (scenarioTopic) => kafkaCrabJsV4(scenarioTopic, false),
     )
   }
-  if (shouldRun('v4-serial-native')) {
-    results['kafka-crab-js v4 (stream, serial, native recvStream)'] = await runScenario(
-      'v4-serial-native',
-      scenarioTopicsByName.get('v4-serial-native') ?? [topic],
-      (scenarioTopic) => kafkaCrabJsV4NativeMetadata(scenarioTopic, false),
-    )
-  }
   if (shouldRun('rdkafka-stream')) {
     results['node-rdkafka (stream)'] = await runScenario(
       'rdkafka-stream',
@@ -1462,13 +1285,6 @@ async function main() {
       'v4-batch',
       scenarioTopicsByName.get('v4-batch') ?? [topic],
       (scenarioTopic) => kafkaCrabJsV4(scenarioTopic, true),
-    )
-  }
-  if (shouldRun('v4-batch-native')) {
-    results['kafka-crab-js v4 (stream, batch, native recvBatchStream)'] = await runScenario(
-      'v4-batch-native',
-      scenarioTopicsByName.get('v4-batch-native') ?? [topic],
-      (scenarioTopic) => kafkaCrabJsV4NativeMetadata(scenarioTopic, true),
     )
   }
   if (shouldRun('kafkajs')) {

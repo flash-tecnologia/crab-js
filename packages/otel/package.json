@@ -31,11 +31,11 @@
     }
   },
   "scripts": {
-    "check": "vp check --no-error-on-unmatched-pattern src tests vite.config.ts tsconfig.json package.json README.md",
-    "fmt": "vp fmt src tests vite.config.ts tsconfig.json package.json README.md",
-    "fmt:check": "vp fmt --check src tests vite.config.ts tsconfig.json package.json README.md",
-    "lint": "vp lint src tests vite.config.ts",
-    "lint:fix": "vp lint --fix src tests vite.config.ts",
+    "check": "pnpm run fmt:check && pnpm run lint",
+    "fmt": "node ../../scripts/run-vite-ox-tool.mjs fmt src tests vite.config.ts tsconfig.json package.json README.md",
+    "fmt:check": "node ../../scripts/run-vite-ox-tool.mjs fmt --check src tests vite.config.ts tsconfig.json package.json README.md",
+    "lint": "node ../../scripts/run-vite-ox-tool.mjs lint src tests vite.config.ts",
+    "lint:fix": "node ../../scripts/run-vite-ox-tool.mjs lint --fix src tests vite.config.ts",
     "typecheck": "tsc -p . --noEmit",
     "build": "vp pack",
     "test": "vp test",

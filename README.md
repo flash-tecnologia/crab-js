@@ -11,6 +11,13 @@ This monorepo contains two packages:
 | [kafka-crab-js](./packages/kafka-crab-js)           | Core Kafka client with producer, consumer, and streaming APIs | [![npm](https://img.shields.io/npm/v/kafka-crab-js)](https://www.npmjs.com/package/kafka-crab-js)           |
 | [kafka-crab-js-otel](./packages/kafka-crab-js-otel) | OpenTelemetry instrumentation (tracing & metrics)             | [![npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel) |
 
+## Version 4.0.0 Breaking Change
+
+`CommitMode`, `KafkaEventName`, `PartitionPosition`, and `SecurityProtocol` are no longer runtime exports from
+`kafka-crab-js`.
+
+These names are now type-only at the root package API. See the [core package README](./packages/kafka-crab-js/README.md#whats-new-in-version-400) for the migration details and replacement string literal values.
+
 ## Quick Start
 
 ### Basic Usage (Core Package Only)

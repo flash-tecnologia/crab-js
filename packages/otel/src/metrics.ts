@@ -102,11 +102,9 @@ export class KafkaMetrics {
 
     try {
       // Get meter from provider or global
-      if (this._config.meterProvider) {
-        this._meter = this._config.meterProvider.getMeter(PACKAGE_INFO.NAME, PACKAGE_INFO.VERSION)
-      } else {
-        this._meter = otelMetrics.getMeter(PACKAGE_INFO.NAME, PACKAGE_INFO.VERSION)
-      }
+      this._meter = this._config.meterProvider
+        ? this._config.meterProvider.getMeter(PACKAGE_INFO.NAME, PACKAGE_INFO.VERSION)
+        : otelMetrics.getMeter(PACKAGE_INFO.NAME, PACKAGE_INFO.VERSION)
 
       // Create metric instruments
       this._createInstruments()

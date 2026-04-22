@@ -31,6 +31,7 @@ export const sharedLintConfig: OxlintConfig | undefined = {
     'dist/',
     'coverage/',
     'report/',
+    '**/*.mjs',
     '**/dist/**',
     '**/target/**',
     '**/node_modules/**',
@@ -105,6 +106,7 @@ export const sharedLintConfig: OxlintConfig | undefined = {
 export const sharedTestLintRules: NonNullable<OxlintConfig['rules']> = {
   'no-process-exit': 'allow',
   'id-length': 'allow',
+  '@typescript-eslint/no-unsafe-type-assertion': 'allow',
   'no-undefined': 'off',
   'no-async-await': 'off',
   'no-console': 'allow',

@@ -43,7 +43,7 @@ export abstract class BaseKafkaStreamReadable extends Readable {
   /**
    * Subscribes to topics
    */
-  async subscribe(topics: string | Array<TopicPartitionConfig>) {
+  async subscribe(topics: string | TopicPartitionConfig[]) {
     if (!topics || (Array.isArray(topics) && topics.length === 0)) {
       throw new Error('Topics must be a non-empty string or array.')
     }

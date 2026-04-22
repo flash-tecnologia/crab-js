@@ -11,6 +11,46 @@ A lightweight, flexible, and reliable Kafka client for JavaScript/TypeScript. It
 
 ---
 
+## What's New in Version 4.0.0
+
+### BREAKING CHANGES ⚠️
+
+**`CommitMode`, `KafkaEventName`, `PartitionPosition`, and `SecurityProtocol` are no longer runtime exports from `kafka-crab-js`.**
+
+These names are now type-only at the root package API. This change applies to the `kafka-crab-js` root import surface and is intended as a major-version change.
+
+#### Migration from v3.x
+
+**Before (v3.x):**
+
+```ts
+import { CommitMode, SecurityProtocol } from 'kafka-crab-js'
+```
+
+**After for type-only usage:**
+
+```ts
+import type { CommitMode, SecurityProtocol } from 'kafka-crab-js'
+```
+
+**After for runtime usage:**
+
+```ts
+const commitMode: 'Sync' | 'Async' = 'Sync'
+const securityProtocol: 'Plaintext' | 'Ssl' | 'SaslPlaintext' | 'SaslSsl' = 'Plaintext'
+const eventName: 'PreRebalance' | 'PostRebalance' | 'CommitCallback' = 'PreRebalance'
+const partitionPosition: 'Beginning' | 'End' | 'Stored' | 'Invalid' = 'Beginning'
+```
+
+#### Replacement Values
+
+| Name                | Replacement string literal values                       |
+| ------------------- | ------------------------------------------------------- |
+| `CommitMode`        | `'Sync' \| 'Async'`                                     |
+| `KafkaEventName`    | `'PreRebalance' \| 'PostRebalance' \| 'CommitCallback'` |
+| `PartitionPosition` | `'Beginning' \| 'End' \| 'Stored' \| 'Invalid'`         |
+| `SecurityProtocol`  | `'Plaintext' \| 'Ssl' \| 'SaslPlaintext' \| 'SaslSsl'`  |
+
 ## What's New in Version 3.0.0
 
 ### BREAKING CHANGES ⚠️
