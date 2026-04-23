@@ -323,7 +323,9 @@ jobs:
           npm config set provenance true
           TAG_NAME=${GITHUB_REF#refs/tags/kafka-crab-js@}
           echo "Publishing kafka-crab-js version: $TAG_NAME"
-          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+          if [[ -n "${NPM_TOKEN:-}" ]]; then
+            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+          fi
 
           if [[ $TAG_NAME =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Stable release detected"
