@@ -31,15 +31,14 @@
     }
   },
   "scripts": {
-    "check": "pnpm run fmt:check && pnpm run lint",
-    "fmt": "node ../../scripts/run-vite-ox-tool.mjs fmt src tests vite.config.ts tsconfig.json package.json README.md",
-    "fmt:check": "node ../../scripts/run-vite-ox-tool.mjs fmt --check src tests vite.config.ts tsconfig.json package.json README.md",
-    "lint": "node ../../scripts/run-vite-ox-tool.mjs lint src tests vite.config.ts",
-    "lint:fix": "node ../../scripts/run-vite-ox-tool.mjs lint --fix src tests vite.config.ts",
-    "typecheck": "tsc -p . --noEmit",
+    "check": "vp check",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
     "build": "vp pack",
-    "test": "vp test",
-    "test:integration": "node --test tests/integration/*.test.*"
+    "test": "vp test run tests/unit",
+    "test:integration": "vp test tests/integration/*.test.*"
   },
   "devDependencies": {
     "kafka-crab-js": "workspace:*",

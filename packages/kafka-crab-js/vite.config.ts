@@ -2,9 +2,6 @@ import { defineConfig } from 'vite-plus'
 import type { OxlintConfig } from 'vite-plus/lint'
 import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vite-plus.shared.ts'
 
-const fmtConfig = sharedFmtConfig ?? {}
-const lintConfig = sharedLintConfig ?? {}
-
 const kafkaJsFmtIgnorePatterns = [
   ...(sharedFmtConfig?.ignorePatterns ?? []),
   'js-binding*.*',
@@ -15,7 +12,8 @@ const kafkaJsFmtIgnorePatterns = [
 
 const kafkaJsLintIgnorePatterns = [
   ...(sharedLintConfig?.ignorePatterns ?? []),
-  'js-binding*.*',
+  'js-binding.*',
+  'js-binding.d.ts',
   'index.js',
   'index.d.ts',
   'npm/**',
@@ -24,6 +22,7 @@ const kafkaJsLintIgnorePatterns = [
 const kafkaJsSourceLintRules: NonNullable<OxlintConfig['rules']> = {
   '@typescript-eslint/no-unsafe-type-assertion': 'off',
   '@typescript-eslint/non-nullable-type-assertion-style': 'off',
+  '@typescript-eslint/no-non-null-assertion': 'off',
   '@typescript-eslint/no-unnecessary-type-assertion': 'off',
   '@typescript-eslint/no-unnecessary-type-arguments': 'off',
   '@typescript-eslint/promise-function-async': 'off',
@@ -36,6 +35,7 @@ const kafkaJsSourceLintRules: NonNullable<OxlintConfig['rules']> = {
   'no-use-before-define': 'off',
   'no-void': 'off',
   'unicorn/no-new-array': 'off',
+  '@typescript-eslint/no-duplicate-type-constituents': 'allow',
 }
 
 const kafkaJsLintOverrides = [
@@ -51,7 +51,7 @@ const kafkaJsLintOverrides = [
 
 export default defineConfig({
   fmt: {
-    ...fmtConfig,
+    ...sharedFmtConfig,
     ignorePatterns: kafkaJsFmtIgnorePatterns,
   },
   pack: {
@@ -71,13 +71,8 @@ export default defineConfig({
     target: 'node24',
   },
   lint: {
-    ...lintConfig,
+    ...sharedLintConfig,
     ignorePatterns: kafkaJsLintIgnorePatterns,
     overrides: kafkaJsLintOverrides,
-  },
-  test: {
-    environment: 'node',
-    exclude: ['tests/integration/**'],
-    include: ['tests/unit/**/*.test.ts'],
   },
 })

@@ -1,7 +1,7 @@
 import { NapiCli } from '@napi-rs/cli'
 
 const getTarget = () => {
-  const idx = process.argv.findIndex(arg => arg === '--target')
+  const idx = process.argv.findIndex((arg) => arg === '--target')
   return idx !== -1 ? process.argv[idx + 1] : undefined
 }
 
@@ -41,12 +41,11 @@ async function execNapibuild() {
   })
 }
 
-
 async function main() {
   await execNapibuild()
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Build script failed:', err)
   process.exit(1)
 })

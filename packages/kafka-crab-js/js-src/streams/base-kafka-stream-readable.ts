@@ -2,7 +2,7 @@ import { Readable, type ReadableOptions } from 'node:stream'
 
 import type { CommitMode, KafkaConsumer, Message, OffsetModel, TopicPartitionConfig } from '../../js-binding.js'
 
-export interface KafkaStreamReadableOptions extends ReadableOptions<Readable> {
+export interface KafkaStreamReadableOptions extends ReadableOptions {
   kafkaConsumer: KafkaConsumer
 }
 
@@ -11,7 +11,7 @@ export interface KafkaStreamReadableOptions extends ReadableOptions<Readable> {
  * @extends Readable
  */
 export abstract class BaseKafkaStreamReadable extends Readable {
-  private _kafkaConsumer: KafkaConsumer
+  private readonly _kafkaConsumer: KafkaConsumer
 
   /**
    * Creates a BaseKafkaStreamReadable instance
@@ -94,7 +94,7 @@ export abstract class BaseKafkaStreamReadable extends Readable {
   /**
    * Hook for subclasses to cancel external stream readers before consumer teardown.
    */
-  protected cancelSourceReader(_reason: unknown): Promise<void> {
+  protected async cancelSourceReader(_reason: unknown): Promise<void> {
     if (!this._kafkaConsumer) {
       return Promise.resolve()
     }

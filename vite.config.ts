@@ -1,14 +1,8 @@
 import { defineConfig } from 'vite-plus'
-import { sharedFmtConfig, sharedLintConfig } from './vite-plus.shared.ts'
-
-const fmtConfig = sharedFmtConfig ?? {}
-const lintConfig = sharedLintConfig ?? {}
+import { sharedFmtConfig } from './vite-plus.shared.ts'
 
 export default defineConfig({
   fmt: {
-    ...fmtConfig,
-  },
-  lint: {
-    ...lintConfig,
+    ...sharedFmtConfig,
   },
 })

@@ -2,9 +2,6 @@ import { defineConfig } from 'vite-plus'
 import type { OxlintConfig } from 'vite-plus/lint'
 import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vite-plus.shared.ts'
 
-const fmtConfig = sharedFmtConfig ?? {}
-const lintConfig = sharedLintConfig ?? {}
-
 const benchmarkLintRules: NonNullable<OxlintConfig['rules']> = {
   ...sharedTestLintRules,
   complexity: 'off',
@@ -28,10 +25,10 @@ const benchmarkLintOverrides = [
 
 export default defineConfig({
   fmt: {
-    ...fmtConfig,
+    ...sharedFmtConfig,
   },
   lint: {
-    ...lintConfig,
+    ...sharedLintConfig,
     overrides: benchmarkLintOverrides,
   },
 })

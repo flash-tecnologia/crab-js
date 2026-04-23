@@ -2,9 +2,6 @@ import { defineConfig } from 'vite-plus'
 import type { OxlintConfig } from 'vite-plus/lint'
 import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vite-plus.shared.ts'
 
-const fmtConfig = sharedFmtConfig ?? {}
-const lintConfig = sharedLintConfig ?? {}
-
 const externalDependencies = [
   'kafka-crab-js',
   '@opentelemetry/api',
@@ -44,7 +41,7 @@ const otelLintOverrides = [
 
 export default defineConfig({
   fmt: {
-    ...fmtConfig,
+    ...sharedFmtConfig,
   },
   pack: {
     checks: {
@@ -67,12 +64,7 @@ export default defineConfig({
     target: 'node24',
   },
   lint: {
-    ...lintConfig,
+    ...sharedLintConfig,
     overrides: otelLintOverrides,
-  },
-  test: {
-    environment: 'node',
-    exclude: ['tests/integration/**'],
-    include: ['tests/unit/**/*.test.ts'],
   },
 })

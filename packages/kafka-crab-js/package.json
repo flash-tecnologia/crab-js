@@ -37,18 +37,17 @@
     }
   },
   "scripts": {
-    "check": "pnpm run fmt:check && pnpm run lint",
+    "check": "vp check",
     "artifacts": "napi artifacts",
-    "fmt": "node ../../scripts/run-vite-ox-tool.mjs fmt js-src tests/unit vite.config.ts tsconfig.json package.json README.md",
-    "fmt:check": "node ../../scripts/run-vite-ox-tool.mjs fmt --check js-src tests/unit vite.config.ts tsconfig.json package.json README.md",
-    "lint": "node ../../scripts/run-vite-ox-tool.mjs lint js-src tests/unit vite.config.ts",
-    "lint:fix": "node ../../scripts/run-vite-ox-tool.mjs lint --fix js-src tests/unit vite.config.ts",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
     "prebuild": "node build.mjs",
     "build": "vp pack",
     "prepublishOnly": "napi prepublish -t npm",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vp test",
-    "test:integration": "node --test tests/integration/*.test.mjs"
+    "test": "vp test run js-tests/unit",
+    "test:integration": "node --test js-tests/integration/*.test.mjs"
   },
   "dependencies": {},
   "devDependencies": {

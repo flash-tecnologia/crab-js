@@ -90,7 +90,7 @@ function flattenBatchStream(batchStream: ReadableStream<Message[]>): ReadableStr
   return new ReadableStream<Message>({
     async pull(controller) {
       if (currentIndex < currentBatch.length) {
-        controller.enqueue(currentBatch[currentIndex] as Message)
+        controller.enqueue(currentBatch[currentIndex]!)
         currentIndex += 1
         return
       }
@@ -114,7 +114,7 @@ function flattenBatchStream(batchStream: ReadableStream<Message[]>): ReadableStr
 
         currentBatch = value
         currentIndex = 1
-        controller.enqueue(currentBatch[0] as Message)
+        controller.enqueue(currentBatch[0]!)
         return
       }
     },
@@ -287,19 +287,17 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
   const messages = new Array<Message>(payloads.length)
 
   for (let index = 0; index < payloads.length; index += 1) {
-    const payload = payloads[index] as Buffer
+    const payload = payloads[index]!
     const key =
       sharedKey ??
       denseKeys?.[index] ??
-      (keyDictionaryIndexes?.[index] === undefined
-        ? undefined
-        : keyDictionary?.[keyDictionaryIndexes[index] as number]) ??
+      (keyDictionaryIndexes?.[index] === undefined ? undefined : keyDictionary?.[keyDictionaryIndexes[index]!]) ??
       keys?.[index]
     const denseSharedHeaderValue = denseSharedHeaderValues?.[index]
     const dictionaryHeaderValue =
       headerValueDictionaryIndexes?.[index] === undefined
         ? undefined
-        : headerValueDictionary?.[headerValueDictionaryIndexes[index] as number]
+        : headerValueDictionary?.[headerValueDictionaryIndexes[index]!]
     const messageHeaders =
       headers?.[index] ??
       (sharedHeaderKey &&
@@ -311,12 +309,12 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
             [sharedHeaderKey]: (sharedHeaderValue ??
               denseSharedHeaderValue ??
               dictionaryHeaderValue ??
-              sharedHeaderValues?.[index]) as Buffer,
+              sharedHeaderValues?.[index])!,
           }
         : undefined)
-    const messageTopic = (topic ?? topics?.[index]) as string
-    const partition = partitions[index] as number
-    const offset = offsets[index] as number
+    const messageTopic = (topic ?? topics?.[index])!
+    const partition = partitions[index]!
+    const offset = offsets[index]!
 
     if (key === undefined && messageHeaders === undefined) {
       messages[index] = {
@@ -369,14 +367,14 @@ function expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
 
   for (let index = 0; index < payloads.length; index += 1) {
     messages[index] = {
-      payload: payloads[index] as Buffer,
+      payload: payloads[index]!,
       key: sharedKey,
       headers: {
         [sharedHeaderKey]: sharedHeaderValue,
       },
       topic,
-      partition: partitions[index] as number,
-      offset: offsets[index] as number,
+      partition: partitions[index]!,
+      offset: offsets[index]!,
     }
   }
 
@@ -397,14 +395,14 @@ function expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
 
   for (let index = 0; index < payloads.length; index += 1) {
     messages[index] = {
-      payload: payloads[index] as Buffer,
-      key: keyDictionary[keyDictionaryIndexes[index] as number] as Buffer,
+      payload: payloads[index]!,
+      key: keyDictionary[keyDictionaryIndexes[index]!]!,
       headers: {
         [sharedHeaderKey]: sharedHeaderValue,
       },
       topic,
-      partition: partitions[index] as number,
-      offset: offsets[index] as number,
+      partition: partitions[index]!,
+      offset: offsets[index]!,
     }
   }
 
@@ -424,14 +422,14 @@ function expandCompactBatchSharedTopicWithDenseKeysAndSharedHeaders(
 
   for (let index = 0; index < payloads.length; index += 1) {
     messages[index] = {
-      payload: payloads[index] as Buffer,
-      key: denseKeys[index] as Buffer,
+      payload: payloads[index]!,
+      key: denseKeys[index]!,
       headers: {
-        [sharedHeaderKey]: denseSharedHeaderValues[index] as Buffer,
+        [sharedHeaderKey]: denseSharedHeaderValues[index]!,
       },
       topic,
-      partition: partitions[index] as number,
-      offset: offsets[index] as number,
+      partition: partitions[index]!,
+      offset: offsets[index]!,
     }
   }
 
@@ -449,11 +447,11 @@ function expandCompactBatchSharedTopicWithDenseKeys(
 
   for (let index = 0; index < payloads.length; index += 1) {
     messages[index] = {
-      payload: payloads[index] as Buffer,
-      key: denseKeys[index] as Buffer,
+      payload: payloads[index]!,
+      key: denseKeys[index]!,
       topic,
-      partition: partitions[index] as number,
-      offset: offsets[index] as number,
+      partition: partitions[index]!,
+      offset: offsets[index]!,
     }
   }
 
@@ -472,13 +470,13 @@ function expandCompactBatchSharedTopicWithSharedHeaders(
 
   for (let index = 0; index < payloads.length; index += 1) {
     messages[index] = {
-      payload: payloads[index] as Buffer,
+      payload: payloads[index]!,
       headers: {
-        [sharedHeaderKey]: denseSharedHeaderValues[index] as Buffer,
+        [sharedHeaderKey]: denseSharedHeaderValues[index]!,
       },
       topic,
-      partition: partitions[index] as number,
-      offset: offsets[index] as number,
+      partition: partitions[index]!,
+      offset: offsets[index]!,
     }
   }
 
@@ -495,10 +493,10 @@ function expandCompactBatchSharedTopic(
 
   for (let index = 0; index < payloads.length; index += 1) {
     messages[index] = {
-      payload: payloads[index] as Buffer,
+      payload: payloads[index]!,
       topic,
-      partition: partitions[index] as number,
-      offset: offsets[index] as number,
+      partition: partitions[index]!,
+      offset: offsets[index]!,
     }
   }
 
