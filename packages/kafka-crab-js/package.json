@@ -43,8 +43,7 @@
     "fmt:check": "vp fmt --check",
     "lint": "vp lint",
     "lint:fix": "vp lint --fix",
-    "prebuild": "node build.mjs",
-    "build": "vp pack",
+    "build": "node build.mjs",
     "prepublishOnly": "napi prepublish -t npm",
     "test": "vp test run js-tests/unit",
     "test:integration": "node --test js-tests/integration/*.test.mjs"

@@ -1130,10 +1130,7 @@ impl KafkaConsumer {
     });
 
     let inner = stream::unfold(receiver, |mut receiver| async move {
-      match receiver.recv().await {
-        Some(item) => Some((item, receiver)),
-        None => None,
-      }
+      receiver.recv().await.map(|item| (item, receiver))
     })
     .boxed();
     ReadableStream::new(&env, inner)
@@ -1187,10 +1184,7 @@ impl KafkaConsumer {
     });
 
     let inner = stream::unfold(receiver, |mut receiver| async move {
-      match receiver.recv().await {
-        Some(item) => Some((item, receiver)),
-        None => None,
-      }
+      receiver.recv().await.map(|item| (item, receiver))
     })
     .boxed();
     ReadableStream::new(&env, inner)

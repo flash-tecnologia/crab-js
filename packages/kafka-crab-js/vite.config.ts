@@ -45,22 +45,6 @@ export default defineConfig({
   fmt: {
     ...sharedFmtConfig,
   },
-  pack: {
-    checks: {
-      legacyCjs: false,
-    },
-    dts: true,
-    entry: 'js-src/**/*.ts',
-    fixedExtension: false,
-    format: ['esm', 'cjs'],
-    deps: {
-      neverBundle: [/js-binding\.(?:js|cjs)$/],
-    },
-    platform: 'node',
-    report: false,
-    sourcemap: true,
-    target: 'node24',
-  },
   lint: {
     ...sharedLintConfig,
     ignorePatterns: kafkaJsLintIgnorePatterns,

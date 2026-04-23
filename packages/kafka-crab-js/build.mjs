@@ -1,4 +1,5 @@
 import { NapiCli } from '@napi-rs/cli'
+import { build } from 'vite-plus/pack'
 
 const getTarget = () => {
   const idx = process.argv.findIndex((arg) => arg === '--target')
@@ -43,6 +44,22 @@ async function execNapibuild() {
 
 async function main() {
   await execNapibuild()
+  await build({
+    checks: {
+      legacyCjs: false,
+    },
+    dts: true,
+    entry: 'js-src/**/*.ts',
+    fixedExtension: false,
+    format: ['esm', 'cjs'],
+    deps: {
+      neverBundle: [/js-binding\.(?:js|cjs)$/],
+    },
+    platform: 'node',
+    report: false,
+    sourcemap: true,
+    target: 'node24',
+  })
 }
 
 main().catch((err) => {
