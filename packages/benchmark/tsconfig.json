@@ -9,8 +9,6 @@
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
     "paths": {
       "kafka-crab-js": ["../kafka-crab-js/js-src/index.ts"]
     }

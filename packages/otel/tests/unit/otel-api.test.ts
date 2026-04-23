@@ -6,13 +6,7 @@ import { context, propagation, trace } from '@opentelemetry/api'
 import { AsyncHooksContextManager } from '@opentelemetry/context-async-hooks'
 import { AlwaysOnSampler, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
-import {
-  batchProcessEndChannel,
-  batchProcessStartChannel,
-  consumerProcessEndChannel,
-  consumerProcessStartChannel,
-  type Message,
-} from 'kafka-crab-js'
+import type { Message } from 'kafka-crab-js'
 
 // Import from source so unit tests do not depend on a prebuilt dist/
 import {
@@ -29,7 +23,13 @@ import {
   resetOtelAdapter,
   withBatchContext,
   withMessageContext,
-} from '../../src/index.ts'
+} from '../../src/index.js'
+import {
+  batchProcessEndChannel,
+  batchProcessStartChannel,
+  consumerProcessEndChannel,
+  consumerProcessStartChannel,
+} from '../../src/kafka-channels.js'
 
 describe('kafka-crab-js-otel Public API Tests', () => {
   let memoryExporter: InMemorySpanExporter

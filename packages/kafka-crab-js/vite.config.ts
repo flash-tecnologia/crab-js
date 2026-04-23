@@ -1,14 +1,6 @@
 import { defineConfig } from 'vite-plus'
 import type { OxlintConfig } from 'vite-plus/lint'
-import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vite-plus.shared.ts'
-
-const kafkaJsFmtIgnorePatterns = [
-  ...(sharedFmtConfig?.ignorePatterns ?? []),
-  'js-binding*.*',
-  'index.js',
-  'index.d.ts',
-  'npm/**',
-]
+import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vite.shared.mjs'
 
 const kafkaJsLintIgnorePatterns = [
   ...(sharedLintConfig?.ignorePatterns ?? []),
@@ -52,7 +44,6 @@ const kafkaJsLintOverrides = [
 export default defineConfig({
   fmt: {
     ...sharedFmtConfig,
-    ignorePatterns: kafkaJsFmtIgnorePatterns,
   },
   pack: {
     checks: {

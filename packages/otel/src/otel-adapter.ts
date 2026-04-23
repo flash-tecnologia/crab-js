@@ -18,31 +18,33 @@ import {
   type Tracer,
 } from '@opentelemetry/api'
 
-// Import types and channels from kafka-crab-js
 import {
   batchProcessEndChannel,
-  type BatchProcessEndEvent,
   batchProcessStartChannel,
-  type BatchProcessStartEvent,
   batchReceiveEndChannel,
-  type BatchReceiveEndEvent,
   batchReceiveStartChannel,
-  type BatchReceiveStartEvent,
   consumerProcessEndChannel,
-  type ConsumerProcessEndEvent,
   consumerProcessStartChannel,
-  type ConsumerProcessStartEvent,
   consumerReceiveEndChannel,
-  type ConsumerReceiveEndEvent,
   consumerReceiveStartChannel,
-  type ConsumerReceiveStartEvent,
-  type Message,
-  type ProducerRecord,
   producerSendEndChannel,
-  type ProducerSendEndEvent,
   producerSendStartChannel,
-  type ProducerSendStartEvent,
-  type RecordMetadata,
+} from './kafka-channels.js'
+
+import type {
+  BatchProcessEndEvent,
+  BatchProcessStartEvent,
+  BatchReceiveEndEvent,
+  BatchReceiveStartEvent,
+  ConsumerProcessEndEvent,
+  ConsumerProcessStartEvent,
+  ConsumerReceiveEndEvent,
+  ConsumerReceiveStartEvent,
+  Message,
+  ProducerRecord,
+  ProducerSendEndEvent,
+  ProducerSendStartEvent,
+  RecordMetadata,
 } from 'kafka-crab-js'
 
 // Import local OTEL modules

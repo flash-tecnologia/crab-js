@@ -12,7 +12,7 @@ import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 // ESM imports for Kafka client
 import { KafkaClient } from 'kafka-crab-js'
 
-// ESM imports for OTEL package
+// Import from source so integration tests do not depend on a prebuilt dist/
 import {
   enableOtelInstrumentation,
   getKafkaInstrumentation,
@@ -21,7 +21,7 @@ import {
   type OtelAdapter,
   resetKafkaInstrumentation,
   resetOtelAdapter,
-} from '../../dist/index.js'
+} from '../../src/index.js'
 
 const KAFKA_BROKERS = process.env.KAFKA_BROKERS || 'localhost:9092'
 const TEST_TIMEOUT = 120000

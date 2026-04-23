@@ -1,7 +1,7 @@
 import { KafkaClient, type MessageProducer } from 'kafka-crab-js'
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
-import { brokers, topic } from './definitions.ts'
+import { brokers, topic } from './definitions.js'
 
 const client = new KafkaClient({
   brokers: brokers.join(','),

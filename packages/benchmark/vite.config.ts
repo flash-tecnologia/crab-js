@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite-plus'
 import type { OxlintConfig } from 'vite-plus/lint'
-import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vite-plus.shared.ts'
+import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vite.shared.mjs'
 
 const benchmarkLintRules: NonNullable<OxlintConfig['rules']> = {
   ...sharedTestLintRules,

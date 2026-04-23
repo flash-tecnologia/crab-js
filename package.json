@@ -13,7 +13,7 @@
     "check": "pnpm -r --parallel exec vp check",
     "lint": "pnpm -r --parallel exec vp lint",
     "lint:fix": "pnpm -r --parallel exec vp lint --fix",
-    "check:full": "pnpm fmt:check && pnpm -r --parallel exec vp lint && pnpm -r --parallel exec vp check"
+    "check:full": "pnpm fmt:check && pnpm lint && pnpm check && pnpm test"
   },
   "devDependencies": {
     "@opentelemetry/api": "catalog:",

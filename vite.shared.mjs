@@ -1,15 +1,25 @@
-import type { OxfmtConfig } from 'vite-plus/fmt'
-import type { OxlintConfig } from 'vite-plus/lint'
+/** @typedef {import('vite-plus/fmt').OxfmtConfig} OxfmtConfig */
+/** @typedef {import('vite-plus/lint').OxlintConfig} OxlintConfig */
 
-export const sharedFmtConfig: OxfmtConfig | undefined = {
-  ignorePatterns: ['**/dist/**', '**/target/**', '**/node_modules/**', '**/coverage/**', '**/report/**'],
+/** @type {OxfmtConfig} */
+export const sharedFmtConfig = {
+  ignorePatterns: [
+    'js-binding*.*',
+    'npm/**',
+    '**/dist/**',
+    '**/target/**',
+    '**/node_modules/**',
+    '**/coverage/**',
+    '**/report/**',
+  ],
   printWidth: 120,
   semi: false,
   singleQuote: true,
   sortPackageJson: true,
 }
 
-export const sharedLintConfig: OxlintConfig | undefined = {
+/** @type {OxlintConfig} */
+export const sharedLintConfig = {
   categories: {
     correctness: 'error',
     suspicious: 'error',
@@ -103,7 +113,8 @@ export const sharedLintConfig: OxlintConfig | undefined = {
   },
 }
 
-export const sharedTestLintRules: NonNullable<OxlintConfig['rules']> = {
+/** @type {NonNullable<OxlintConfig['rules']>} */
+export const sharedTestLintRules = {
   'no-process-exit': 'allow',
   'id-length': 'allow',
   '@typescript-eslint/no-unsafe-type-assertion': 'allow',

@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite-plus'
-import { sharedFmtConfig } from './vite-plus.shared.ts'
+import { sharedFmtConfig } from './vite.shared.mjs'
 
 export default defineConfig({
   fmt: {

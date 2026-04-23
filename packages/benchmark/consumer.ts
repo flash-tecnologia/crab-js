@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import net from 'node:net'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { brokers, topic } from './utils/definitions.ts'
+import { brokers, topic } from './utils/definitions.js'
 
 type AssertYieldMode = 'none' | 'microtask' | 'sleep'
 type BenchmarkProtocol = 'default' | 'strict'
