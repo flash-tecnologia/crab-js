@@ -1,6 +1,6 @@
 {
   "name": "kafka-crab-js",
-  "version": "4.0.0-beta.1",
+  "version": "4.0.0-beta.2",
   "keywords": [
     "N-API",
     "consumer",
@@ -20,7 +20,7 @@
   "author": "inaiat@gmail.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/flash-tecnologia/kafka-crab-js.git"
+    "url": "git+https://github.com/flash-tecnologia/kafka-crab-js.git"
   },
   "files": [
     "dist",
