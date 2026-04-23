@@ -73,8 +73,7 @@ jobs:
             build: pnpm build --target x86_64-unknown-linux-gnu
           - host: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            container_image: ghcr.io/rust-cross/rust-musl-cross:x86_64-musl
-            build: pnpm build --target x86_64-unknown-linux-musl
+            build: pnpm build --target x86_64-unknown-linux-musl -x
           - host: macos-latest
             target: aarch64-apple-darwin
             build: pnpm build --target aarch64-apple-darwin
@@ -83,13 +82,9 @@ jobs:
             build: pnpm build --target aarch64-unknown-linux-gnu
           - host: ubuntu-latest
             target: aarch64-unknown-linux-musl
-            container_image: ghcr.io/rust-cross/rust-musl-cross:aarch64-unknown-linux-musl
-            build: |
-              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-unknown-linux-musl-gcc
-              pnpm build --target aarch64-unknown-linux-musl
+            build: pnpm build --target aarch64-unknown-linux-musl -x
     name: stable - ${{ matrix.settings.target }} - node@22
     runs-on: ${{ matrix.settings.host }}
-    container: ${{ matrix.settings.container_image || '' }}
     defaults:
       run:
         working-directory: packages/kafka-crab-js
@@ -120,6 +115,17 @@ jobs:
             .cargo-cache
             packages/kafka-crab-js/target/
           key: ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}
+      - uses: mlugg/setup-zig@v2
+        if: ${{ contains(matrix.settings.target, 'musl') }}
+        with:
+          version: 0.14.1
+      - name: Install cargo-zigbuild
+        uses: taiki-e/install-action@v2
+        if: ${{ contains(matrix.settings.target, 'musl') }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tool: cargo-zigbuild
       - name: Setup toolchain
         run: ${{ matrix.settings.setup }}
         if: ${{ matrix.settings.setup }}
