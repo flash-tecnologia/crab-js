@@ -27,17 +27,16 @@
     "@opentelemetry/sdk-trace-base": "catalog:",
     "@opentelemetry/sdk-trace-node": "catalog:",
     "@opentelemetry/semantic-conventions": "catalog:",
-    "@types/node": "25.6.0",
+    "@types/node": "25.6.2",
     "kafka-crab-js": "workspace:*",
     "kafka-crab-js-otel": "workspace:*",
     "nanoid": "catalog:",
-    "rimraf": "^6.1.3",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
-    "vite-plus": "0.1.19"
+    "vite-plus": "0.1.20"
   },
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@10.33.1"
+  "packageManager": "pnpm@11.0.9"
 }

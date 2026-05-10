@@ -1,7 +1,7 @@
 import { KafkaClient, type MessageProducer } from 'kafka-crab-js'
-import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
-import { brokers, topic } from './definitions.js'
+import { brokers, partitionCount, topic } from './definitions.js'
+import { createBenchmarkMessage, createBenchmarkPartitionKeys } from './messages.js'
 
 const client = new KafkaClient({
   brokers: brokers.join(','),
@@ -10,6 +10,26 @@ const client = new KafkaClient({
   logLevel: 'info',
   brokerAddressFamily: 'v4',
 })
+
+function readPositiveInteger(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) {
+    return fallback
+  }
+
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
+
+function readNonNegativeInteger(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) {
+    return fallback
+  }
+
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback
+}
 
 export async function prepareTopics() {
   console.log(`Preparing topic: ${topic}`)
@@ -25,7 +45,7 @@ export async function prepareTopics() {
 
   try {
     // Subscribe to the topic to trigger topic creation if needed
-    await tempConsumer.subscribe([{ topic, createTopic: true, numPartitions: brokers.length }])
+    await tempConsumer.subscribe([{ topic, createTopic: true, numPartitions: partitionCount }])
     console.log(`Topic ${topic} is ready`)
 
     // Wait a moment for topic to be fully created
@@ -41,9 +61,12 @@ export async function prepareTopics() {
 
 export async function prepareConsumerData() {
   const producer = client.createProducer()
+  const partitionKeys = createBenchmarkPartitionKeys(partitionCount)
 
-  const max = 1e6
-  const batchSize = 50_000
+  const benchmarkIterations = readPositiveInteger('BENCHMARK_ITERATIONS', 100_000)
+  const warmupMessages = readNonNegativeInteger('BENCHMARK_WARMUP_MESSAGES', 0)
+  const max = readPositiveInteger('BENCHMARK_SETUP_MESSAGES', benchmarkIterations + warmupMessages)
+  const batchSize = readPositiveInteger('BENCHMARK_SETUP_BATCH_SIZE', 10_000)
 
   console.log(`Starting to produce ${max} messages...`)
 
@@ -52,22 +75,15 @@ export async function prepareConsumerData() {
     const batchEnd = Math.min(i + batchSize, max)
 
     for (let j = i; j < batchEnd; j++) {
-      messages.push({
-        payload: Buffer.from(`{"message": "message index ${j}", "index": ${j}, "date": "${new Date().toISOString()}"}`),
-        key: Buffer.from(`key-${j}`),
-        headers: {
-          [`header-key-${j}`]: Buffer.from(`header-value-${j}`),
-        },
-      })
+      messages.push(createBenchmarkMessage(j, partitionKeys))
     }
 
     try {
       await producer.send({ topic, messages })
 
-      if ((i + batchEnd - i) % 2000 === 0) {
-        const progress = (((i + batchEnd - i) / max) * 100).toFixed(1)
-        console.log(`Produced ${i + batchEnd - i}/${max} messages (${progress}%)`)
-      }
+      const produced = batchEnd
+      const progress = ((produced / max) * 100).toFixed(1)
+      console.log(`Produced ${produced}/${max} messages (${progress}%)`)
     } catch (error) {
       console.error(`Failed to send batch starting at ${i}:`, error)
       throw error
