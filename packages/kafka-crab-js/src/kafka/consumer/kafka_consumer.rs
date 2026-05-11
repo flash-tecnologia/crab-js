@@ -58,6 +58,13 @@ const CONSUMER_DISCONNECTED_REASON: &str = "Consumer disconnected";
 const BUFFER_DICTIONARY_MAX_UNIQUE_VALUES: usize = 64;
 const BUFFER_DICTIONARY_MIN_REPEAT_FACTOR: usize = 4;
 
+type CompactKeyEncoding = (
+  Option<Vec<Option<Buffer>>>,
+  Option<Buffer>,
+  Option<Vec<Buffer>>,
+  Option<Vec<u8>>,
+);
+
 /// Validates and bounds-checks timeout values
 #[inline]
 fn validate_timeout(timeout: Option<i64>, default: i64, max: i64, min: i64) -> i64 {
@@ -174,7 +181,8 @@ impl CompactBatchBuilder {
   fn finish(self) -> CompactMessageBatch {
     let (keys, shared_key, key_dictionary, key_dictionary_indexes) =
       encode_optional_dictionary_buffer(self.keys);
-    let (shared_header_key, shared_header_value, shared_header_values, headers) = match self.headers {
+    let (shared_header_key, shared_header_value, shared_header_values, headers) = match self.headers
+    {
       HeaderBatchState::None => (None, None, None, None),
       HeaderBatchState::SharedSingle { key, values } => {
         let (values, shared_value) = encode_optional_shared_buffer(Some(values));
@@ -383,14 +391,7 @@ fn should_dictionary_encode(total: usize, unique: usize) -> bool {
 }
 
 #[inline]
-fn encode_optional_dictionary_buffer(
-  values: Option<Vec<Option<Buffer>>>,
-) -> (
-  Option<Vec<Option<Buffer>>>,
-  Option<Buffer>,
-  Option<Vec<Buffer>>,
-  Option<Vec<u8>>,
-) {
+fn encode_optional_dictionary_buffer(values: Option<Vec<Option<Buffer>>>) -> CompactKeyEncoding {
   let Some(values) = values else {
     return (None, None, None, None);
   };
@@ -441,7 +442,12 @@ fn encode_optional_dictionary_buffer(
   }
 
   if should_dictionary_encode(dictionary_indexes.len(), dictionary_values.len()) {
-    return (None, None, Some(dictionary_values), Some(dictionary_indexes));
+    return (
+      None,
+      None,
+      Some(dictionary_values),
+      Some(dictionary_indexes),
+    );
   }
 
   (Some(values), None, None, None)
