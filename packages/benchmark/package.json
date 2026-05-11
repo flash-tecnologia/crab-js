@@ -15,8 +15,8 @@
     "benchmark:isolated": "BENCHMARK_MEMORY=0 BENCHMARK_ISOLATED=1 node --expose-gc --import tsx consumer.ts",
     "benchmark:isolated:quick": "BENCHMARK_MEMORY=0 BENCHMARK_ISOLATED=1 BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=1 BENCHMARK_WARMUP_RUNS=0 node --expose-gc --import tsx consumer.ts",
     "benchmark:sequential": "BENCHMARK_MEMORY=0 node --expose-gc --import tsx consumer.ts",
-    "benchmark:batch": "BENCHMARK_MEMORY=0 BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs-batch BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=5 node --expose-gc --import tsx consumer.ts",
-    "benchmark:batch:quick": "BENCHMARK_MEMORY=0 BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs-batch BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts",
+    "benchmark:batch": "BENCHMARK_MEMORY=0 BENCHMARK_ONLY=v4-batch,kafkajs-batch BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=5 node --expose-gc --import tsx consumer.ts",
+    "benchmark:batch:quick": "BENCHMARK_MEMORY=0 BENCHMARK_ONLY=v4-batch,kafkajs-batch BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts",
     "benchmark:memory": "BENCHMARK_MEMORY=1 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts",
     "benchmark:memory:quick": "BENCHMARK_MEMORY=1 BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=1 BENCHMARK_WARMUP_RUNS=0 node --expose-gc --import tsx consumer.ts"
   },

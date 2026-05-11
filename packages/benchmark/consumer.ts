@@ -77,6 +77,7 @@ const scenarioTimeoutMs = readPositiveInteger('BENCHMARK_SCENARIO_TIMEOUT_MS', 1
 const forceGcBeforeRun = readBoolean('BENCHMARK_FORCE_GC', true)
 const selectedLibraries = readSelectedLibraries()
 const selectedScenarios = readSelectedScenarios()
+const showV3Scenarios = readBoolean('BENCHMARK_SHOW_V3', false)
 const isolatedMode = readBoolean('BENCHMARK_ISOLATED', false)
 const memoryMode = readBoolean('BENCHMARK_MEMORY', true)
 const memoryChildMode = readBoolean('BENCHMARK_MEMORY_CHILD', false)
@@ -631,9 +632,26 @@ function isV3Scenario(scenario: BenchmarkScenario): boolean {
   return scenario.id === 'v3-serial' || scenario.id === 'v3-batch'
 }
 
-function selectScenarios(options: { includeV3: boolean }): BenchmarkScenario[] {
+function isV3ScenarioId(scenarioId: BenchmarkScenarioId): boolean {
+  return scenarioId === 'v3-serial' || scenarioId === 'v3-batch'
+}
+
+function selectedV3ScenarioIds(): BenchmarkScenarioId[] {
+  return [...selectedScenarios].filter(isV3ScenarioId)
+}
+
+function shouldShowV3Scenarios(): boolean {
+  return (
+    selectedV3ScenarioIds().length > 0 ||
+    (showV3Scenarios && (selectedLibraries.size === 0 || selectedLibraries.has('crab')))
+  )
+}
+
+function selectScenarios(): BenchmarkScenario[] {
+  const includeV3 = shouldShowV3Scenarios()
+
   return scenarios.filter((scenario) => {
-    if (!options.includeV3 && isV3Scenario(scenario)) {
+    if (isV3Scenario(scenario) && !includeV3) {
       return false
     }
 
@@ -665,7 +683,7 @@ async function main() {
     console.log(`Benchmark requested batch size: ${requestedBatchSize} (normalized for comparable batch scenarios)`)
   }
 
-  const scenariosToRun = selectScenarios({ includeV3: true })
+  const scenariosToRun = selectScenarios()
 
   if (scenariosToRun.length === 0) {
     throw new Error('No benchmark scenarios selected')
@@ -832,7 +850,7 @@ async function runIsolatedMemoryBenchmark() {
   console.log(`Benchmark memory settle time: ${memorySettleMs}ms`)
   console.log(`Benchmark colors: ${useColors}`)
 
-  const scenariosToRun = selectScenarios({ includeV3: true })
+  const scenariosToRun = selectScenarios()
   if (scenariosToRun.length === 0) {
     throw new Error('No memory benchmark scenarios selected')
   }
@@ -865,7 +883,7 @@ async function runIsolatedThroughputBenchmark() {
   }
   console.log('Benchmark isolated mode starts one child Node.js process per scenario')
 
-  const scenariosToRun = selectScenarios({ includeV3: true })
+  const scenariosToRun = selectScenarios()
   if (scenariosToRun.length === 0) {
     throw new Error('No isolated benchmark scenarios selected')
   }

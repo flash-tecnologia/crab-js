@@ -37,15 +37,15 @@ vp run benchmark
 The default consumer benchmark runs in isolated memory mode. It starts one child Node.js process per selected scenario
 and reports throughput and memory in one chart:
 
-- `v3-serial`
 - `v4-serial`
 - `kafkajs-serial`
 - `platformatic-kafka`
-- `v3-batch`
 - `v4-batch`
 - `kafkajs-batch`
 
 KafkaJS is reported separately as `eachMessage` and `eachBatch`.
+kafka-crab-js v3 scenarios are hidden by default. Set `BENCHMARK_SHOW_V3=1` or select `v3-serial` / `v3-batch` with
+`BENCHMARK_ONLY` when you want them in the comparison.
 
 For throughput-only comparison with one child Node.js process per selected scenario:
 
@@ -101,6 +101,7 @@ The most useful knobs are:
 - `BENCHMARK_MAX_BYTES=2048` controls fetch byte caps.
 - `BENCHMARK_BATCH_SIZE=4096` controls batch stream size. Values above `16384` are normalized to `16384` so batch
   scenarios use a comparable effective size.
+- `BENCHMARK_SHOW_V3=1` includes kafka-crab-js v3 scenarios in default selections.
 - `BENCHMARK_MEMORY=1` runs the isolated memory benchmark. This is the default.
 - `BENCHMARK_MEMORY=0` disables memory mode and allows the same-process or throughput-only isolated modes.
 - `BENCHMARK_ISOLATED=1` runs the throughput-only benchmark with one child Node.js process per selected scenario.
@@ -125,8 +126,11 @@ Message-oriented and batch-oriented scenarios can appear in the same chart by de
 
 The default chart includes:
 
-- message-oriented APIs for kafka-crab-js v3, kafka-crab-js v4, KafkaJS, and `@platformatic/kafka`
-- batch-oriented APIs for kafka-crab-js v3, kafka-crab-js v4, and KafkaJS
+- message-oriented APIs for kafka-crab-js v4, KafkaJS, and `@platformatic/kafka`
+- batch-oriented APIs for kafka-crab-js v4 and KafkaJS
+
+kafka-crab-js v3 rows are included only when `BENCHMARK_SHOW_V3=1` is set or when v3 scenarios are selected explicitly
+with `BENCHMARK_ONLY`.
 
 Libraries are included with the APIs available in this benchmark harness. A library can have more than one row when it
 has more than one relevant consumption style. A library without a batch scenario is not forced into one.
@@ -173,3 +177,4 @@ The benchmark suite uses separate dependencies to avoid installing heavy native 
 
 - `@platformatic/kafka`: Platformatic's Kafka client
 - `kafkajs`: Pure JavaScript Kafka client
+- `kafka-crab-js-v3`: Alias for `kafka-crab-js@3.1.0`, used only by the v3 comparison scenarios
