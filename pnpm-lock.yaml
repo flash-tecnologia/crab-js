@@ -86,9 +86,6 @@ importers:
       '@types/node':
         specifier: 25.6.2
         version: 25.6.2
-      fallow:
-        specifier: ^2.69.0
-        version: 2.69.0
       kafka-crab-js:
         specifier: workspace:*
         version: link:packages/kafka-crab-js
@@ -360,46 +357,6 @@ packages:
   '@faker-js/faker@10.4.0':
     resolution: {integrity: sha512-sDBWI3yLy8EcDzgobvJTWq1MJYzAkQdpjXuPukga9wXonhpMRvd1Izuo2Qgwey2OiEoRIBr35RMU9HJRoOHzpw==}
     engines: {node: ^20.19.0 || ^22.13.0 || ^23.5.0 || >=24.0.0, npm: '>=10'}
-
-  '@fallow-cli/darwin-arm64@2.69.0':
-    resolution: {integrity: sha512-8pp/AY4lNml/N9Bo0xbSzrmvyiiJg6lz5i8G9HCEptrH9W2YyFhQYm0XTbwoy3ATNnjw3aRDajiFTV5njahhSQ==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@fallow-cli/darwin-x64@2.69.0':
-    resolution: {integrity: sha512-nCZwXCJC+MQpwDb0CS4aGHPbaNAnH5//eceotjGc/sSrvXYg3oINAP2ztVDwBAUwwiYwiOGU0W1npVIoQrYgVQ==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@fallow-cli/linux-arm64-gnu@2.69.0':
-    resolution: {integrity: sha512-cfRKQHZMXd8/k8Arr2LlYr2eZDvqx/jZ6K30/8ji/iREXcGYkhfFB4Hk53t7CP8MxbtXGzJ05yyC7n+gf3MOaw==}
-    cpu: [arm64]
-    os: [linux]
-
-  '@fallow-cli/linux-arm64-musl@2.69.0':
-    resolution: {integrity: sha512-SgOcAG0VMWJ1eOsMvOdIGYYjebUNsTzNHaOnUch2o8KFvaZkWuoLvfllLC7jI5UMbC4dET/+siOcruKprxPR5w==}
-    cpu: [arm64]
-    os: [linux]
-
-  '@fallow-cli/linux-x64-gnu@2.69.0':
-    resolution: {integrity: sha512-mx9h6Fv7IpoFWJtilKlNFWtANbsxMSDDdHTatYN+VJh9WpsmgMgsoiyxI+K3lheLUe9albgMZjOa3EKlR8ry7w==}
-    cpu: [x64]
-    os: [linux]
-
-  '@fallow-cli/linux-x64-musl@2.69.0':
-    resolution: {integrity: sha512-H5oS1lge94bp6GoxCgJgi+wT36zD9nDW7rTxBfEG6gqXKpALYs3uIF4lbzzELNC8GZwGe4YQhMxxqGm5CXfCrg==}
-    cpu: [x64]
-    os: [linux]
-
-  '@fallow-cli/win32-arm64-msvc@2.69.0':
-    resolution: {integrity: sha512-NEl4EnKzXw/lwrboUiAxWHrVx4tBO+cpNuPmvJoRsLS8wG5UIOxbyjHjD9Ux2FbwXNaRzZZ+vjLJAvGdOEU0Xw==}
-    cpu: [arm64]
-    os: [win32]
-
-  '@fallow-cli/win32-x64-msvc@2.69.0':
-    resolution: {integrity: sha512-EeL+Bbdg9XOgMl7tG0k6DCKhCaXLS0EPiy3HWccKUaMYDgR+haUWDzAGa9nJqIBlR4GYz/lz6amSCJtV+XsMzA==}
-    cpu: [x64]
-    os: [win32]
 
   '@grpc/grpc-js@1.14.3':
     resolution: {integrity: sha512-Iq8QQQ/7X3Sac15oB6p0FmUg/klxQvXLeileoqrTRGJYLV+/9tubbr9ipz0GKHjmXVsgFPo/+W+2cA8eNcR+XA==}
@@ -2357,11 +2314,6 @@ packages:
     resolution: {integrity: sha512-WUj2qlxaQtO4g6Pq5c29GTcWGDyd8itL8zTlipgECz3JesAiiOKotd8JU6otB3PACgG6xkJUyVhboMS+bje/jA==}
     engines: {node: '>=6'}
 
-  fallow@2.69.0:
-    resolution: {integrity: sha512-N3vPCjKSJ6mM919xoOtbImoksCgtTllC/y2xOe3aQfffK5AVJNvP4STgZ69xnqcMTfSB6CYQBFbHPnKgfOgrVg==}
-    engines: {node: '>=16'}
-    hasBin: true
-
   fast-content-type-parse@3.0.0:
     resolution: {integrity: sha512-ZvLdcY8P+N8mGQJahJV5G4U88CSvT1rP8ApL6uETe88MBXrBHAkZlSEySdUlyztF7ccb+Znos3TFqaepHxdhBg==}
 
@@ -2974,30 +2926,6 @@ snapshots:
     optional: true
 
   '@faker-js/faker@10.4.0': {}
-
-  '@fallow-cli/darwin-arm64@2.69.0':
-    optional: true
-
-  '@fallow-cli/darwin-x64@2.69.0':
-    optional: true
-
-  '@fallow-cli/linux-arm64-gnu@2.69.0':
-    optional: true
-
-  '@fallow-cli/linux-arm64-musl@2.69.0':
-    optional: true
-
-  '@fallow-cli/linux-x64-gnu@2.69.0':
-    optional: true
-
-  '@fallow-cli/linux-x64-musl@2.69.0':
-    optional: true
-
-  '@fallow-cli/win32-arm64-msvc@2.69.0':
-    optional: true
-
-  '@fallow-cli/win32-x64-msvc@2.69.0':
-    optional: true
 
   '@grpc/grpc-js@1.14.3':
     dependencies:
@@ -4408,19 +4336,6 @@ snapshots:
       '@esbuild/win32-x64': 0.27.7
 
   escalade@3.2.0: {}
-
-  fallow@2.69.0:
-    dependencies:
-      detect-libc: 2.1.2
-    optionalDependencies:
-      '@fallow-cli/darwin-arm64': 2.69.0
-      '@fallow-cli/darwin-x64': 2.69.0
-      '@fallow-cli/linux-arm64-gnu': 2.69.0
-      '@fallow-cli/linux-arm64-musl': 2.69.0
-      '@fallow-cli/linux-x64-gnu': 2.69.0
-      '@fallow-cli/linux-x64-musl': 2.69.0
-      '@fallow-cli/win32-arm64-msvc': 2.69.0
-      '@fallow-cli/win32-x64-msvc': 2.69.0
 
   fast-content-type-parse@3.0.0: {}
 
