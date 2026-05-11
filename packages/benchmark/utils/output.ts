@@ -1,3 +1,4 @@
+import type { GcSummary } from './gc.js'
 import type { MemoryUsageSnapshot } from './memory.js'
 import {
   createBenchmarkResult,
@@ -19,6 +20,22 @@ interface MemoryBenchmarkResult {
     peakDelta: MemoryUsageSnapshot
     retainedDelta: MemoryUsageSnapshot
   }
+  gc: GcSummary
+}
+
+interface OutputOptions {
+  title?: string
+  useColors: boolean
+  showCharts?: boolean
+}
+
+interface ThroughputChartEntry {
+  label: string
+  result: BenchmarkResult
+}
+
+interface MemoryEfficiencyEntry extends ThroughputChartEntry {
+  rssDelta: number
 }
 
 const styles = {
@@ -32,10 +49,7 @@ const styles = {
   gray: '\u001B[90m',
 }
 
-export function printBenchmarkResults(
-  results: Record<string, BenchmarkResult>,
-  options: { title?: string; useColors: boolean },
-) {
+export function printBenchmarkResults(results: Record<string, BenchmarkResult>, options: OutputOptions) {
   const entries = Object.entries(results).toSorted(
     ([, left], [, right]) => throughputValue(left) - throughputValue(right),
   )
@@ -61,9 +75,16 @@ export function printBenchmarkResults(
     },
     options.useColors,
   )
+
+  if (options.showCharts ?? true) {
+    printThroughputChart(
+      entries.map(([label, result]) => ({ label, result })),
+      options.useColors,
+    )
+  }
 }
 
-export function printMemoryResults(results: readonly MemoryBenchmarkResult[], options: { useColors: boolean }) {
+export function printMemoryResults(results: readonly MemoryBenchmarkResult[], options: OutputOptions) {
   const rankedResults = results
     .map((result) => ({
       result,
@@ -124,7 +145,7 @@ export function printMemoryResults(results: readonly MemoryBenchmarkResult[], op
 
   printTable(
     {
-      title: 'Consumer benchmark (isolated process + memory)',
+      title: 'Consumer benchmark (isolated process + lifecycle memory)',
       headers: [
         '#',
         'Scenario',
@@ -144,6 +165,75 @@ export function printMemoryResults(results: readonly MemoryBenchmarkResult[], op
     },
     options.useColors,
   )
+
+  printGcResults(
+    rankedResults.map(({ result }) => ({ label: result.scenario.label, gc: result.gc })),
+    options.useColors,
+  )
+
+  if (options.showCharts ?? true) {
+    printThroughputChart(
+      rankedResults.map(({ result, benchmarkResult }) => ({ label: result.scenario.label, result: benchmarkResult })),
+      options.useColors,
+    )
+    printMemoryEfficiencyChart(
+      rankedResults.map(({ result, benchmarkResult }) => ({
+        label: result.scenario.label,
+        result: benchmarkResult,
+        rssDelta: result.memory.peakDelta.rss,
+      })),
+      options.useColors,
+    )
+  }
+}
+
+function printGcResults(results: readonly { label: string; gc: GcSummary }[], useColors: boolean) {
+  const rankedResults = results.toSorted((left, right) => left.gc.totalDurationMs - right.gc.totalDurationMs)
+  const totalDurations = rankedResults.map(({ gc }) => gc.totalDurationMs)
+  const activeShares = rankedResults.map(({ gc }) => gcShare(gc))
+  const totalCounts = rankedResults.map(({ gc }) => gc.totalCount)
+  const maxDurations = rankedResults.map(({ gc }) => gc.maxDurationMs)
+  const forcedCounts = rankedResults.map(({ gc }) => gc.forcedCount)
+
+  const rows = rankedResults.map(({ label, gc }, index) => {
+    const colors = resultColor(rankedResults.length - index - 1, rankedResults.length)
+
+    return [
+      colorize(String(index + 1), useColors, ...colors),
+      colorize(label, useColors, ...colors),
+      colorize(formatDurationMs(gc.totalDurationMs), useColors, ...memoryColor(gc.totalDurationMs, totalDurations)),
+      colorize(formatPercent(gcShare(gc)), useColors, ...memoryColor(gcShare(gc), activeShares)),
+      colorize(String(gc.totalCount), useColors, ...memoryColor(gc.totalCount, totalCounts)),
+      colorize(formatDurationMs(averageGcDurationMs(gc)), useColors, styles.gray),
+      colorize(formatDurationMs(gc.maxDurationMs), useColors, ...memoryColor(gc.maxDurationMs, maxDurations)),
+      colorize(String(gc.minorCount), useColors),
+      colorize(String(gc.majorCount), useColors),
+      colorize(String(gc.incrementalCount), useColors),
+      colorize(String(gc.forcedCount), useColors, ...memoryColor(gc.forcedCount, forcedCounts)),
+    ]
+  })
+
+  printTable(
+    {
+      title: 'GC comparison (measured message window, lower is better)',
+      headers: [
+        '#',
+        'Scenario',
+        'GC time',
+        'GC share',
+        'Events',
+        'Avg pause',
+        'Max pause',
+        'Minor',
+        'Major',
+        'Incr',
+        'Forced',
+      ],
+      rows,
+      rightAlignedColumns: new Set([0, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+    },
+    useColors,
+  )
 }
 
 function formatBytes(bytes: number): string {
@@ -159,6 +249,26 @@ function formatBytes(bytes: number): string {
   }
 
   return `${sign}${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+function formatDurationMs(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${durationMs.toFixed(2)} ms`
+  }
+
+  return `${(durationMs / 1000).toFixed(2)} s`
+}
+
+function formatPercent(value: number): string {
+  return `${value.toFixed(2)} %`
+}
+
+function averageGcDurationMs(gc: GcSummary): number {
+  return gc.totalCount > 0 ? gc.totalDurationMs / gc.totalCount : 0
+}
+
+function gcShare(gc: GcSummary): number {
+  return gc.activeDurationMs > 0 ? (gc.totalDurationMs / gc.activeDurationMs) * 100 : 0
 }
 
 function colorize(value: string, useColors: boolean, ...codes: string[]): string {
@@ -228,6 +338,99 @@ function memoryColor(bytes: number, values: readonly number[], preferLower = tru
   }
 
   return [styles.yellow]
+}
+
+function printThroughputChart(entries: readonly ThroughputChartEntry[], useColors: boolean) {
+  const rankedEntries = entries
+    .filter((entry) => entry.result.success)
+    .toSorted((left, right) => throughputValue(right.result) - throughputValue(left.result))
+
+  const fastestThroughput = throughputValue(rankedEntries[0]?.result ?? emptyBenchmarkResult)
+  const rows = rankedEntries.map((entry, index) => {
+    const throughput = throughputValue(entry.result)
+    const relative = fastestThroughput > 0 ? throughput / fastestThroughput : 0
+    const colors = resultColor(rankedEntries.length - index - 1, rankedEntries.length)
+
+    return [
+      colorize(String(index + 1), useColors, ...colors),
+      colorize(entry.label, useColors, ...colors),
+      colorize(formatThroughput(entry.result), useColors, ...colors),
+      colorize(formatBar(relative), useColors, ...colors),
+    ]
+  })
+
+  printTable(
+    {
+      title: 'Throughput comparison (fastest = 100%)',
+      headers: ['#', 'Scenario', 'Result', 'Relative'],
+      rows,
+      rightAlignedColumns: new Set([0, 2]),
+    },
+    useColors,
+  )
+}
+
+function printMemoryEfficiencyChart(entries: readonly MemoryEfficiencyEntry[], useColors: boolean) {
+  const rankedEntries = entries
+    .filter((entry) => entry.result.success && entry.rssDelta > 0)
+    .map((entry) => ({
+      label: entry.label,
+      result: entry.result,
+      rssDelta: entry.rssDelta,
+      opsPerMiB: throughputValue(entry.result) / (entry.rssDelta / 1024 / 1024),
+    }))
+    .toSorted((left, right) => right.opsPerMiB - left.opsPerMiB)
+
+  const bestEfficiency = rankedEntries[0]?.opsPerMiB ?? 0
+  const rows = rankedEntries.map((entry, index) => {
+    const relative = bestEfficiency > 0 ? entry.opsPerMiB / bestEfficiency : 0
+    const colors = resultColor(rankedEntries.length - index - 1, rankedEntries.length)
+
+    return [
+      colorize(String(index + 1), useColors, ...colors),
+      colorize(entry.label, useColors, ...colors),
+      colorize(`${entry.opsPerMiB.toFixed(0)} op/sec/MiB`, useColors, ...colors),
+      colorize(
+        formatBytes(entry.rssDelta),
+        useColors,
+        ...memoryColor(
+          entry.rssDelta,
+          rankedEntries.map((item) => item.rssDelta),
+        ),
+      ),
+      colorize(formatBar(relative), useColors, ...colors),
+    ]
+  })
+
+  printTable(
+    {
+      title: 'Memory efficiency comparison (throughput per RSS delta MiB)',
+      headers: ['#', 'Scenario', 'Efficiency', 'RSS delta', 'Relative'],
+      rows,
+      rightAlignedColumns: new Set([0, 2, 3]),
+    },
+    useColors,
+  )
+}
+
+function formatBar(ratio: number): string {
+  const width = 24
+  const clampedRatio = Math.min(1, Math.max(0, ratio))
+  const filledWidth = Math.round(clampedRatio * width)
+  const emptyWidth = width - filledWidth
+
+  return `[${'#'.repeat(filledWidth)}${'.'.repeat(emptyWidth)}] ${(clampedRatio * 100).toFixed(1)} %`
+}
+
+const emptyBenchmarkResult: BenchmarkResult = {
+  success: false,
+  size: 0,
+  min: 0,
+  max: 0,
+  mean: 0,
+  stddev: 0,
+  standardError: 0,
+  percentiles: {},
 }
 
 function printTable(

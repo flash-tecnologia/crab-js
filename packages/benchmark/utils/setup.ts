@@ -2,7 +2,7 @@ import { Admin as PlatformaticKafkaAdmin } from '@platformatic/kafka'
 import { KafkaClient, type MessageProducer } from 'kafka-crab-js'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { brokers, partitionCount, topic } from './definitions.js'
-import { readNonNegativeInteger, readPositiveInteger } from './env.js'
+import { readPositiveInteger } from './env.js'
 import { createBenchmarkMessage, createBenchmarkPartitionKeys } from './messages.js'
 
 type PlatformaticKafkaAdminClient = InstanceType<typeof PlatformaticKafkaAdmin>
@@ -77,8 +77,7 @@ export async function prepareConsumerData() {
   const partitionKeys = createBenchmarkPartitionKeys(partitionCount)
 
   const benchmarkIterations = readPositiveInteger('BENCHMARK_ITERATIONS', 100_000)
-  const warmupMessages = readNonNegativeInteger('BENCHMARK_WARMUP_MESSAGES', 0)
-  const max = readPositiveInteger('BENCHMARK_SETUP_MESSAGES', benchmarkIterations + warmupMessages)
+  const max = readPositiveInteger('BENCHMARK_SETUP_MESSAGES', benchmarkIterations)
   const batchSize = readPositiveInteger('BENCHMARK_SETUP_BATCH_SIZE', 10_000)
 
   console.log(`Starting to produce ${max} messages...`)

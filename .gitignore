@@ -200,3 +200,6 @@ packages/kafka-crab-js/target
 !.yarn/versions
 
 *.node
+
+# Local benchmark profiling artifacts
+packages/benchmark/.profiles/

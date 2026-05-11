@@ -13,12 +13,16 @@
     "setup:consumer": "tsx utils/setup.ts",
     "benchmark": "node --expose-gc --import tsx consumer.ts",
     "benchmark:isolated": "BENCHMARK_MEMORY=0 BENCHMARK_ISOLATED=1 node --expose-gc --import tsx consumer.ts",
-    "benchmark:isolated:quick": "BENCHMARK_MEMORY=0 BENCHMARK_ISOLATED=1 BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=1 BENCHMARK_WARMUP_RUNS=0 node --expose-gc --import tsx consumer.ts",
+    "benchmark:isolated:quick": "BENCHMARK_MEMORY=0 BENCHMARK_ISOLATED=1 BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=1 node --expose-gc --import tsx consumer.ts",
     "benchmark:sequential": "BENCHMARK_MEMORY=0 node --expose-gc --import tsx consumer.ts",
     "benchmark:batch": "BENCHMARK_MEMORY=0 BENCHMARK_ONLY=v4-batch,kafkajs-batch BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=5 node --expose-gc --import tsx consumer.ts",
     "benchmark:batch:quick": "BENCHMARK_MEMORY=0 BENCHMARK_ONLY=v4-batch,kafkajs-batch BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts",
     "benchmark:memory": "BENCHMARK_MEMORY=1 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts",
-    "benchmark:memory:quick": "BENCHMARK_MEMORY=1 BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=1 BENCHMARK_WARMUP_RUNS=0 node --expose-gc --import tsx consumer.ts"
+    "benchmark:memory:quick": "BENCHMARK_MEMORY=1 BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=1 node --expose-gc --import tsx consumer.ts",
+    "benchmark:profile:cpu": "mkdir -p .profiles && BENCHMARK_MEMORY=0 BENCHMARK_ONLY=${BENCHMARK_ONLY:-v4-batch} node --cpu-prof --cpu-prof-dir=.profiles --cpu-prof-name=benchmark.cpuprofile --expose-gc --import tsx consumer.ts",
+    "benchmark:profile:gc": "mkdir -p .profiles && BENCHMARK_MEMORY=0 BENCHMARK_ONLY=${BENCHMARK_ONLY:-v4-batch} node --trace-gc --trace-gc-nvp --expose-gc --import tsx consumer.ts > .profiles/gc-trace.log 2>&1 && echo \"GC trace: .profiles/gc-trace.log\"",
+    "benchmark:profile:heap": "mkdir -p .profiles && BENCHMARK_MEMORY=0 BENCHMARK_ONLY=${BENCHMARK_ONLY:-v4-batch} node --heap-prof --heap-prof-dir=.profiles --heap-prof-name=benchmark.heapprofile --expose-gc --import tsx consumer.ts",
+    "benchmark:profile:v8": "mkdir -p .profiles && rm -f .profiles/isolate-*-benchmark-v8.log .profiles/v8-processed.txt && BENCHMARK_MEMORY=0 BENCHMARK_ONLY=${BENCHMARK_ONLY:-v4-batch} node --prof --logfile=.profiles/benchmark-v8.log --expose-gc --import tsx consumer.ts && node --prof-process .profiles/isolate-*-benchmark-v8.log > .profiles/v8-processed.txt && echo \"Processed V8 profile: .profiles/v8-processed.txt\""
   },
   "dependencies": {
     "@platformatic/kafka": "^1.33.0",
