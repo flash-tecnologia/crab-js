@@ -155,7 +155,6 @@ export type CommitMode =  'Sync'|
 export interface CompactMessageBatch {
   payloads: Array<Buffer>
   keys?: Array<Buffer | undefined>
-  denseKeys?: Array<Buffer>
   sharedKey?: Buffer
   keyDictionary?: Array<Buffer>
   keyDictionaryIndexes?: Array<number>
@@ -166,9 +165,6 @@ export interface CompactMessageBatch {
   sharedHeaderKey?: string
   sharedHeaderValue?: Buffer
   sharedHeaderValues?: Array<Buffer | undefined>
-  denseSharedHeaderValues?: Array<Buffer>
-  headerValueDictionary?: Array<Buffer>
-  headerValueDictionaryIndexes?: Array<number>
   headers?: Array<Record<string, Buffer> | undefined>
 }
 

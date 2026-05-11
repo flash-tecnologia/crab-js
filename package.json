@@ -28,6 +28,7 @@
     "@opentelemetry/sdk-trace-node": "catalog:",
     "@opentelemetry/semantic-conventions": "catalog:",
     "@types/node": "25.6.2",
+    "fallow": "^2.69.0",
     "kafka-crab-js": "workspace:*",
     "kafka-crab-js-otel": "workspace:*",
     "nanoid": "catalog:",
@@ -36,7 +37,7 @@
     "vite-plus": "0.1.20"
   },
   "engines": {
-    "node": ">=24"
+    "node": "24"
   },
   "packageManager": "pnpm@11.0.9"
 }

@@ -213,7 +213,7 @@ test('Web Stream Consumer Integration Tests', async (t) => {
     }
   })
 
-  await t.test('KafkaConsumer.recvBatchStreamCompact compacts repeated keys and header values', async () => {
+  await t.test('KafkaConsumer.recvBatchStreamCompact preserves keyed messages with shared header values', async () => {
     const topic = createTestTopic('compact-batch')
     const testId = `compact-batch-${Date.now()}`
     const repeatedHeaderValue = Buffer.from('shared-header-value')
@@ -245,14 +245,15 @@ test('Web Stream Consumer Integration Tests', async (t) => {
       equal(value.topic, topic, 'Compact batch should preserve shared topic')
       equal(value.keyDictionary?.length, repeatedKeys.length, 'Compact batch should dictionary-encode repeated keys')
       equal(value.keyDictionaryIndexes?.length, messages.length, 'Compact batch should emit key dictionary indexes')
+      equal(value.keys, undefined, 'Compact batch should avoid one key slot per message for repeated keys')
       equal(value.sharedHeaderKey, 'test-header', 'Compact batch should preserve the shared header key')
       ok(value.sharedHeaderValue?.equals(repeatedHeaderValue), 'Compact batch should share the repeated header value')
-      equal(value.denseKeys, undefined, 'Compact batch should avoid dense key payloads for repeated keys')
       equal(
-        value.denseSharedHeaderValues,
+        value.sharedHeaderValues,
         undefined,
-        'Compact batch should avoid dense shared header values when one value repeats',
+        'Compact batch should avoid per-message header values when one repeats',
       )
+      equal(value.headers, undefined, 'Compact batch should avoid per-message header maps for shared headers')
     } finally {
       await cleanupConsumer(consumer)
     }
@@ -291,13 +292,6 @@ test('Web Stream Consumer Integration Tests', async (t) => {
       equal(compactBatch.topic, topic, 'Compact batch should preserve shared topic')
       ok(compactBatch.sharedKey?.equals(sharedKey), 'Compact batch should expose the shared key')
       equal(compactBatch.keys, undefined, 'Compact batch should avoid sparse keys for a shared key')
-      equal(compactBatch.denseKeys, undefined, 'Compact batch should avoid dense keys for a shared key')
-      equal(compactBatch.keyDictionary, undefined, 'Compact batch should avoid key dictionaries for a shared key')
-      equal(
-        compactBatch.keyDictionaryIndexes,
-        undefined,
-        'Compact batch should avoid key dictionary indexes for a shared key',
-      )
       equal(compactBatch.sharedHeaderKey, 'test-header', 'Compact batch should preserve the shared header key')
       ok(
         compactBatch.sharedHeaderValue?.equals(sharedHeaderValue),
@@ -307,21 +301,6 @@ test('Web Stream Consumer Integration Tests', async (t) => {
         compactBatch.sharedHeaderValues,
         undefined,
         'Compact batch should avoid sparse shared header values when one value repeats',
-      )
-      equal(
-        compactBatch.denseSharedHeaderValues,
-        undefined,
-        'Compact batch should avoid dense shared header values when one value repeats',
-      )
-      equal(
-        compactBatch.headerValueDictionary,
-        undefined,
-        'Compact batch should avoid header dictionaries when one value repeats',
-      )
-      equal(
-        compactBatch.headerValueDictionaryIndexes,
-        undefined,
-        'Compact batch should avoid header dictionary indexes when one value repeats',
       )
       equal(compactBatch.headers, undefined, 'Compact batch should avoid per-message header maps for shared headers')
     } finally {
@@ -359,7 +338,7 @@ test('Web Stream Consumer Integration Tests', async (t) => {
     }
   })
 
-  await t.test('KafkaConsumer.recvBatchStreamCompact dictionary-encodes repeated header values', async () => {
+  await t.test('KafkaConsumer.recvBatchStreamCompact preserves repeated header values', async () => {
     const topic = createTestTopic('compact-header-dictionary')
     const testId = `compact-header-dictionary-${Date.now()}`
     const headerValues = ['header-a', 'header-b', 'header-c'].map((value) => Buffer.from(`${value}-${testId}`))
@@ -390,23 +369,15 @@ test('Web Stream Consumer Integration Tests', async (t) => {
       equal(compactBatch.payloads.length, messages.length, 'Compact batch should contain every payload')
       equal(compactBatch.topic, topic, 'Compact batch should preserve shared topic')
       equal(compactBatch.sharedHeaderKey, 'test-header', 'Compact batch should preserve the shared header key')
-      equal(
-        compactBatch.headerValueDictionary?.length,
-        headerValues.length,
-        'Compact batch should dictionary-encode repeated header values',
-      )
-      equal(
-        compactBatch.headerValueDictionaryIndexes?.length,
-        messages.length,
-        'Compact batch should emit header dictionary indexes',
-      )
+      const compactHeaderValues = compactBatch.sharedHeaderValues ?? []
+      equal(compactHeaderValues.length, messages.length, 'Compact batch should emit header value slots')
+      for (const [index, value] of compactHeaderValues.entries()) {
+        ok(
+          value?.equals(headerValues[index % headerValues.length]),
+          'Compact batch should preserve per-message header values',
+        )
+      }
       equal(compactBatch.sharedHeaderValue, undefined, 'Compact batch should avoid a single shared header value')
-      equal(compactBatch.sharedHeaderValues, undefined, 'Compact batch should avoid sparse shared header values')
-      equal(
-        compactBatch.denseSharedHeaderValues,
-        undefined,
-        'Compact batch should avoid dense shared header values for repeated values',
-      )
       equal(
         compactBatch.headers,
         undefined,
@@ -514,21 +485,6 @@ test('Web Stream Consumer Integration Tests', async (t) => {
           compactBatch.sharedHeaderValues,
           undefined,
           'Compact batch should avoid sparse shared header values for heterogeneous headers',
-        )
-        equal(
-          compactBatch.denseSharedHeaderValues,
-          undefined,
-          'Compact batch should avoid dense shared header values for heterogeneous headers',
-        )
-        equal(
-          compactBatch.headerValueDictionary,
-          undefined,
-          'Compact batch should avoid header dictionaries for heterogeneous headers',
-        )
-        equal(
-          compactBatch.headerValueDictionaryIndexes,
-          undefined,
-          'Compact batch should avoid header dictionary indexes for heterogeneous headers',
         )
       } finally {
         await cleanupConsumer(compactConsumer)

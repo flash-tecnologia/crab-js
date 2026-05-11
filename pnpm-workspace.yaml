@@ -3,6 +3,7 @@ packages:
 
 allowBuilds:
   esbuild: true
+  fallow: true
   protobufjs: true
 
 catalog:

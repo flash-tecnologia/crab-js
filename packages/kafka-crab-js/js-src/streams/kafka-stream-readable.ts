@@ -14,7 +14,7 @@ export class KafkaStreamReadable extends BaseKafkaStreamReadable {
   private readInFlight = false
   private pendingRead = false
 
-  constructor(streamOptions: KafkaWebStreamReadableOptions) {
+  public constructor(streamOptions: KafkaWebStreamReadableOptions) {
     const { sourceStream, ...opts } = streamOptions
     super(opts)
     this.sourceReader = sourceStream?.getReader()
@@ -73,7 +73,7 @@ export class KafkaStreamReadable extends BaseKafkaStreamReadable {
    * Internal method called by the Readable stream to fetch single messages
    * @private
    */
-  _read() {
+  public _read() {
     if (this.readInFlight) {
       this.pendingRead = true
       return

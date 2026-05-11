@@ -132,7 +132,6 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
   const {
     payloads,
     keys,
-    denseKeys,
     sharedKey,
     keyDictionary,
     keyDictionaryIndexes,
@@ -143,9 +142,6 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
     sharedHeaderKey,
     sharedHeaderValue,
     sharedHeaderValues,
-    denseSharedHeaderValues,
-    headerValueDictionary,
-    headerValueDictionaryIndexes,
     headers,
   } = batch
 
@@ -157,9 +153,6 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
     sharedHeaderKey !== undefined &&
     sharedHeaderValue !== undefined &&
     sharedHeaderValues === undefined &&
-    denseSharedHeaderValues === undefined &&
-    headerValueDictionary === undefined &&
-    headerValueDictionaryIndexes === undefined &&
     headers === undefined
   ) {
     return expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
@@ -181,9 +174,6 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
     sharedHeaderKey !== undefined &&
     sharedHeaderValue !== undefined &&
     sharedHeaderValues === undefined &&
-    denseSharedHeaderValues === undefined &&
-    headerValueDictionary === undefined &&
-    headerValueDictionaryIndexes === undefined &&
     headers === undefined
   ) {
     return expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
@@ -197,185 +187,22 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
     )
   }
 
-  if (
-    topic !== undefined &&
-    topics === undefined &&
-    denseKeys !== undefined &&
-    sharedKey === undefined &&
-    keyDictionary === undefined &&
-    keyDictionaryIndexes === undefined &&
-    sharedHeaderKey !== undefined &&
-    sharedHeaderValue === undefined &&
-    denseSharedHeaderValues !== undefined &&
-    headerValueDictionary === undefined &&
-    headerValueDictionaryIndexes === undefined &&
-    headers === undefined
-  ) {
-    return expandCompactBatchSharedTopicWithDenseKeysAndSharedHeaders(
-      payloads,
-      denseKeys,
-      topic,
-      partitions,
-      offsets,
-      sharedHeaderKey,
-      denseSharedHeaderValues,
-    )
-  }
-
-  if (
-    topic !== undefined &&
-    topics === undefined &&
-    denseKeys !== undefined &&
-    sharedKey === undefined &&
-    keyDictionary === undefined &&
-    keyDictionaryIndexes === undefined &&
-    sharedHeaderKey === undefined &&
-    sharedHeaderValue === undefined &&
-    sharedHeaderValues === undefined &&
-    denseSharedHeaderValues === undefined &&
-    headerValueDictionary === undefined &&
-    headerValueDictionaryIndexes === undefined &&
-    headers === undefined
-  ) {
-    return expandCompactBatchSharedTopicWithDenseKeys(payloads, denseKeys, topic, partitions, offsets)
-  }
-
-  if (
-    topic !== undefined &&
-    topics === undefined &&
-    keys === undefined &&
-    denseKeys === undefined &&
-    sharedKey === undefined &&
-    keyDictionary === undefined &&
-    keyDictionaryIndexes === undefined &&
-    sharedHeaderKey !== undefined &&
-    sharedHeaderValue === undefined &&
-    denseSharedHeaderValues !== undefined &&
-    headerValueDictionary === undefined &&
-    headerValueDictionaryIndexes === undefined &&
-    headers === undefined
-  ) {
-    return expandCompactBatchSharedTopicWithSharedHeaders(
-      payloads,
-      topic,
-      partitions,
-      offsets,
-      sharedHeaderKey,
-      denseSharedHeaderValues,
-    )
-  }
-
-  if (
-    topic !== undefined &&
-    topics === undefined &&
-    keys === undefined &&
-    denseKeys === undefined &&
-    sharedKey === undefined &&
-    keyDictionary === undefined &&
-    keyDictionaryIndexes === undefined &&
-    sharedHeaderKey === undefined &&
-    sharedHeaderValue === undefined &&
-    sharedHeaderValues === undefined &&
-    denseSharedHeaderValues === undefined &&
-    headerValueDictionary === undefined &&
-    headerValueDictionaryIndexes === undefined &&
-    headers === undefined
-  ) {
-    return expandCompactBatchSharedTopic(payloads, topic, partitions, offsets)
-  }
-
   const messages = new Array<Message>(payloads.length)
 
   for (let index = 0; index < payloads.length; index += 1) {
     const payload = payloads[index]!
+    const dictionaryIndex = keyDictionaryIndexes?.[index]
     const key =
-      sharedKey ??
-      denseKeys?.[index] ??
-      (keyDictionaryIndexes?.[index] === undefined ? undefined : keyDictionary?.[keyDictionaryIndexes[index]!]) ??
-      keys?.[index]
-    const denseSharedHeaderValue = denseSharedHeaderValues?.[index]
-    const dictionaryHeaderValue =
-      headerValueDictionaryIndexes?.[index] === undefined
-        ? undefined
-        : headerValueDictionary?.[headerValueDictionaryIndexes[index]!]
+      sharedKey ?? keys?.[index] ?? (dictionaryIndex === undefined ? undefined : keyDictionary?.[dictionaryIndex])
+    const sharedValue = sharedHeaderValue ?? sharedHeaderValues?.[index]
     const messageHeaders =
       headers?.[index] ??
-      (sharedHeaderKey &&
-      (sharedHeaderValue !== undefined ||
-        denseSharedHeaderValue !== undefined ||
-        dictionaryHeaderValue !== undefined ||
-        sharedHeaderValues?.[index] !== undefined)
-        ? {
-            [sharedHeaderKey]: (sharedHeaderValue ??
-              denseSharedHeaderValue ??
-              dictionaryHeaderValue ??
-              sharedHeaderValues?.[index])!,
-          }
-        : undefined)
+      (sharedHeaderKey !== undefined && sharedValue !== undefined ? { [sharedHeaderKey]: sharedValue } : undefined)
     const messageTopic = (topic ?? topics?.[index])!
     const partition = partitions[index]!
     const offset = offsets[index]!
 
-    if (key === undefined && messageHeaders === undefined) {
-      messages[index] = {
-        payload,
-        topic: messageTopic,
-        partition,
-        offset,
-      }
-    } else if (messageHeaders === undefined) {
-      messages[index] = {
-        payload,
-        key,
-        topic: messageTopic,
-        partition,
-        offset,
-      }
-    } else if (key === undefined) {
-      messages[index] = {
-        payload,
-        headers: messageHeaders,
-        topic: messageTopic,
-        partition,
-        offset,
-      }
-    } else {
-      messages[index] = {
-        payload,
-        key,
-        headers: messageHeaders,
-        topic: messageTopic,
-        partition,
-        offset,
-      }
-    }
-  }
-
-  return messages
-}
-
-function expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
-  payloads: Buffer[],
-  sharedKey: Buffer,
-  topic: string,
-  partitions: number[],
-  offsets: number[],
-  sharedHeaderKey: string,
-  sharedHeaderValue: Buffer,
-): Message[] {
-  const messages = new Array<Message>(payloads.length)
-
-  for (let index = 0; index < payloads.length; index += 1) {
-    messages[index] = {
-      payload: payloads[index]!,
-      key: sharedKey,
-      headers: {
-        [sharedHeaderKey]: sharedHeaderValue,
-      },
-      topic,
-      partition: partitions[index]!,
-      offset: offsets[index]!,
-    }
+    messages[index] = createCompactMessage(payload, key, messageHeaders, messageTopic, partition, offset)
   }
 
   return messages
@@ -409,23 +236,23 @@ function expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
   return messages
 }
 
-function expandCompactBatchSharedTopicWithDenseKeysAndSharedHeaders(
+function expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
   payloads: Buffer[],
-  denseKeys: Buffer[],
+  sharedKey: Buffer,
   topic: string,
   partitions: number[],
   offsets: number[],
   sharedHeaderKey: string,
-  denseSharedHeaderValues: Buffer[],
+  sharedHeaderValue: Buffer,
 ): Message[] {
   const messages = new Array<Message>(payloads.length)
 
   for (let index = 0; index < payloads.length; index += 1) {
     messages[index] = {
       payload: payloads[index]!,
-      key: denseKeys[index]!,
+      key: sharedKey,
       headers: {
-        [sharedHeaderKey]: denseSharedHeaderValues[index]!,
+        [sharedHeaderKey]: sharedHeaderValue,
       },
       topic,
       partition: partitions[index]!,
@@ -436,71 +263,22 @@ function expandCompactBatchSharedTopicWithDenseKeysAndSharedHeaders(
   return messages
 }
 
-function expandCompactBatchSharedTopicWithDenseKeys(
-  payloads: Buffer[],
-  denseKeys: Buffer[],
+function createCompactMessage(
+  payload: Buffer,
+  key: Buffer | undefined,
+  headers: Record<string, Buffer> | undefined,
   topic: string,
-  partitions: number[],
-  offsets: number[],
-): Message[] {
-  const messages = new Array<Message>(payloads.length)
-
-  for (let index = 0; index < payloads.length; index += 1) {
-    messages[index] = {
-      payload: payloads[index]!,
-      key: denseKeys[index]!,
-      topic,
-      partition: partitions[index]!,
-      offset: offsets[index]!,
-    }
+  partition: number,
+  offset: number,
+): Message {
+  return {
+    payload,
+    ...(key === undefined ? {} : { key }),
+    ...(headers === undefined ? {} : { headers }),
+    topic,
+    partition,
+    offset,
   }
-
-  return messages
-}
-
-function expandCompactBatchSharedTopicWithSharedHeaders(
-  payloads: Buffer[],
-  topic: string,
-  partitions: number[],
-  offsets: number[],
-  sharedHeaderKey: string,
-  denseSharedHeaderValues: Buffer[],
-): Message[] {
-  const messages = new Array<Message>(payloads.length)
-
-  for (let index = 0; index < payloads.length; index += 1) {
-    messages[index] = {
-      payload: payloads[index]!,
-      headers: {
-        [sharedHeaderKey]: denseSharedHeaderValues[index]!,
-      },
-      topic,
-      partition: partitions[index]!,
-      offset: offsets[index]!,
-    }
-  }
-
-  return messages
-}
-
-function expandCompactBatchSharedTopic(
-  payloads: Buffer[],
-  topic: string,
-  partitions: number[],
-  offsets: number[],
-): Message[] {
-  const messages = new Array<Message>(payloads.length)
-
-  for (let index = 0; index < payloads.length; index += 1) {
-    messages[index] = {
-      payload: payloads[index]!,
-      topic,
-      partition: partitions[index]!,
-      offset: offsets[index]!,
-    }
-  }
-
-  return messages
 }
 
 function expandCompactBatchStream(compactStream: ReadableStream<CompactMessageBatch>): ReadableStream<Message[]> {
@@ -572,7 +350,7 @@ export class KafkaClient {
    * Creates a KafkaClient instance
    * @throws {Error} If the configuration is invalid
    */
-  constructor(kafkaConfiguration: KafkaClientConfiguration) {
+  public constructor(kafkaConfiguration: KafkaClientConfiguration) {
     const resolvedClientId = kafkaConfiguration.clientId ?? 'rdkafka'
     this.kafkaConfiguration = { ...kafkaConfiguration, clientId: resolvedClientId }
 
@@ -601,7 +379,7 @@ export class KafkaClient {
    * @param {ProducerConfiguration} [producerConfiguration] - Optional producer configuration
    * @returns {KafkaProducer} A KafkaProducer instance
    */
-  createProducer(producerConfiguration?: ProducerConfiguration) {
+  public createProducer(producerConfiguration?: ProducerConfiguration) {
     const producer = producerConfiguration
       ? this.kafkaClientConfig.createProducer(producerConfiguration)
       : this.kafkaClientConfig.createProducer({})
@@ -620,7 +398,7 @@ export class KafkaClient {
    * @returns {KafkaConsumer} A KafkaConsumer instance
    * @throws {Error} If the configuration is invalid
    */
-  createConsumer(consumerConfiguration: ConsumerConfiguration) {
+  public createConsumer(consumerConfiguration: ConsumerConfiguration) {
     const consumer = this.kafkaClientConfig.createConsumer(consumerConfiguration)
 
     // Instrument consumer for diagnostic channels if enabled
@@ -637,7 +415,7 @@ export class KafkaClient {
    * @returns {KafkaStreamReadable | KafkaBatchStreamReadable} A stream consumer instance
    * @throws {Error} If the configuration is invalid
    */
-  createStreamConsumer(
+  public createStreamConsumer(
     streamConfiguration: StreamConsumerConfiguration,
   ): KafkaStreamReadable | KafkaBatchStreamReadable {
     const { batchSize, batchTimeout, streamOptions, ...consumerConfiguration } = streamConfiguration
@@ -692,12 +470,12 @@ export class KafkaClient {
    * @param {WebStreamConsumerConfiguration} streamConfiguration - Stream consumer configuration
    * @returns {WebStreamConsumer} Native WebStream consumer and raw consumer pair
    */
-  createWebStreamConsumer(streamConfiguration: SerialWebStreamConsumerConfiguration): SerialWebStreamConsumer
-  createWebStreamConsumer<const BatchSizeValue extends number>(
+  public createWebStreamConsumer(streamConfiguration: SerialWebStreamConsumerConfiguration): SerialWebStreamConsumer
+  public createWebStreamConsumer<const BatchSizeValue extends number>(
     streamConfiguration: BatchLiteralWebStreamConsumerConfiguration<BatchSizeValue>,
   ): BatchWebStreamConsumer
-  createWebStreamConsumer(streamConfiguration: DynamicBatchWebStreamConsumerConfiguration): WebStreamConsumer
-  createWebStreamConsumer(streamConfiguration: WebStreamConsumerConfiguration): WebStreamConsumer {
+  public createWebStreamConsumer(streamConfiguration: DynamicBatchWebStreamConsumerConfiguration): WebStreamConsumer
+  public createWebStreamConsumer(streamConfiguration: WebStreamConsumerConfiguration): WebStreamConsumer {
     const { batchSize, batchTimeout, serialPrefetchSize, serialPrefetchTimeout, ...consumerConfiguration } =
       streamConfiguration
 

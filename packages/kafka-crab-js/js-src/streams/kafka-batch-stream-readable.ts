@@ -26,7 +26,7 @@ export class KafkaBatchStreamReadable extends BaseKafkaStreamReadable {
   /**
    * Creates a KafkaBatchStreamReadable instance
    */
-  constructor(streamOptions: KafkaBatchStreamReadableOptions) {
+  public constructor(streamOptions: KafkaBatchStreamReadableOptions) {
     const { batchSize, batchTimeout = DEFAULT_BATCH_TIMEOUT, sourceStream, kafkaConsumer, ...opts } = streamOptions
 
     // Set highWaterMark to batch size for optimal performance
@@ -42,7 +42,7 @@ export class KafkaBatchStreamReadable extends BaseKafkaStreamReadable {
    * Gets current batch configuration
    * @returns {object} Current batch settings
    */
-  getBatchConfig(): { batchSize: number; batchTimeout: number } {
+  public getBatchConfig(): { batchSize: number; batchTimeout: number } {
     return {
       batchSize: this.batchSize,
       batchTimeout: this.batchTimeout,
@@ -128,7 +128,7 @@ export class KafkaBatchStreamReadable extends BaseKafkaStreamReadable {
    * Internal method called by the Readable stream to fetch batch messages
    * @private
    */
-  _read() {
+  public _read() {
     if (this.destroyed) {
       return
     }

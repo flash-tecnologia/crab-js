@@ -135,13 +135,11 @@ enum HeaderBatchState {
 struct CompactBatchBuilder {
   payloads: Vec<Buffer>,
   keys: Option<Vec<Option<Buffer>>>,
-  keys_dense: bool,
   topic: Option<String>,
   topics: Option<Vec<String>>,
   partitions: Vec<i32>,
   offsets: Vec<i64>,
   headers: HeaderBatchState,
-  shared_header_values_dense: bool,
   capacity: usize,
 }
 
@@ -151,13 +149,11 @@ impl CompactBatchBuilder {
     Self {
       payloads: Vec::with_capacity(capacity),
       keys: None,
-      keys_dense: true,
       topic: None,
       topics: None,
       partitions: Vec::with_capacity(capacity),
       offsets: Vec::with_capacity(capacity),
       headers: HeaderBatchState::None,
-      shared_header_values_dense: true,
       capacity,
     }
   }
@@ -176,56 +172,20 @@ impl CompactBatchBuilder {
 
   #[inline]
   fn finish(self) -> CompactMessageBatch {
-    let (keys, dense_keys, shared_key, key_dictionary, key_dictionary_indexes) = match self.keys {
-      Some(keys) if self.keys_dense => match encode_dense_buffers(unwrap_dense_buffers(keys)) {
-        DenseBufferEncoding::Dense(values) => (None, Some(values), None, None, None),
-        DenseBufferEncoding::Shared(value) => (None, None, Some(value), None, None),
-        DenseBufferEncoding::Dictionary { values, indexes } => {
-          (None, None, None, Some(values), Some(indexes))
-        }
-      },
-      keys => (keys, None, None, None, None),
-    };
-
-    let (
-      shared_header_key,
-      shared_header_value,
-      shared_header_values,
-      dense_shared_header_values,
-      header_value_dictionary,
-      header_value_dictionary_indexes,
-      headers,
-    ) = match self.headers {
-      HeaderBatchState::None => (None, None, None, None, None, None, None),
-      HeaderBatchState::SharedSingle { key, values } if self.shared_header_values_dense => {
-        match encode_dense_buffers(unwrap_dense_buffers(values)) {
-          DenseBufferEncoding::Dense(values) => {
-            (Some(key), None, None, Some(values), None, None, None)
-          }
-          DenseBufferEncoding::Shared(value) => {
-            (Some(key), Some(value), None, None, None, None, None)
-          }
-          DenseBufferEncoding::Dictionary { values, indexes } => (
-            Some(key),
-            None,
-            None,
-            None,
-            Some(values),
-            Some(indexes),
-            None,
-          ),
-        }
-      }
+    let (keys, shared_key, key_dictionary, key_dictionary_indexes) =
+      encode_optional_dictionary_buffer(self.keys);
+    let (shared_header_key, shared_header_value, shared_header_values, headers) = match self.headers {
+      HeaderBatchState::None => (None, None, None, None),
       HeaderBatchState::SharedSingle { key, values } => {
-        (Some(key), None, Some(values), None, None, None, None)
+        let (values, shared_value) = encode_optional_shared_buffer(Some(values));
+        (Some(key), shared_value, values, None)
       }
-      HeaderBatchState::Many(headers) => (None, None, None, None, None, None, Some(headers)),
+      HeaderBatchState::Many(headers) => (None, None, None, Some(headers)),
     };
 
     CompactMessageBatch {
       payloads: self.payloads,
       keys,
-      dense_keys,
       shared_key,
       key_dictionary,
       key_dictionary_indexes,
@@ -236,9 +196,6 @@ impl CompactBatchBuilder {
       shared_header_key,
       shared_header_value,
       shared_header_values,
-      dense_shared_header_values,
-      header_value_dictionary,
-      header_value_dictionary_indexes,
       headers,
     }
   }
@@ -247,22 +204,14 @@ impl CompactBatchBuilder {
   fn push_key(&mut self, key: Option<&[u8]>, previous_count: usize) {
     match (&mut self.keys, key) {
       (Some(keys), Some(key)) => keys.push(Some(key.into())),
-      (Some(keys), None) => {
-        self.keys_dense = false;
-        keys.push(None);
-      }
+      (Some(keys), None) => keys.push(None),
       (None, Some(key)) => {
         let mut keys = Vec::with_capacity(self.capacity);
         keys.resize_with(previous_count, || None);
         keys.push(Some(key.into()));
-        if previous_count > 0 {
-          self.keys_dense = false;
-        }
         self.keys = Some(keys);
       }
-      (None, None) => {
-        self.keys_dense = false;
-      }
+      (None, None) => {}
     }
   }
 
@@ -292,23 +241,17 @@ impl CompactBatchBuilder {
   fn push_headers(&mut self, headers_input: Option<&BorrowedHeaders>, previous_count: usize) {
     match &mut self.headers {
       HeaderBatchState::None => match project_headers(headers_input) {
-        HeaderProjection::None => {
-          self.shared_header_values_dense = false;
-        }
+        HeaderProjection::None => {}
         HeaderProjection::Single { key, value } => {
           let mut values = Vec::with_capacity(self.capacity);
           values.resize_with(previous_count, || None);
           values.push(Some(value.into()));
-          if previous_count > 0 {
-            self.shared_header_values_dense = false;
-          }
           self.headers = HeaderBatchState::SharedSingle {
             key: key.to_owned(),
             values,
           };
         }
         HeaderProjection::Many(message_headers) => {
-          self.shared_header_values_dense = false;
           let mut header_batches = Vec::with_capacity(self.capacity);
           header_batches.resize_with(previous_count, || None);
           header_batches.push(Some(message_headers));
@@ -317,7 +260,6 @@ impl CompactBatchBuilder {
       },
       HeaderBatchState::SharedSingle { key, values } => match project_headers(headers_input) {
         HeaderProjection::None => {
-          self.shared_header_values_dense = false;
           values.push(None);
         }
         HeaderProjection::Single {
@@ -330,7 +272,6 @@ impl CompactBatchBuilder {
           key: header_key,
           value,
         } => {
-          self.shared_header_values_dense = false;
           let mut header_batches = shared_single_to_many(mem::take(values), key);
           header_batches.push(Some(MessageHeaders::one(
             header_key.to_owned(),
@@ -339,7 +280,6 @@ impl CompactBatchBuilder {
           self.headers = HeaderBatchState::Many(header_batches);
         }
         HeaderProjection::Many(message_headers) => {
-          self.shared_header_values_dense = false;
           let mut header_batches = shared_single_to_many(mem::take(values), key);
           header_batches.push(Some(message_headers));
           self.headers = HeaderBatchState::Many(header_batches);
@@ -403,20 +343,36 @@ fn shared_single_to_many(
 }
 
 #[inline]
-fn unwrap_dense_buffers(values: Vec<Option<Buffer>>) -> Vec<Buffer> {
-  values
-    .into_iter()
-    .map(|value| value.expect("dense compact buffers must not contain undefined entries"))
-    .collect()
-}
+fn encode_optional_shared_buffer(
+  values: Option<Vec<Option<Buffer>>>,
+) -> (Option<Vec<Option<Buffer>>>, Option<Buffer>) {
+  let Some(values) = values else {
+    return (None, None);
+  };
 
-enum DenseBufferEncoding {
-  Dense(Vec<Buffer>),
-  Shared(Buffer),
-  Dictionary {
-    values: Vec<Buffer>,
-    indexes: Vec<u8>,
-  },
+  if values.is_empty() {
+    return (None, None);
+  }
+
+  let is_shared = match values.first() {
+    Some(Some(first_value)) => values.iter().all(|value| {
+      value
+        .as_ref()
+        .is_some_and(|value| value.as_ref() == first_value.as_ref())
+    }),
+    _ => false,
+  };
+
+  if is_shared {
+    let shared_value = values
+      .into_iter()
+      .next()
+      .flatten()
+      .expect("shared compact buffers must contain at least one value");
+    return (None, Some(shared_value));
+  }
+
+  (Some(values), None)
 }
 
 #[inline]
@@ -427,35 +383,55 @@ fn should_dictionary_encode(total: usize, unique: usize) -> bool {
 }
 
 #[inline]
-fn encode_dense_buffers(values: Vec<Buffer>) -> DenseBufferEncoding {
+fn encode_optional_dictionary_buffer(
+  values: Option<Vec<Option<Buffer>>>,
+) -> (
+  Option<Vec<Option<Buffer>>>,
+  Option<Buffer>,
+  Option<Vec<Buffer>>,
+  Option<Vec<u8>>,
+) {
+  let Some(values) = values else {
+    return (None, None, None, None);
+  };
+
   if values.is_empty() {
-    return DenseBufferEncoding::Dense(values);
+    return (None, None, None, None);
   }
 
-  if values[1..]
-    .iter()
-    .all(|value| value.as_ref() == values[0].as_ref())
-  {
-    return DenseBufferEncoding::Shared(
-      values
-        .into_iter()
-        .next()
-        .expect("dense buffer batches must contain at least one value"),
-    );
+  if values.iter().any(Option::is_none) {
+    return (Some(values), None, None, None);
+  }
+
+  let first_value = values[0]
+    .as_ref()
+    .expect("compact key dictionary buffers must contain at least one value");
+
+  if values.iter().all(|value| {
+    value
+      .as_ref()
+      .is_some_and(|value| value.as_ref() == first_value.as_ref())
+  }) {
+    let shared_value = values
+      .into_iter()
+      .next()
+      .flatten()
+      .expect("shared compact key buffers must contain at least one value");
+    return (None, Some(shared_value), None, None);
   }
 
   let mut dictionary_lookup: HashMap<Vec<u8>, u8> = HashMap::new();
   let mut dictionary_values = Vec::new();
   let mut dictionary_indexes = Vec::with_capacity(values.len());
 
-  for value in &values {
+  for value in values.iter().flatten() {
     if let Some(index) = dictionary_lookup.get(value.as_ref()) {
       dictionary_indexes.push(*index);
       continue;
     }
 
     if dictionary_values.len() >= BUFFER_DICTIONARY_MAX_UNIQUE_VALUES {
-      return DenseBufferEncoding::Dense(values);
+      return (Some(values), None, None, None);
     }
 
     let index = dictionary_values.len() as u8;
@@ -464,14 +440,11 @@ fn encode_dense_buffers(values: Vec<Buffer>) -> DenseBufferEncoding {
     dictionary_indexes.push(index);
   }
 
-  if should_dictionary_encode(values.len(), dictionary_values.len()) {
-    DenseBufferEncoding::Dictionary {
-      values: dictionary_values,
-      indexes: dictionary_indexes,
-    }
-  } else {
-    DenseBufferEncoding::Dense(values)
+  if should_dictionary_encode(dictionary_indexes.len(), dictionary_values.len()) {
+    return (None, None, Some(dictionary_values), Some(dictionary_indexes));
   }
+
+  (Some(values), None, None, None)
 }
 
 #[inline]

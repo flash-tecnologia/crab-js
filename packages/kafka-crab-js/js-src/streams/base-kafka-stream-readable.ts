@@ -16,7 +16,7 @@ export abstract class BaseKafkaStreamReadable extends Readable {
   /**
    * Creates a BaseKafkaStreamReadable instance
    */
-  constructor(streamOptions: KafkaStreamReadableOptions) {
+  public constructor(streamOptions: KafkaStreamReadableOptions) {
     const { kafkaConsumer, ...opts } = streamOptions
 
     super(opts)
@@ -28,7 +28,7 @@ export abstract class BaseKafkaStreamReadable extends Readable {
     this._kafkaConsumer = kafkaConsumer
   }
 
-  get kafkaConsumer(): KafkaConsumer {
+  public get kafkaConsumer(): KafkaConsumer {
     return this._kafkaConsumer
   }
 
@@ -36,25 +36,25 @@ export abstract class BaseKafkaStreamReadable extends Readable {
    * Checks if the stream is currently paused
    * @returns {boolean} True if the stream is paused
    */
-  isPaused(): boolean {
+  public isPaused(): boolean {
     return this.readableFlowing === false
   }
 
   /**
    * Subscribes to topics
    */
-  async subscribe(topics: string | TopicPartitionConfig[]) {
+  public async subscribe(topics: string | TopicPartitionConfig[]) {
     if (!topics || (Array.isArray(topics) && topics.length === 0)) {
       throw new Error('Topics must be a non-empty string or array.')
     }
     await this.kafkaConsumer.subscribe(topics)
   }
 
-  seek(topic: string, partition: number, offsetModel: OffsetModel, timeout?: number) {
+  public seek(topic: string, partition: number, offsetModel: OffsetModel, timeout?: number) {
     this.kafkaConsumer.seek(topic, partition, offsetModel, timeout)
   }
 
-  async commit(topic: string, partition: number, offset: number, commitMode: CommitMode) {
+  public async commit(topic: string, partition: number, offset: number, commitMode: CommitMode) {
     return this.kafkaConsumer.commit(topic, partition, offset, commitMode)
   }
 
@@ -65,21 +65,21 @@ export abstract class BaseKafkaStreamReadable extends Readable {
    * @param message - The message to commit
    * @param commitMode - The commit mode ('Sync' or 'Async')
    */
-  async commitMessage(message: Message, commitMode: CommitMode) {
+  public async commitMessage(message: Message, commitMode: CommitMode) {
     return this.kafkaConsumer.commitMessage(message, commitMode)
   }
 
   /**
    * Unsubscribe from topics
    */
-  unsubscribe() {
+  public unsubscribe() {
     this.kafkaConsumer.unsubscribe()
   }
 
   /**
    * Disconnects the Kafka consumer
    */
-  async disconnect() {
+  public async disconnect() {
     await this.kafkaConsumer.disconnect()
   }
 
@@ -87,7 +87,7 @@ export abstract class BaseKafkaStreamReadable extends Readable {
    * Returns the raw Kafka consumer
    * @returns {KafkaConsumer} The Kafka consumer instance
    */
-  rawConsumer() {
+  public rawConsumer() {
     return this.kafkaConsumer
   }
 
@@ -107,7 +107,7 @@ export abstract class BaseKafkaStreamReadable extends Readable {
    * Ensures proper cleanup of the Kafka consumer
    * @private
    */
-  _destroy(error: Error | null, callback: (error?: Error | null) => void): void {
+  public _destroy(error: Error | null, callback: (error?: Error | null) => void): void {
     const finalizeDestroy = (sourceCancelError?: Error) => {
       // Always unsubscribe first to stop receiving messages
       try {
@@ -154,5 +154,5 @@ export abstract class BaseKafkaStreamReadable extends Readable {
    * Abstract method that must be implemented by concrete classes
    * @private
    */
-  abstract _read(): void
+  public abstract _read(): void
 }

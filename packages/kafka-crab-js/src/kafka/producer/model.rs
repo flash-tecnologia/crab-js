@@ -144,7 +144,6 @@ pub struct CompactMessageBatch {
   pub payloads: Vec<Buffer>,
   #[napi(ts_type = "Array<Buffer | undefined>")]
   pub keys: Option<Vec<Option<Buffer>>>,
-  pub dense_keys: Option<Vec<Buffer>>,
   pub shared_key: Option<Buffer>,
   pub key_dictionary: Option<Vec<Buffer>>,
   #[napi(ts_type = "Array<number>")]
@@ -157,10 +156,6 @@ pub struct CompactMessageBatch {
   pub shared_header_value: Option<Buffer>,
   #[napi(ts_type = "Array<Buffer | undefined>")]
   pub shared_header_values: Option<Vec<Option<Buffer>>>,
-  pub dense_shared_header_values: Option<Vec<Buffer>>,
-  pub header_value_dictionary: Option<Vec<Buffer>>,
-  #[napi(ts_type = "Array<number>")]
-  pub header_value_dictionary_indexes: Option<Vec<u8>>,
   #[napi(ts_type = "Array<Record<string, Buffer> | undefined>")]
   pub headers: Option<Vec<Option<MessageHeaders>>>,
 }

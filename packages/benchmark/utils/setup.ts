@@ -1,7 +1,14 @@
+import { Admin as PlatformaticKafkaAdmin } from '@platformatic/kafka'
 import { KafkaClient, type MessageProducer } from 'kafka-crab-js'
-import { randomUUID } from 'node:crypto'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { brokers, partitionCount, topic } from './definitions.js'
+import { readNonNegativeInteger, readPositiveInteger } from './env.js'
 import { createBenchmarkMessage, createBenchmarkPartitionKeys } from './messages.js'
+
+type PlatformaticKafkaAdminClient = InstanceType<typeof PlatformaticKafkaAdmin>
+
+const topicRecreateTimeoutMs = readPositiveInteger('BENCHMARK_TOPIC_RECREATE_TIMEOUT_MS', 30_000)
+const topicRecreatePollMs = readPositiveInteger('BENCHMARK_TOPIC_RECREATE_POLL_MS', 500)
 
 const client = new KafkaClient({
   brokers: brokers.join(','),
@@ -11,52 +18,58 @@ const client = new KafkaClient({
   brokerAddressFamily: 'v4',
 })
 
-function readPositiveInteger(name: string, fallback: number): number {
-  const raw = process.env[name]
-  if (!raw) {
-    return fallback
-  }
-
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
-}
-
-function readNonNegativeInteger(name: string, fallback: number): number {
-  const raw = process.env[name]
-  if (!raw) {
-    return fallback
-  }
-
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback
-}
-
 export async function prepareTopics() {
   console.log(`Preparing topic: ${topic}`)
 
-  // Create a temporary consumer with createTopic: true to ensure topic exists
-  // This leverages kafka-crab's built-in topic creation functionality
-  const tempConsumer = client.createConsumer({
-    groupId: `setup-${randomUUID()}`,
-    configuration: {
-      'auto.offset.reset': 'earliest',
-    },
+  const admin = new PlatformaticKafkaAdmin({
+    clientId: 'benchmark-setup-admin',
+    bootstrapBrokers: brokers,
+    strict: true,
+    timeout: topicRecreateTimeoutMs,
   })
 
   try {
-    // Subscribe to the topic to trigger topic creation if needed
-    await tempConsumer.subscribe([{ topic, createTopic: true, numPartitions: partitionCount }])
-    console.log(`Topic ${topic} is ready`)
+    const existingTopics = await admin.listTopics()
+    if (existingTopics.includes(topic)) {
+      console.log(`Deleting existing topic: ${topic}`)
+      await admin.deleteTopics({ topics: [topic] })
+      await waitForTopicState(admin, false)
+    }
 
-    // Wait a moment for topic to be fully created
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+    console.log(`Creating topic ${topic} with ${partitionCount} partitions`)
+    await admin.createTopics({
+      topics: [topic],
+      partitions: partitionCount,
+      replicas: 1,
+    })
+    await waitForTopicState(admin, true)
+    console.log(`Topic ${topic} is ready`)
   } catch (error) {
     console.error('Failed to prepare topic:', error)
     throw error
   } finally {
-    tempConsumer.unsubscribe()
-    await tempConsumer.disconnect()
+    try {
+      await admin.close()
+    } catch {
+      // Ignore cleanup failures so the original setup error is preserved.
+    }
   }
+}
+
+async function waitForTopicState(admin: PlatformaticKafkaAdminClient, shouldExist: boolean) {
+  const deadline = Date.now() + topicRecreateTimeoutMs
+
+  while (Date.now() < deadline) {
+    const topics = await admin.listTopics()
+    if (topics.includes(topic) === shouldExist) {
+      return
+    }
+
+    await sleep(topicRecreatePollMs)
+  }
+
+  const expectation = shouldExist ? 'be created' : 'be deleted'
+  throw new Error(`Timed out waiting for topic "${topic}" to ${expectation}`)
 }
 
 export async function prepareConsumerData() {
@@ -70,24 +83,26 @@ export async function prepareConsumerData() {
 
   console.log(`Starting to produce ${max} messages...`)
 
-  for (let i = 0; i < max; i += batchSize) {
-    const messages: MessageProducer[] = []
-    const batchEnd = Math.min(i + batchSize, max)
+  try {
+    for (let i = 0; i < max; i += batchSize) {
+      const messages: MessageProducer[] = []
+      const batchEnd = Math.min(i + batchSize, max)
 
-    for (let j = i; j < batchEnd; j++) {
-      messages.push(createBenchmarkMessage(j, partitionKeys))
-    }
+      for (let j = i; j < batchEnd; j++) {
+        messages.push(createBenchmarkMessage(j, partitionKeys))
+      }
 
-    try {
       await producer.send({ topic, messages })
 
       const produced = batchEnd
       const progress = ((produced / max) * 100).toFixed(1)
       console.log(`Produced ${produced}/${max} messages (${progress}%)`)
-    } catch (error) {
-      console.error(`Failed to send batch starting at ${i}:`, error)
-      throw error
     }
+  } catch (error) {
+    console.error('Failed to produce benchmark data:', error)
+    throw error
+  } finally {
+    await producer.flush()
   }
 
   console.log(`Successfully produced ${max} messages`)

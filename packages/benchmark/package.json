@@ -12,14 +12,16 @@
     "lint:fix": "vp lint --fix",
     "setup:consumer": "tsx utils/setup.ts",
     "benchmark": "node --expose-gc --import tsx consumer.ts",
-    "benchmark:batch": "BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs-batch BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=5 node --expose-gc --import tsx consumer.ts",
-    "benchmark:batch:quick": "BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs-batch BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts",
+    "benchmark:isolated": "BENCHMARK_MEMORY=0 BENCHMARK_ISOLATED=1 node --expose-gc --import tsx consumer.ts",
+    "benchmark:isolated:quick": "BENCHMARK_MEMORY=0 BENCHMARK_ISOLATED=1 BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=1 BENCHMARK_WARMUP_RUNS=0 node --expose-gc --import tsx consumer.ts",
+    "benchmark:sequential": "BENCHMARK_MEMORY=0 node --expose-gc --import tsx consumer.ts",
+    "benchmark:batch": "BENCHMARK_MEMORY=0 BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs-batch BENCHMARK_ITERATIONS=100000 BENCHMARK_RUNS=5 node --expose-gc --import tsx consumer.ts",
+    "benchmark:batch:quick": "BENCHMARK_MEMORY=0 BENCHMARK_ONLY=v3-batch,v4-batch,kafkajs-batch BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts",
     "benchmark:memory": "BENCHMARK_MEMORY=1 BENCHMARK_RUNS=3 node --expose-gc --import tsx consumer.ts",
     "benchmark:memory:quick": "BENCHMARK_MEMORY=1 BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=1 BENCHMARK_WARMUP_RUNS=0 node --expose-gc --import tsx consumer.ts"
   },
   "dependencies": {
     "@platformatic/kafka": "^1.33.0",
-    "cronometro": "^6.0.0",
     "kafka-crab-js": "workspace:*",
     "kafka-crab-js-v3": "npm:kafka-crab-js@3.1.0",
     "kafkajs": "^2.2.4"
