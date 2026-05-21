@@ -1,14 +1,9 @@
-import { Admin as PlatformaticKafkaAdmin } from '@platformatic/kafka'
 import { KafkaClient, type MessageProducer } from 'kafka-crab-js'
-import { setTimeout as sleep } from 'node:timers/promises'
 import { brokers, partitionCount, topic } from './definitions.js'
 import { readPositiveInteger } from './env.js'
 import { createBenchmarkMessage, createBenchmarkPartitionKeys } from './messages.js'
 
-type PlatformaticKafkaAdminClient = InstanceType<typeof PlatformaticKafkaAdmin>
-
-const topicRecreateTimeoutMs = readPositiveInteger('BENCHMARK_TOPIC_RECREATE_TIMEOUT_MS', 30_000)
-const topicRecreatePollMs = readPositiveInteger('BENCHMARK_TOPIC_RECREATE_POLL_MS', 500)
+const topicPrepareTimeoutMs = readPositiveInteger('BENCHMARK_TOPIC_PREPARE_TIMEOUT_MS', 30_000)
 
 const client = new KafkaClient({
   brokers: brokers.join(','),
@@ -19,57 +14,39 @@ const client = new KafkaClient({
 })
 
 export async function prepareTopics() {
-  console.log(`Preparing topic: ${topic}`)
+  console.log(`Ensuring topic ${topic} exists (${partitionCount} partitions when created)`)
 
-  const admin = new PlatformaticKafkaAdmin({
-    clientId: 'benchmark-setup-admin',
-    bootstrapBrokers: brokers,
-    strict: true,
-    timeout: topicRecreateTimeoutMs,
+  const consumer = client.createConsumer({
+    groupId: `benchmark-setup-${process.pid}`,
+    enableAutoCommit: false,
+    fetchMetadataTimeout: topicPrepareTimeoutMs,
+    configuration: {
+      'auto.offset.reset': 'earliest',
+      'enable.auto.commit': false,
+    },
   })
 
   try {
-    const existingTopics = await admin.listTopics()
-    if (existingTopics.includes(topic)) {
-      console.log(`Deleting existing topic: ${topic}`)
-      await admin.deleteTopics({ topics: [topic] })
-      await waitForTopicState(admin, false)
-    }
-
-    console.log(`Creating topic ${topic} with ${partitionCount} partitions`)
-    await admin.createTopics({
-      topics: [topic],
-      partitions: partitionCount,
-      replicas: 1,
-    })
-    await waitForTopicState(admin, true)
+    await consumer.subscribe([
+      {
+        topic,
+        createTopic: true,
+        numPartitions: partitionCount,
+        replicas: 1,
+        allOffsets: { position: 'Beginning' },
+      },
+    ])
     console.log(`Topic ${topic} is ready`)
   } catch (error) {
     console.error('Failed to prepare topic:', error)
     throw error
   } finally {
     try {
-      await admin.close()
+      await consumer.disconnect()
     } catch {
       // Ignore cleanup failures so the original setup error is preserved.
     }
   }
-}
-
-async function waitForTopicState(admin: PlatformaticKafkaAdminClient, shouldExist: boolean) {
-  const deadline = Date.now() + topicRecreateTimeoutMs
-
-  while (Date.now() < deadline) {
-    const topics = await admin.listTopics()
-    if (topics.includes(topic) === shouldExist) {
-      return
-    }
-
-    await sleep(topicRecreatePollMs)
-  }
-
-  const expectation = shouldExist ? 'be created' : 'be deleted'
-  throw new Error(`Timed out waiting for topic "${topic}" to ${expectation}`)
 }
 
 export async function prepareConsumerData() {
