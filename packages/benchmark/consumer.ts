@@ -514,6 +514,7 @@ async function kafkaCrabJsV4(useBatchMode = false, hooks?: RunMeasurementHooks):
     batchTimeout: batchTimeoutMs,
     serialPrefetchSize: 64,
     serialPrefetchTimeout: 5,
+    enableAutoCommit: false,
   })
 
   await webConsumer.consumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])

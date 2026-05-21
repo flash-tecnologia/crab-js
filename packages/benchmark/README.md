@@ -10,23 +10,23 @@ This directory contains benchmark tests for kafka-crab-js performance comparison
 vp install
 ```
 
-2. Make sure you have Kafka running (use the integration test setup):
+2. Start the repository benchmark Kafka cluster from the repository root:
 
 ```bash
-cd ../__test__/integration
-docker-compose up -d
-# or
-podman-compose up -d
+podman compose up -d
+# or, when Docker is available:
+docker compose up -d
 ```
 
 3. Prepare the benchmark data:
 
 ```bash
+cd packages/benchmark
 vp run setup:consumer
 ```
 
-`setup:consumer` deletes and recreates `BENCHMARK_TOPIC` before producing messages. Use a custom
-`BENCHMARK_TOPIC` when you want to keep an existing benchmark topic untouched.
+`setup:consumer` uses `kafka-crab-js` to create `BENCHMARK_TOPIC` when it does not exist, then produces the benchmark
+messages. It does not delete an existing topic. Use a custom `BENCHMARK_TOPIC` when you want an isolated data set.
 
 ## Running Benchmarks
 
@@ -115,10 +115,10 @@ The most useful knobs are:
 - `BENCHMARK_MEMORY_SETTLE_MS=100` controls the delay after each run before the next run or final retained-memory sample.
 - `BENCHMARK_SETUP_MESSAGES=100000` controls how many messages `setup:consumer` produces.
 - `BENCHMARK_SETUP_BATCH_SIZE=10000` controls setup producer batch size.
-- `BENCHMARK_TOPIC_RECREATE_TIMEOUT_MS=30000` controls how long setup waits for topic delete/create operations.
-- `BENCHMARK_TOPIC_RECREATE_POLL_MS=500` controls setup polling while waiting for topic state changes.
+- `BENCHMARK_TOPIC_PREPARE_TIMEOUT_MS=30000` controls the metadata/admin timeout used while ensuring the setup topic
+  exists.
 - `BENCHMARK_TOPIC=benchmarks` controls the shared topic used by setup and consumers.
-- `BENCHMARK_PARTITIONS=3` controls the topic partition count used by setup.
+- `BENCHMARK_PARTITIONS=3` controls the topic partition count used by setup when the topic is created.
 - `KAFKA_BROKERS=localhost:9092` overrides the broker list.
 
 `BENCHMARK_SETUP_MESSAGES` must be at least `BENCHMARK_ITERATIONS`. When it is not set, `setup:consumer` uses
@@ -204,14 +204,15 @@ Default tuning follows the Platformatic Kafka benchmark shape:
 - KafkaJS `eachBatch` uses `partitionsConsumedConcurrently=3`.
 - KafkaJS has two `eachMessage` scenarios: serial concurrency `1`, and concurrent concurrency
   `BENCHMARK_KAFKAJS_EACH_MESSAGE_CONCURRENCY`.
-- kafka-crab-js v4 serial prefetch uses `64` messages and `5ms`.
+- kafka-crab-js v4 stream scenarios use `createWebStreamConsumer()` with Web `ReadableStream` reader loops.
 - kafka-crab-js batch scenarios use `BENCHMARK_BATCH_SIZE=4096` and `BENCHMARK_BATCH_TIMEOUT_MS=2`.
 - Batch scenarios use a common effective batch size capped at `16384`, matching kafka-crab-js v4's native batch limit.
   This avoids comparing v3 with a very large Node stream highWaterMark against v4 after v4 has already clamped the
   requested batch size.
 
-The default broker list is `localhost:9092`, matching the repository integration compose. For the 3-broker benchmark
-cluster, run with `KAFKA_BROKERS=localhost:9092,localhost:9093,localhost:9094`.
+The root `docker-compose.yml` exposes a 3-broker benchmark cluster on `127.0.0.1:9092`, `127.0.0.1:9093`, and
+`127.0.0.1:9094`. The default benchmark bootstrap broker is `localhost:9092`, which is enough for Kafka metadata
+discovery. To pass all brokers explicitly, run with `KAFKA_BROKERS=127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094`.
 
 ## Dependencies
 
