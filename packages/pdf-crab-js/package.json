@@ -1,0 +1,73 @@
+{
+  "name": "pdf-crab-js",
+  "version": "1.0.0",
+  "keywords": [
+    "N-API",
+    "Rust",
+    "napi",
+    "napi-rs",
+    "node-addon",
+    "node-addon-api",
+    "pdf"
+  ],
+  "homepage": "https://github.com/flash-tecnologia/kafka-crab-js",
+  "license": "MIT",
+  "author": "inaiat@gmail.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flash-tecnologia/kafka-crab-js.git",
+    "directory": "packages/pdf-crab-js"
+  },
+  "files": [
+    "examples",
+    "index.d.ts",
+    "index.cjs",
+    "index.js"
+  ],
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "require": "./index.cjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "check": "vp check",
+    "build": "node build.mjs",
+    "build:debug": "node build.mjs --debug",
+    "example": "tsx examples/pdf.ts",
+    "example:printpdf": "tsx examples/printpdf-gallery.ts",
+    "example:tables-html": "tsx examples/tables-html.ts",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "vp test run js-tests/unit"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.6.2"
+  },
+  "napi": {
+    "binaryName": "pdf-crab-js",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-gnu",
+      "aarch64-apple-darwin",
+      "aarch64-unknown-linux-musl"
+    ]
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
