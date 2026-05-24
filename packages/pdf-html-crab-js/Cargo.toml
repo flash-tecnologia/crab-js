@@ -2,16 +2,16 @@
 [package]
 authors = ["Inaiat <inaiatgmail.com>"]
 edition = "2021"
-name = "pdf_crab_js"
+name = "pdf_html_crab_js"
 version = "0.1.0"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
+fulgur = "=0.16.0"
 napi = "3.9.0"
 napi-derive = "3.5.6"
-pdf-writer = "0.14.0"
 
 [build-dependencies]
 napi-build = { version = "2.3.2" }

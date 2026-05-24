@@ -1,8 +1,8 @@
-import { equal, match, ok, rejects, throws } from 'node:assert/strict'
+import { equal, match, ok, throws } from 'node:assert/strict'
 import { test } from 'vite-plus/test'
 
 import * as pdfCrab from '../../index.js'
-import { createPdf, createPdfAsync, createPdfFromHtmlWithFulgur, PdfDocumentBuilder } from '../../index.js'
+import { createPdf, createPdfAsync, PdfDocumentBuilder } from '../../index.js'
 
 function assertPdfBuffer(pdf: Buffer): void {
   ok(Buffer.isBuffer(pdf))
@@ -19,51 +19,13 @@ test('public API exports expose the pdf-writer phase surface', () => {
 
   equal(typeof createPdf, 'function')
   equal(typeof createPdfAsync, 'function')
-  equal(typeof createPdfFromHtmlWithFulgur, 'function')
   equal(typeof PdfDocumentBuilder, 'function')
   equal(publicApi.createPdfFromHtml, undefined)
+  equal(publicApi.createPdfFromHtmlWithFulgur, undefined)
   equal(publicApi.createPdfFromHtmlAsync, undefined)
   equal(publicApi.parsePdf, undefined)
   equal(publicApi.renderPdfPageToSvg, undefined)
   equal(publicApi.renderPdfPageToSvgAsync, undefined)
-})
-
-test('createPdfFromHtmlWithFulgur returns a PDF buffer for simple HTML', async () => {
-  const pdf = await createPdfFromHtmlWithFulgur({
-    html: '<!doctype html><html><body><h1>Fulgur PDF</h1><p>Hello from HTML.</p></body></html>',
-    page: {
-      margin: 12,
-      size: 'A4',
-    },
-    title: 'Fulgur HTML PDF',
-  })
-
-  assertPdfBuffer(pdf)
-  ok(pdf.byteLength > 1000)
-})
-
-test('createPdfFromHtmlWithFulgur accepts inline CSS', async () => {
-  const pdf = await createPdfFromHtmlWithFulgur({
-    css: 'body { font-family: sans-serif; } h1 { color: #2563eb; }',
-    html: '<!doctype html><html><body><main><h1>Styled Fulgur PDF</h1><p>Inline CSS smoke.</p></main></body></html>',
-    page: {
-      margin: { top: 24, right: 24, bottom: 24, left: 24, unit: 'pt' },
-      size: { width: 300, height: 300, unit: 'pt' },
-    },
-  })
-
-  assertPdfBuffer(pdf)
-  ok(pdf.byteLength > 1000)
-})
-
-test('createPdfFromHtmlWithFulgur validates blank HTML', async () => {
-  await rejects(
-    async () => createPdfFromHtmlWithFulgur({ html: '   ' }),
-    (error) => {
-      match((error as Error).message, /html must not be empty/)
-      return true
-    },
-  )
 })
 
 test('createPdf returns a PDF buffer for one page with text', () => {

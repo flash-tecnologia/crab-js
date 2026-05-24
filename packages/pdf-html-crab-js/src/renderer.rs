@@ -2,7 +2,7 @@ use fulgur::{AssetBundle, Engine, Margin, PageSize};
 use napi::bindgen_prelude::{Buffer, Either};
 use napi::{Error, Result, Status};
 
-use super::{
+use crate::{
   input::{
     CreatePdfFromHtmlWithFulgurInput, FulgurImageInput, FulgurPageCustomSizeInput, FulgurPageInput,
     FulgurPageMarginInput,
@@ -11,7 +11,7 @@ use super::{
   validation::{invalid_arg, positive_f32},
 };
 
-pub(super) fn create_pdf_from_html_with_fulgur_bytes(
+pub(crate) fn create_pdf_from_html_with_fulgur_bytes(
   input: CreatePdfFromHtmlWithFulgurInput,
 ) -> Result<Vec<u8>> {
   if input.html.trim().is_empty() {

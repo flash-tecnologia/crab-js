@@ -149,20 +149,18 @@ const patchBrowserEntry = async (outputs) => {
 
 globalThis.Buffer ??= __Buffer
 
-const __binding = await import('pdf-crab-js-wasm32-wasi')
+const __binding = await import('pdf-html-crab-js-wasm32-wasi')
 
 export default __binding.default ?? __binding
-export const createPdf = __binding.createPdf
-export const createPdfAsync = __binding.createPdfAsync
-export const PdfDocumentBuilder = __binding.PdfDocumentBuilder
+export const createPdfFromHtmlWithFulgur = __binding.createPdfFromHtmlWithFulgur
 `,
   )
 }
 
 const patchWasmBindgenImports = async (outputs) => {
   const wasiOutputNames = new Set([
-    'pdf-crab-js.wasi.cjs',
-    'pdf-crab-js.wasi-browser.js',
+    'pdf-html-crab-js.wasi.cjs',
+    'pdf-html-crab-js.wasi-browser.js',
     'wasi-worker.mjs',
     'wasi-worker-browser.mjs',
   ])

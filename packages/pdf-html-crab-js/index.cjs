@@ -70,13 +70,13 @@ function requireNative() {
   } else if (process.platform === 'android') {
     if (process.arch === 'arm64') {
       try {
-        return require('./pdf-crab-js.android-arm64.node')
+        return require('./pdf-html-crab-js.android-arm64.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-android-arm64')
-        const bindingPackageVersion = require('pdf-crab-js-android-arm64/package.json').version
+        const binding = require('pdf-html-crab-js-android-arm64')
+        const bindingPackageVersion = require('pdf-html-crab-js-android-arm64/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -92,13 +92,13 @@ function requireNative() {
       }
     } else if (process.arch === 'arm') {
       try {
-        return require('./pdf-crab-js.android-arm-eabi.node')
+        return require('./pdf-html-crab-js.android-arm-eabi.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-android-arm-eabi')
-        const bindingPackageVersion = require('pdf-crab-js-android-arm-eabi/package.json').version
+        const binding = require('pdf-html-crab-js-android-arm-eabi')
+        const bindingPackageVersion = require('pdf-html-crab-js-android-arm-eabi/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -122,13 +122,13 @@ function requireNative() {
         process.config?.variables?.node_target_type === 'shared_library'
       ) {
         try {
-          return require('./pdf-crab-js.win32-x64-gnu.node')
+          return require('./pdf-html-crab-js.win32-x64-gnu.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-win32-x64-gnu')
-          const bindingPackageVersion = require('pdf-crab-js-win32-x64-gnu/package.json').version
+          const binding = require('pdf-html-crab-js-win32-x64-gnu')
+          const bindingPackageVersion = require('pdf-html-crab-js-win32-x64-gnu/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -144,13 +144,13 @@ function requireNative() {
         }
       } else {
         try {
-          return require('./pdf-crab-js.win32-x64-msvc.node')
+          return require('./pdf-html-crab-js.win32-x64-msvc.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-win32-x64-msvc')
-          const bindingPackageVersion = require('pdf-crab-js-win32-x64-msvc/package.json').version
+          const binding = require('pdf-html-crab-js-win32-x64-msvc')
+          const bindingPackageVersion = require('pdf-html-crab-js-win32-x64-msvc/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -167,13 +167,13 @@ function requireNative() {
       }
     } else if (process.arch === 'ia32') {
       try {
-        return require('./pdf-crab-js.win32-ia32-msvc.node')
+        return require('./pdf-html-crab-js.win32-ia32-msvc.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-win32-ia32-msvc')
-        const bindingPackageVersion = require('pdf-crab-js-win32-ia32-msvc/package.json').version
+        const binding = require('pdf-html-crab-js-win32-ia32-msvc')
+        const bindingPackageVersion = require('pdf-html-crab-js-win32-ia32-msvc/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -189,13 +189,13 @@ function requireNative() {
       }
     } else if (process.arch === 'arm64') {
       try {
-        return require('./pdf-crab-js.win32-arm64-msvc.node')
+        return require('./pdf-html-crab-js.win32-arm64-msvc.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-win32-arm64-msvc')
-        const bindingPackageVersion = require('pdf-crab-js-win32-arm64-msvc/package.json').version
+        const binding = require('pdf-html-crab-js-win32-arm64-msvc')
+        const bindingPackageVersion = require('pdf-html-crab-js-win32-arm64-msvc/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -214,13 +214,13 @@ function requireNative() {
     }
   } else if (process.platform === 'darwin') {
     try {
-      return require('./pdf-crab-js.darwin-universal.node')
+      return require('./pdf-html-crab-js.darwin-universal.node')
     } catch (e) {
       loadErrors.push(e)
     }
     try {
-      const binding = require('pdf-crab-js-darwin-universal')
-      const bindingPackageVersion = require('pdf-crab-js-darwin-universal/package.json').version
+      const binding = require('pdf-html-crab-js-darwin-universal')
+      const bindingPackageVersion = require('pdf-html-crab-js-darwin-universal/package.json').version
       if (
         bindingPackageVersion !== '1.0.0' &&
         process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -236,13 +236,13 @@ function requireNative() {
     }
     if (process.arch === 'x64') {
       try {
-        return require('./pdf-crab-js.darwin-x64.node')
+        return require('./pdf-html-crab-js.darwin-x64.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-darwin-x64')
-        const bindingPackageVersion = require('pdf-crab-js-darwin-x64/package.json').version
+        const binding = require('pdf-html-crab-js-darwin-x64')
+        const bindingPackageVersion = require('pdf-html-crab-js-darwin-x64/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -258,13 +258,13 @@ function requireNative() {
       }
     } else if (process.arch === 'arm64') {
       try {
-        return require('./pdf-crab-js.darwin-arm64.node')
+        return require('./pdf-html-crab-js.darwin-arm64.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-darwin-arm64')
-        const bindingPackageVersion = require('pdf-crab-js-darwin-arm64/package.json').version
+        const binding = require('pdf-html-crab-js-darwin-arm64')
+        const bindingPackageVersion = require('pdf-html-crab-js-darwin-arm64/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -284,13 +284,13 @@ function requireNative() {
   } else if (process.platform === 'freebsd') {
     if (process.arch === 'x64') {
       try {
-        return require('./pdf-crab-js.freebsd-x64.node')
+        return require('./pdf-html-crab-js.freebsd-x64.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-freebsd-x64')
-        const bindingPackageVersion = require('pdf-crab-js-freebsd-x64/package.json').version
+        const binding = require('pdf-html-crab-js-freebsd-x64')
+        const bindingPackageVersion = require('pdf-html-crab-js-freebsd-x64/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -306,13 +306,13 @@ function requireNative() {
       }
     } else if (process.arch === 'arm64') {
       try {
-        return require('./pdf-crab-js.freebsd-arm64.node')
+        return require('./pdf-html-crab-js.freebsd-arm64.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-freebsd-arm64')
-        const bindingPackageVersion = require('pdf-crab-js-freebsd-arm64/package.json').version
+        const binding = require('pdf-html-crab-js-freebsd-arm64')
+        const bindingPackageVersion = require('pdf-html-crab-js-freebsd-arm64/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -333,13 +333,13 @@ function requireNative() {
     if (process.arch === 'x64') {
       if (isMusl()) {
         try {
-          return require('./pdf-crab-js.linux-x64-musl.node')
+          return require('./pdf-html-crab-js.linux-x64-musl.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-linux-x64-musl')
-          const bindingPackageVersion = require('pdf-crab-js-linux-x64-musl/package.json').version
+          const binding = require('pdf-html-crab-js-linux-x64-musl')
+          const bindingPackageVersion = require('pdf-html-crab-js-linux-x64-musl/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -355,13 +355,13 @@ function requireNative() {
         }
       } else {
         try {
-          return require('./pdf-crab-js.linux-x64-gnu.node')
+          return require('./pdf-html-crab-js.linux-x64-gnu.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-linux-x64-gnu')
-          const bindingPackageVersion = require('pdf-crab-js-linux-x64-gnu/package.json').version
+          const binding = require('pdf-html-crab-js-linux-x64-gnu')
+          const bindingPackageVersion = require('pdf-html-crab-js-linux-x64-gnu/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -379,13 +379,13 @@ function requireNative() {
     } else if (process.arch === 'arm64') {
       if (isMusl()) {
         try {
-          return require('./pdf-crab-js.linux-arm64-musl.node')
+          return require('./pdf-html-crab-js.linux-arm64-musl.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-linux-arm64-musl')
-          const bindingPackageVersion = require('pdf-crab-js-linux-arm64-musl/package.json').version
+          const binding = require('pdf-html-crab-js-linux-arm64-musl')
+          const bindingPackageVersion = require('pdf-html-crab-js-linux-arm64-musl/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -401,13 +401,13 @@ function requireNative() {
         }
       } else {
         try {
-          return require('./pdf-crab-js.linux-arm64-gnu.node')
+          return require('./pdf-html-crab-js.linux-arm64-gnu.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-linux-arm64-gnu')
-          const bindingPackageVersion = require('pdf-crab-js-linux-arm64-gnu/package.json').version
+          const binding = require('pdf-html-crab-js-linux-arm64-gnu')
+          const bindingPackageVersion = require('pdf-html-crab-js-linux-arm64-gnu/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -425,13 +425,13 @@ function requireNative() {
     } else if (process.arch === 'arm') {
       if (isMusl()) {
         try {
-          return require('./pdf-crab-js.linux-arm-musleabihf.node')
+          return require('./pdf-html-crab-js.linux-arm-musleabihf.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-linux-arm-musleabihf')
-          const bindingPackageVersion = require('pdf-crab-js-linux-arm-musleabihf/package.json').version
+          const binding = require('pdf-html-crab-js-linux-arm-musleabihf')
+          const bindingPackageVersion = require('pdf-html-crab-js-linux-arm-musleabihf/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -447,13 +447,13 @@ function requireNative() {
         }
       } else {
         try {
-          return require('./pdf-crab-js.linux-arm-gnueabihf.node')
+          return require('./pdf-html-crab-js.linux-arm-gnueabihf.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-linux-arm-gnueabihf')
-          const bindingPackageVersion = require('pdf-crab-js-linux-arm-gnueabihf/package.json').version
+          const binding = require('pdf-html-crab-js-linux-arm-gnueabihf')
+          const bindingPackageVersion = require('pdf-html-crab-js-linux-arm-gnueabihf/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -471,13 +471,13 @@ function requireNative() {
     } else if (process.arch === 'loong64') {
       if (isMusl()) {
         try {
-          return require('./pdf-crab-js.linux-loong64-musl.node')
+          return require('./pdf-html-crab-js.linux-loong64-musl.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-linux-loong64-musl')
-          const bindingPackageVersion = require('pdf-crab-js-linux-loong64-musl/package.json').version
+          const binding = require('pdf-html-crab-js-linux-loong64-musl')
+          const bindingPackageVersion = require('pdf-html-crab-js-linux-loong64-musl/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -493,13 +493,13 @@ function requireNative() {
         }
       } else {
         try {
-          return require('./pdf-crab-js.linux-loong64-gnu.node')
+          return require('./pdf-html-crab-js.linux-loong64-gnu.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-linux-loong64-gnu')
-          const bindingPackageVersion = require('pdf-crab-js-linux-loong64-gnu/package.json').version
+          const binding = require('pdf-html-crab-js-linux-loong64-gnu')
+          const bindingPackageVersion = require('pdf-html-crab-js-linux-loong64-gnu/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -517,13 +517,13 @@ function requireNative() {
     } else if (process.arch === 'riscv64') {
       if (isMusl()) {
         try {
-          return require('./pdf-crab-js.linux-riscv64-musl.node')
+          return require('./pdf-html-crab-js.linux-riscv64-musl.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-linux-riscv64-musl')
-          const bindingPackageVersion = require('pdf-crab-js-linux-riscv64-musl/package.json').version
+          const binding = require('pdf-html-crab-js-linux-riscv64-musl')
+          const bindingPackageVersion = require('pdf-html-crab-js-linux-riscv64-musl/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -539,13 +539,13 @@ function requireNative() {
         }
       } else {
         try {
-          return require('./pdf-crab-js.linux-riscv64-gnu.node')
+          return require('./pdf-html-crab-js.linux-riscv64-gnu.node')
         } catch (e) {
           loadErrors.push(e)
         }
         try {
-          const binding = require('pdf-crab-js-linux-riscv64-gnu')
-          const bindingPackageVersion = require('pdf-crab-js-linux-riscv64-gnu/package.json').version
+          const binding = require('pdf-html-crab-js-linux-riscv64-gnu')
+          const bindingPackageVersion = require('pdf-html-crab-js-linux-riscv64-gnu/package.json').version
           if (
             bindingPackageVersion !== '1.0.0' &&
             process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -562,13 +562,13 @@ function requireNative() {
       }
     } else if (process.arch === 'ppc64') {
       try {
-        return require('./pdf-crab-js.linux-ppc64-gnu.node')
+        return require('./pdf-html-crab-js.linux-ppc64-gnu.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-linux-ppc64-gnu')
-        const bindingPackageVersion = require('pdf-crab-js-linux-ppc64-gnu/package.json').version
+        const binding = require('pdf-html-crab-js-linux-ppc64-gnu')
+        const bindingPackageVersion = require('pdf-html-crab-js-linux-ppc64-gnu/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -584,13 +584,13 @@ function requireNative() {
       }
     } else if (process.arch === 's390x') {
       try {
-        return require('./pdf-crab-js.linux-s390x-gnu.node')
+        return require('./pdf-html-crab-js.linux-s390x-gnu.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-linux-s390x-gnu')
-        const bindingPackageVersion = require('pdf-crab-js-linux-s390x-gnu/package.json').version
+        const binding = require('pdf-html-crab-js-linux-s390x-gnu')
+        const bindingPackageVersion = require('pdf-html-crab-js-linux-s390x-gnu/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -610,13 +610,13 @@ function requireNative() {
   } else if (process.platform === 'openharmony') {
     if (process.arch === 'arm64') {
       try {
-        return require('./pdf-crab-js.openharmony-arm64.node')
+        return require('./pdf-html-crab-js.openharmony-arm64.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-openharmony-arm64')
-        const bindingPackageVersion = require('pdf-crab-js-openharmony-arm64/package.json').version
+        const binding = require('pdf-html-crab-js-openharmony-arm64')
+        const bindingPackageVersion = require('pdf-html-crab-js-openharmony-arm64/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -632,13 +632,13 @@ function requireNative() {
       }
     } else if (process.arch === 'x64') {
       try {
-        return require('./pdf-crab-js.openharmony-x64.node')
+        return require('./pdf-html-crab-js.openharmony-x64.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-openharmony-x64')
-        const bindingPackageVersion = require('pdf-crab-js-openharmony-x64/package.json').version
+        const binding = require('pdf-html-crab-js-openharmony-x64')
+        const bindingPackageVersion = require('pdf-html-crab-js-openharmony-x64/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -654,13 +654,13 @@ function requireNative() {
       }
     } else if (process.arch === 'arm') {
       try {
-        return require('./pdf-crab-js.openharmony-arm.node')
+        return require('./pdf-html-crab-js.openharmony-arm.node')
       } catch (e) {
         loadErrors.push(e)
       }
       try {
-        const binding = require('pdf-crab-js-openharmony-arm')
-        const bindingPackageVersion = require('pdf-crab-js-openharmony-arm/package.json').version
+        const binding = require('pdf-html-crab-js-openharmony-arm')
+        const bindingPackageVersion = require('pdf-html-crab-js-openharmony-arm/package.json').version
         if (
           bindingPackageVersion !== '1.0.0' &&
           process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
@@ -688,7 +688,7 @@ if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
   let wasiBinding = null
   let wasiBindingError = null
   try {
-    wasiBinding = require('./pdf-crab-js.wasi.cjs')
+    wasiBinding = require('./pdf-html-crab-js.wasi.cjs')
     nativeBinding = wasiBinding
   } catch (err) {
     if (process.env.NAPI_RS_FORCE_WASI) {
@@ -697,7 +697,7 @@ if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
   }
   if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
     try {
-      wasiBinding = require('pdf-crab-js-wasm32-wasi')
+      wasiBinding = require('pdf-html-crab-js-wasm32-wasi')
       nativeBinding = wasiBinding
     } catch (err) {
       if (process.env.NAPI_RS_FORCE_WASI) {
@@ -735,6 +735,4 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
-module.exports.PdfDocumentBuilder = nativeBinding.PdfDocumentBuilder
-module.exports.createPdf = nativeBinding.createPdf
-module.exports.createPdfAsync = nativeBinding.createPdfAsync
+module.exports.createPdfFromHtmlWithFulgur = nativeBinding.createPdfFromHtmlWithFulgur

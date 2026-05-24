@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["esnext"],
+    "moduleDetection": "force",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "declaration": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "include": ["index.d.ts", "examples/**/*.ts", "js-tests/**/*.ts"]
+}
