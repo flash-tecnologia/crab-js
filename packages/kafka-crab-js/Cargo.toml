@@ -1,3 +1,4 @@
+
 [package]
 edition = "2021"
 name = "kafka-crab-js"
@@ -8,24 +9,24 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
-napi = { version = "3.8.6", default-features = false, features = [
-  "napi9",
-  "napi10",
-  "tokio_rt",
-  "serde-json",
-  "web_stream",
+napi = { version = "3.9.0", default-features = false, features = [
+    "napi9",
+    "napi10",
+    "tokio_rt",
+    "serde-json",
+    "web_stream",
 ] }
-napi-derive = "3.5.5"
+napi-derive = "3.5.6"
 
 anyhow = { version = "1.0", features = ["backtrace"] }
-dashmap = "6.1"
+dashmap = "6.2.1"
 
 rdkafka = { version = "0.39", default-features = false, features = [
-  "libz-static",
-  "cmake-build",
-  "tokio",
-  "ssl-vendored",
-  "curl-static",
+    "libz-static",
+    "cmake-build",
+    "tokio",
+    "ssl-vendored",
+    "curl-static",
 ] }
 tokio = { version = "1.52.3", features = ["full"] }
 
@@ -36,7 +37,7 @@ serde_json = "1.0"
 futures-util = "0.3"
 
 [build-dependencies]
-napi-build = { version = "2.3.1" }
+napi-build = { version = "2.3.2" }
 
 [profile.release]
 lto = true

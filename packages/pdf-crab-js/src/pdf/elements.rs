@@ -1,16 +1,10 @@
 use napi::Result;
-use printpdf::{
-  LayerInternalId, Line, LinePoint, Op, PaintMode, PdfDocument, PdfFontHandle, Point, Polygon,
-  PolygonRing, Pt, Rect, TextItem, WindingOrder,
-};
-use std::collections::BTreeMap;
+use pdf_writer::{Content, Str};
 
 use super::{
-  color::{black, optional_color},
+  color::{black, optional_color, RgbColor},
   font::parse_builtin_font,
-  images::append_image_ops,
   input::{PdfElementInput, PdfPointInput},
-  svg::append_svg_ops,
   unit::Unit,
   validation::{invalid_arg, optional_positive_f32, required, required_f32, required_positive_f32},
 };
@@ -18,67 +12,27 @@ use super::{
 const DEFAULT_FONT_SIZE: f32 = 12.0;
 const DEFAULT_STROKE_WIDTH: f32 = 1.0;
 
-pub(super) struct BuildContext<'a> {
-  pub(super) document: &'a mut PdfDocument,
-  pub(super) layers: &'a BTreeMap<String, LayerInternalId>,
-  pub(super) unit: Unit,
-}
-
-pub(super) fn append_element_ops(
-  ops: &mut Vec<Op>,
+pub(super) fn append_element(
+  content: &mut Content,
   element: PdfElementInput,
-  context: &mut BuildContext<'_>,
+  unit: Unit,
   path: &str,
 ) -> Result<()> {
-  let layer = element.layer.clone();
-  let mut element_ops = Vec::new();
-
   match element.r#type.as_str() {
-    "text" => append_text_ops(&mut element_ops, element, context.unit, path)?,
-    "line" => append_line_ops(&mut element_ops, element, context.unit, path)?,
-    "rect" => append_rect_ops(&mut element_ops, element, context.unit, path)?,
-    "image" => append_image_ops(
-      &mut element_ops,
-      context.document,
-      element,
-      context.unit,
-      path,
-    )?,
-    "svg" => append_svg_ops(
-      &mut element_ops,
-      context.document,
-      element,
-      context.unit,
-      path,
-    )?,
-    "textBox" => append_text_box_ops(&mut element_ops, element, context.unit, path)?,
-    "polygon" => append_polygon_ops(&mut element_ops, element, context.unit, path)?,
-    "path" => append_path_ops(&mut element_ops, element, context.unit, path)?,
+    "text" => append_text(content, element, unit, path),
+    "line" => append_line(content, element, unit, path),
+    "rect" => append_rect(content, element, unit, path),
+    "textBox" => append_text_box(content, element, unit, path),
+    "polygon" => append_polygon(content, element, unit, path),
+    "path" => append_path(content, element, unit, path),
     element_type => Err(invalid_arg(format!(
-      "{path}.type must be one of \"text\", \"line\", \"rect\", \"image\", \"svg\", \"textBox\", \"polygon\", or \"path\", received \"{element_type}\""
-    )))?,
+      "{path}.type must be one of \"text\", \"line\", \"rect\", \"textBox\", \"polygon\", or \"path\", received \"{element_type}\""
+    ))),
   }
-
-  if let Some(layer) = layer {
-    let layer_id = context.layers.get(&layer).ok_or_else(|| {
-      invalid_arg(format!(
-        "{path}.layer must reference a layer declared in input.layers"
-      ))
-    })?;
-    ops.push(Op::BeginLayer {
-      layer_id: layer_id.clone(),
-    });
-    ops.extend(element_ops);
-    ops.push(Op::EndLayer);
-  } else {
-    ops.extend(element_ops);
-  }
-
-  Ok(())
 }
 
-fn append_text_ops(
-  ops: &mut Vec<Op>,
+fn append_text(
+  content: &mut Content,
   element: PdfElementInput,
   unit: Unit,
   path: &str,
@@ -86,135 +40,94 @@ fn append_text_ops(
   let text = element
     .text
     .ok_or_else(|| required(format!("{path}.text")))?;
-  let x = required_f32(element.x, &format!("{path}.x"))?;
-  let y = required_f32(element.y, &format!("{path}.y"))?;
+  let x = unit.coordinate(required_f32(element.x, &format!("{path}.x"))?);
+  let y = unit.coordinate(required_f32(element.y, &format!("{path}.y"))?);
   let font = parse_builtin_font(element.font, &format!("{path}.font"))?;
   let font_size = optional_positive_f32(element.font_size, &format!("{path}.fontSize"))?
     .unwrap_or(DEFAULT_FONT_SIZE);
   let fill = optional_color(element.fill, &format!("{path}.fill"))?.unwrap_or_else(black);
 
-  ops.extend([
-    Op::SaveGraphicsState,
-    Op::StartTextSection,
-    Op::SetFillColor { col: fill },
-    Op::SetTextCursor {
-      pos: Point {
-        x: unit.coordinate(x),
-        y: unit.coordinate(y),
-      },
-    },
-    Op::SetFont {
-      font: PdfFontHandle::Builtin(font),
-      size: Pt(font_size),
-    },
-    Op::ShowText {
-      items: vec![TextItem::Text(text)],
-    },
-    Op::EndTextSection,
-    Op::RestoreGraphicsState,
-  ]);
+  content.save_state();
+  set_fill(content, fill);
+  content.begin_text();
+  content.set_font(font.resource_name(), font_size);
+  content.set_text_matrix([1.0, 0.0, 0.0, 1.0, x, y]);
+  content.show(Str(text.as_bytes()));
+  content.end_text();
+  content.restore_state();
 
   Ok(())
 }
 
-fn append_line_ops(
-  ops: &mut Vec<Op>,
+fn append_line(
+  content: &mut Content,
   element: PdfElementInput,
   unit: Unit,
   path: &str,
 ) -> Result<()> {
-  let x1 = required_f32(element.x1, &format!("{path}.x1"))?;
-  let y1 = required_f32(element.y1, &format!("{path}.y1"))?;
-  let x2 = required_f32(element.x2, &format!("{path}.x2"))?;
-  let y2 = required_f32(element.y2, &format!("{path}.y2"))?;
+  let x1 = unit.coordinate(required_f32(element.x1, &format!("{path}.x1"))?);
+  let y1 = unit.coordinate(required_f32(element.y1, &format!("{path}.y1"))?);
+  let x2 = unit.coordinate(required_f32(element.x2, &format!("{path}.x2"))?);
+  let y2 = unit.coordinate(required_f32(element.y2, &format!("{path}.y2"))?);
   let stroke = optional_color(element.stroke, &format!("{path}.stroke"))?.unwrap_or_else(black);
   let stroke_width = optional_positive_f32(element.stroke_width, &format!("{path}.strokeWidth"))?
     .unwrap_or(DEFAULT_STROKE_WIDTH);
 
-  ops.extend([
-    Op::SaveGraphicsState,
-    Op::SetOutlineColor { col: stroke },
-    Op::SetOutlineThickness {
-      pt: Pt(stroke_width),
-    },
-    Op::DrawLine {
-      line: Line {
-        points: vec![
-          LinePoint {
-            p: Point {
-              x: unit.coordinate(x1),
-              y: unit.coordinate(y1),
-            },
-            bezier: false,
-          },
-          LinePoint {
-            p: Point {
-              x: unit.coordinate(x2),
-              y: unit.coordinate(y2),
-            },
-            bezier: false,
-          },
-        ],
-        is_closed: false,
-      },
-    },
-    Op::RestoreGraphicsState,
-  ]);
+  content.save_state();
+  set_stroke(content, stroke);
+  content.set_line_width(stroke_width);
+  content.move_to(x1, y1);
+  content.line_to(x2, y2);
+  content.stroke();
+  content.restore_state();
 
   Ok(())
 }
 
-fn append_rect_ops(
-  ops: &mut Vec<Op>,
+fn append_rect(
+  content: &mut Content,
   element: PdfElementInput,
   unit: Unit,
   path: &str,
 ) -> Result<()> {
-  let x = required_f32(element.x, &format!("{path}.x"))?;
-  let y = required_f32(element.y, &format!("{path}.y"))?;
-  let width = required_positive_f32(element.width, &format!("{path}.width"))?;
-  let height = required_positive_f32(element.height, &format!("{path}.height"))?;
+  let x = unit.coordinate(required_f32(element.x, &format!("{path}.x"))?);
+  let y = unit.coordinate(required_f32(element.y, &format!("{path}.y"))?);
+  let width = unit.coordinate(required_positive_f32(
+    element.width,
+    &format!("{path}.width"),
+  )?);
+  let height = unit.coordinate(required_positive_f32(
+    element.height,
+    &format!("{path}.height"),
+  )?);
   let fill = optional_color(element.fill, &format!("{path}.fill"))?;
   let stroke = optional_color(element.stroke, &format!("{path}.stroke"))?;
   let stroke_width = optional_positive_f32(element.stroke_width, &format!("{path}.strokeWidth"))?
     .unwrap_or(DEFAULT_STROKE_WIDTH);
-  let paint_mode = match (fill.is_some(), stroke.is_some()) {
-    (true, true) => PaintMode::FillStroke,
-    (true, false) => PaintMode::Fill,
-    (false, true) | (false, false) => PaintMode::Stroke,
-  };
-  let stroke = stroke.unwrap_or_else(black);
 
-  ops.push(Op::SaveGraphicsState);
-
+  content.save_state();
   if let Some(fill) = fill {
-    ops.push(Op::SetFillColor { col: fill });
+    set_fill(content, fill);
   }
-
-  if paint_mode != PaintMode::Fill {
-    ops.push(Op::SetOutlineColor { col: stroke });
-    ops.push(Op::SetOutlineThickness {
-      pt: Pt(stroke_width),
-    });
+  if let Some(stroke) = stroke.or_else(|| fill.is_none().then(black)) {
+    set_stroke(content, stroke);
+    content.set_line_width(stroke_width);
   }
-
-  ops.push(Op::DrawRectangle {
-    rectangle: Rect {
-      x: unit.coordinate(x),
-      y: unit.coordinate(y),
-      width: unit.coordinate(width),
-      height: unit.coordinate(height),
-      mode: Some(paint_mode),
-      winding_order: Some(WindingOrder::NonZero),
-    },
-  });
-  ops.push(Op::RestoreGraphicsState);
+  content.rect(x, y, width, height);
+  paint_path(
+    content,
+    fill.is_some(),
+    stroke.is_some() || fill.is_none(),
+    false,
+    Winding::NonZero,
+  );
+  content.restore_state();
 
   Ok(())
 }
 
-fn append_text_box_ops(
-  ops: &mut Vec<Op>,
+fn append_text_box(
+  content: &mut Content,
   element: PdfElementInput,
   unit: Unit,
   path: &str,
@@ -222,13 +135,17 @@ fn append_text_box_ops(
   let text = element
     .text
     .ok_or_else(|| required(format!("{path}.text")))?;
-  let x = required_f32(element.x, &format!("{path}.x"))?;
-  let y = required_f32(element.y, &format!("{path}.y"))?;
-  let width = required_positive_f32(element.width, &format!("{path}.width"))?;
+  let x = unit.coordinate(required_f32(element.x, &format!("{path}.x"))?);
+  let y = unit.coordinate(required_f32(element.y, &format!("{path}.y"))?);
+  let width = unit.coordinate(required_positive_f32(
+    element.width,
+    &format!("{path}.width"),
+  )?);
   let height = element
     .height
     .map(|height| required_positive_f32(Some(height), &format!("{path}.height")))
-    .transpose()?;
+    .transpose()?
+    .map(|height| unit.coordinate(height));
   let font = parse_builtin_font(element.font, &format!("{path}.font"))?;
   let font_size = optional_positive_f32(element.font_size, &format!("{path}.fontSize"))?
     .unwrap_or(DEFAULT_FONT_SIZE);
@@ -236,58 +153,36 @@ fn append_text_box_ops(
     .unwrap_or(font_size * 1.2);
   let fill = optional_color(element.fill, &format!("{path}.fill"))?.unwrap_or_else(black);
   let align = parse_align(element.align.as_deref(), &format!("{path}.align"))?;
-  let box_width_pt = unit.coordinate(width).0;
   let max_lines = height
-    .map(|height| (unit.coordinate(height).0 / line_height).floor().max(1.0) as usize)
+    .map(|height| (height / line_height).floor().max(1.0) as usize)
     .unwrap_or(usize::MAX);
-  let lines = wrap_text(
-    &text,
-    box_width_pt,
-    font_size,
-    element.hyphenate.unwrap_or(false),
-  );
+  let lines = wrap_text(&text, width, font_size, element.hyphenate.unwrap_or(false));
 
-  ops.push(Op::SaveGraphicsState);
-  ops.push(Op::StartTextSection);
-  ops.push(Op::SetFillColor { col: fill });
-  ops.push(Op::SetFont {
-    font: PdfFontHandle::Builtin(font),
-    size: Pt(font_size),
-  });
-  ops.push(Op::SetLineHeight {
-    lh: Pt(line_height),
-  });
+  content.save_state();
+  set_fill(content, fill);
+  content.begin_text();
+  content.set_font(font.resource_name(), font_size);
+  content.set_leading(line_height);
 
   for (line_index, line) in lines.into_iter().take(max_lines).enumerate() {
     let adjusted_x = match align {
-      TextAlign::Left | TextAlign::Justify => unit.coordinate(x),
-      TextAlign::Center => {
-        Pt(unit.coordinate(x).0 + (box_width_pt - estimate_text_width(&line, font_size)) / 2.0)
-      }
-      TextAlign::Right => {
-        Pt(unit.coordinate(x).0 + box_width_pt - estimate_text_width(&line, font_size))
-      }
+      TextAlign::Left | TextAlign::Justify => x,
+      TextAlign::Center => x + (width - estimate_text_width(&line, font_size)) / 2.0,
+      TextAlign::Right => x + width - estimate_text_width(&line, font_size),
     };
-    let cursor_y = Pt(unit.coordinate(y).0 - line_height * line_index as f32);
-    ops.push(Op::SetTextCursor {
-      pos: Point {
-        x: adjusted_x,
-        y: cursor_y,
-      },
-    });
-    ops.push(Op::ShowText {
-      items: vec![TextItem::Text(line)],
-    });
+    let cursor_y = y - line_height * line_index as f32;
+    content.set_text_matrix([1.0, 0.0, 0.0, 1.0, adjusted_x, cursor_y]);
+    content.show(Str(line.as_bytes()));
   }
 
-  ops.push(Op::EndTextSection);
-  ops.push(Op::RestoreGraphicsState);
+  content.end_text();
+  content.restore_state();
 
   Ok(())
 }
 
-fn append_polygon_ops(
-  ops: &mut Vec<Op>,
+fn append_polygon(
+  content: &mut Content,
   element: PdfElementInput,
   unit: Unit,
   path: &str,
@@ -303,24 +198,19 @@ fn append_polygon_ops(
   let stroke = optional_color(element.stroke, &format!("{path}.stroke"))?;
   let stroke_width = optional_positive_f32(element.stroke_width, &format!("{path}.strokeWidth"))?
     .unwrap_or(DEFAULT_STROKE_WIDTH);
-  let paint_mode = paint_mode(fill.is_some(), stroke.is_some());
-  let winding_order = parse_winding(element.winding.as_deref(), &format!("{path}.winding"))?;
+  let winding = parse_winding(element.winding.as_deref(), &format!("{path}.winding"))?;
 
-  append_shape_style_ops(ops, fill, stroke, stroke_width, paint_mode);
-  ops.push(Op::DrawPolygon {
-    polygon: Polygon {
-      rings: vec![PolygonRing { points }],
-      mode: paint_mode,
-      winding_order,
-    },
-  });
-  ops.push(Op::RestoreGraphicsState);
+  content.save_state();
+  apply_shape_style(content, fill, stroke, stroke_width);
+  append_points(content, &points, true);
+  paint_path(content, fill.is_some(), stroke.is_some(), true, winding);
+  content.restore_state();
 
   Ok(())
 }
 
-fn append_path_ops(
-  ops: &mut Vec<Op>,
+fn append_path(
+  content: &mut Content,
   element: PdfElementInput,
   unit: Unit,
   path: &str,
@@ -337,89 +227,136 @@ fn append_path_ops(
   let stroke_width = optional_positive_f32(element.stroke_width, &format!("{path}.strokeWidth"))?
     .unwrap_or(DEFAULT_STROKE_WIDTH);
   let closed = element.closed.unwrap_or(false);
+  let winding = parse_winding(element.winding.as_deref(), &format!("{path}.winding"))?;
 
-  if fill.is_some() {
-    let paint_mode = paint_mode(true, stroke.is_some());
-    let winding_order = parse_winding(element.winding.as_deref(), &format!("{path}.winding"))?;
-    append_shape_style_ops(ops, fill, stroke, stroke_width, paint_mode);
-    ops.push(Op::DrawPolygon {
-      polygon: Polygon {
-        rings: vec![PolygonRing { points }],
-        mode: paint_mode,
-        winding_order,
-      },
-    });
-  } else {
-    append_shape_style_ops(ops, None, stroke, stroke_width, PaintMode::Stroke);
-    ops.push(Op::DrawLine {
-      line: Line {
-        points,
-        is_closed: closed,
-      },
-    });
-  }
-
-  ops.push(Op::RestoreGraphicsState);
+  content.save_state();
+  apply_shape_style(content, fill, stroke, stroke_width);
+  append_points(content, &points, closed);
+  paint_path(
+    content,
+    fill.is_some(),
+    stroke.is_some() || fill.is_none(),
+    closed,
+    winding,
+  );
+  content.restore_state();
 
   Ok(())
 }
 
-fn append_shape_style_ops(
-  ops: &mut Vec<Op>,
-  fill: Option<printpdf::Color>,
-  stroke: Option<printpdf::Color>,
+fn set_fill(content: &mut Content, color: RgbColor) {
+  content.set_fill_rgb(color.red, color.green, color.blue);
+}
+
+fn set_stroke(content: &mut Content, color: RgbColor) {
+  content.set_stroke_rgb(color.red, color.green, color.blue);
+}
+
+fn apply_shape_style(
+  content: &mut Content,
+  fill: Option<RgbColor>,
+  stroke: Option<RgbColor>,
   stroke_width: f32,
-  paint_mode: PaintMode,
 ) {
-  ops.push(Op::SaveGraphicsState);
-
   if let Some(fill) = fill {
-    ops.push(Op::SetFillColor { col: fill });
+    set_fill(content, fill);
   }
+  set_stroke(content, stroke.unwrap_or_else(black));
+  content.set_line_width(stroke_width);
+}
 
-  if paint_mode != PaintMode::Fill {
-    ops.push(Op::SetOutlineColor {
-      col: stroke.unwrap_or_else(black),
-    });
-    ops.push(Op::SetOutlineThickness {
-      pt: Pt(stroke_width),
-    });
+fn append_points(content: &mut Content, points: &[PdfPoint], closed: bool) {
+  let [first, rest @ ..] = points else {
+    return;
+  };
+
+  content.move_to(first.x, first.y);
+  for point in rest {
+    content.line_to(point.x, point.y);
   }
+  if closed {
+    content.close_path();
+  }
+}
+
+fn paint_path(
+  content: &mut Content,
+  has_fill: bool,
+  has_stroke: bool,
+  closed: bool,
+  winding: Winding,
+) {
+  match (has_fill, has_stroke, closed, winding) {
+    (true, true, true, Winding::NonZero) => {
+      content.close_fill_nonzero_and_stroke();
+    }
+    (true, true, true, Winding::EvenOdd) => {
+      content.close_fill_even_odd_and_stroke();
+    }
+    (true, true, false, Winding::NonZero) => {
+      content.fill_nonzero_and_stroke();
+    }
+    (true, true, false, Winding::EvenOdd) => {
+      content.fill_even_odd_and_stroke();
+    }
+    (true, false, _, Winding::NonZero) => {
+      content.fill_nonzero();
+    }
+    (true, false, _, Winding::EvenOdd) => {
+      content.fill_even_odd();
+    }
+    (false, true, true, _) => {
+      content.close_and_stroke();
+    }
+    (false, true, false, _) => {
+      content.stroke();
+    }
+    (false, false, _, _) => {
+      content.end_path();
+    }
+  }
+}
+
+#[derive(Clone, Copy)]
+struct PdfPoint {
+  x: f32,
+  y: f32,
 }
 
 fn required_points(
   points: Option<Vec<PdfPointInput>>,
   path: &str,
   unit: Unit,
-) -> Result<Vec<LinePoint>> {
+) -> Result<Vec<PdfPoint>> {
   let points = points.ok_or_else(|| required(path))?;
   points
     .into_iter()
     .enumerate()
     .map(|(index, point)| {
-      Ok(LinePoint {
-        p: Point {
-          x: unit.coordinate(required_f32(Some(point.x), &format!("{path}[{index}].x"))?),
-          y: unit.coordinate(required_f32(Some(point.y), &format!("{path}[{index}].y"))?),
-        },
-        bezier: point.bezier.unwrap_or(false),
+      if point.bezier.unwrap_or(false) {
+        return Err(invalid_arg(format!(
+          "{path}[{index}].bezier is not supported by the pdf-writer phase"
+        )));
+      }
+
+      Ok(PdfPoint {
+        x: unit.coordinate(required_f32(Some(point.x), &format!("{path}[{index}].x"))?),
+        y: unit.coordinate(required_f32(Some(point.y), &format!("{path}[{index}].y"))?),
       })
     })
     .collect()
 }
 
-fn paint_mode(has_fill: bool, has_stroke: bool) -> PaintMode {
-  match (has_fill, has_stroke) {
-    (true, true) => PaintMode::FillStroke,
-    (true, false) => PaintMode::Fill,
-    (false, true) | (false, false) => PaintMode::Stroke,
-  }
+#[derive(Clone, Copy)]
+enum Winding {
+  NonZero,
+  EvenOdd,
 }
 
-fn parse_winding(value: Option<&str>, path: &str) -> Result<WindingOrder> {
+fn parse_winding(value: Option<&str>, path: &str) -> Result<Winding> {
   match value.unwrap_or("nonZero") {
-    "nonZero" => Ok(WindingOrder::NonZero),
-    "evenOdd" => Ok(WindingOrder::EvenOdd),
+    "nonZero" => Ok(Winding::NonZero),
+    "evenOdd" => Ok(Winding::EvenOdd),
     value => Err(invalid_arg(format!(
       "{path} must be \"nonZero\" or \"evenOdd\", received \"{value}\""
     ))),
@@ -460,53 +397,44 @@ fn wrap_text(text: &str, max_width_pt: f32, font_size: f32, hyphenate: bool) -> 
           line.chars().count() + 1 + part.chars().count()
         };
 
-        if !line.is_empty() && candidate_len > max_chars {
+        if candidate_len > max_chars && !line.is_empty() {
           lines.push(line);
-          line = part;
-        } else {
-          if !line.is_empty() {
-            line.push(' ');
-          }
-          line.push_str(&part);
+          line = String::new();
         }
+
+        if !line.is_empty() {
+          line.push(' ');
+        }
+        line.push_str(&part);
       }
     }
+
     if !line.is_empty() {
       lines.push(line);
     }
-  }
-
-  if lines.is_empty() {
-    lines.push(String::new());
   }
 
   lines
 }
 
 fn split_word(word: &str, max_chars: usize, hyphenate: bool) -> Vec<String> {
-  if word.chars().count() <= max_chars {
+  if !hyphenate || word.chars().count() <= max_chars {
     return vec![word.to_string()];
   }
 
-  let chunk_size = if hyphenate && max_chars > 1 {
-    max_chars - 1
-  } else {
-    max_chars
-  };
-  let mut chunks = Vec::new();
+  let chunk_size = max_chars.saturating_sub(1).max(1);
   let chars = word.chars().collect::<Vec<_>>();
-  for chunk in chars.chunks(chunk_size.max(1)) {
-    let mut value = chunk.iter().collect::<String>();
-    if hyphenate
-      && value.chars().count() == chunk_size
-      && chunks.len() * chunk_size + chunk.len() < chars.len()
-    {
-      value.push('-');
-    }
-    chunks.push(value);
-  }
-
-  chunks
+  chars
+    .chunks(chunk_size)
+    .enumerate()
+    .map(|(index, chunk)| {
+      let mut part = chunk.iter().collect::<String>();
+      if index < chars.len().div_ceil(chunk_size) - 1 {
+        part.push('-');
+      }
+      part
+    })
+    .collect()
 }
 
 fn estimate_text_width(text: &str, font_size: f32) -> f32 {

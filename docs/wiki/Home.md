@@ -1,6 +1,7 @@
-# Kafka Crab JS Documentation
+# Crab JS Documentation
 
-A Node.js native binding for Apache Kafka using Rust, providing high performance and type safety.
+Documentation for the Crab JS native Node.js packages. This wiki currently focuses on `kafka-crab-js`, the Kafka
+binding built with Rust for high performance and type safety.
 
 ## Installation
 
@@ -61,6 +62,7 @@ endSpan(message)
 | Package              | Description                                      |
 | -------------------- | ------------------------------------------------ |
 | `kafka-crab-js`      | Core Kafka client (producer, consumer, streams)  |
+| `pdf-crab-js`        | Native PDF generation and rendering helpers      |
 | `kafka-crab-js-otel` | OpenTelemetry instrumentation (separate install) |
 
 ## Basic Usage

@@ -735,10 +735,6 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
+module.exports.PdfDocumentBuilder = nativeBinding.PdfDocumentBuilder
 module.exports.createPdf = nativeBinding.createPdf
 module.exports.createPdfAsync = nativeBinding.createPdfAsync
-module.exports.createPdfFromHtml = nativeBinding.createPdfFromHtml
-module.exports.createPdfFromHtmlAsync = nativeBinding.createPdfFromHtmlAsync
-module.exports.parsePdf = nativeBinding.parsePdf
-module.exports.renderPdfPageToSvg = nativeBinding.renderPdfPageToSvg
-module.exports.renderPdfPageToSvgAsync = nativeBinding.renderPdfPageToSvgAsync

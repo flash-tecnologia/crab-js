@@ -1,0 +1,22 @@
+{
+  "name": "pdf-benchmark",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Benchmark suite for pdf-crab-js PDF generation",
+  "type": "module",
+  "scripts": {
+    "benchmark": "node --expose-gc --import tsx table.ts",
+    "benchmark:table": "node --expose-gc --import tsx table.ts",
+    "check": "vp check",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix"
+  },
+  "dependencies": {
+    "pdf-crab-js": "workspace:*"
+  },
+  "engines": {
+    "node": "24"
+  }
+}

@@ -10,27 +10,35 @@
     "node-addon-api",
     "pdf"
   ],
-  "homepage": "https://github.com/flash-tecnologia/kafka-crab-js",
+  "homepage": "https://github.com/flash-tecnologia/crab-js",
   "license": "MIT",
   "author": "inaiat@gmail.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/flash-tecnologia/kafka-crab-js.git",
+    "url": "git+https://github.com/flash-tecnologia/crab-js.git",
     "directory": "packages/pdf-crab-js"
   },
   "files": [
-    "examples",
+    "browser.js",
+    "examples/*.ts",
     "index.d.ts",
     "index.cjs",
     "index.js"
   ],
   "type": "module",
   "main": "index.js",
+  "browser": "./browser.js",
   "types": "index.d.ts",
   "exports": {
     ".": {
+      "types": "./index.d.ts",
       "import": "./index.js",
       "require": "./index.cjs"
+    },
+    "./wasm": {
+      "types": "./index.d.ts",
+      "import": "./browser.js",
+      "default": "./browser.js"
     }
   },
   "publishConfig": {
@@ -42,18 +50,25 @@
     "check": "vp check",
     "build": "node build.mjs",
     "build:debug": "node build.mjs --debug",
+    "build:wasm": "node build.mjs --target wasm32-wasip1-threads",
     "example": "tsx examples/pdf.ts",
-    "example:printpdf": "tsx examples/printpdf-gallery.ts",
-    "example:tables-html": "tsx examples/tables-html.ts",
+    "example:table": "tsx examples/table.ts",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
     "lint": "vp lint",
     "lint:fix": "vp lint --fix",
     "prepublishOnly": "napi prepublish -t npm",
-    "test": "vp test run js-tests/unit"
+    "test": "vp test run js-tests/unit",
+    "test:wasm": "NAPI_RS_FORCE_WASI=error node js-tests/wasm-smoke.mjs"
+  },
+  "dependencies": {
+    "buffer": "^6.0.3"
   },
   "devDependencies": {
-    "@napi-rs/cli": "^3.6.2"
+    "@emnapi/core": "^1.9.2",
+    "@emnapi/runtime": "^1.9.2",
+    "@napi-rs/cli": "^3.6.2",
+    "@napi-rs/wasm-runtime": "^1.1.4"
   },
   "napi": {
     "binaryName": "pdf-crab-js",
@@ -64,7 +79,8 @@
       "x86_64-unknown-linux-musl",
       "aarch64-unknown-linux-gnu",
       "aarch64-apple-darwin",
-      "aarch64-unknown-linux-musl"
+      "aarch64-unknown-linux-musl",
+      "wasm32-wasip1-threads"
     ]
   },
   "engines": {

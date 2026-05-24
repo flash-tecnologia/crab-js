@@ -11,26 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 napi = "3.9.0"
 napi-derive = "3.5.6"
-printpdf = { version = "0.9.1", default-features = false, features = [
-  "html",
-  "html_multithreaded",
-  "text_layout",
-  "text_layout_hyphenation",
-  "images",
-  "bmp",
-  "dds",
-  "gif",
-  "hdr",
-  "ico",
-  "jpeg",
-  "png",
-  "pnm",
-  "rayon",
-  "tga",
-  "tiff",
-  "webp",
-  "svg",
-] }
+pdf-writer = "0.14.0"
 
 [build-dependencies]
 napi-build = { version = "2.3.2" }

@@ -36,7 +36,7 @@ const pdf = createPdf({
         },
         {
           type: 'text',
-          text: 'Generated from the printpdf-backed NAPI API',
+          text: 'Generated from the pdf-writer-backed NAPI API',
           x: 26,
           y: 250,
           fontSize: 10,

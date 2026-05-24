@@ -11,13 +11,13 @@
     "otel",
     "tracing"
   ],
-  "homepage": "https://github.com/flash-tecnologia/kafka-crab-js",
+  "homepage": "https://github.com/flash-tecnologia/crab-js",
   "license": "MIT",
   "author": "inaiat@gmail.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/flash-tecnologia/kafka-crab-js.git",
-    "directory": "packages/kafka-crab-js-otel"
+    "url": "git+https://github.com/flash-tecnologia/crab-js.git",
+    "directory": "packages/otel"
   },
   "files": [
     "dist"

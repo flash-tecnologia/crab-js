@@ -1,12 +1,14 @@
 # pdf-crab-js
 
-Native Node.js package built with Rust, NAPI-RS, and printpdf.
+Native Node.js package built with Rust, NAPI-RS, and `pdf-writer`.
 
 ## Usage
 
+Node.js should use the native NAPI entrypoint:
+
 ```js
 import { writeFileSync } from 'node:fs'
-import { createPdf } from 'pdf-crab-js'
+import { PdfDocumentBuilder, createPdf } from 'pdf-crab-js'
 
 const pdf = createPdf({
   title: 'Invoice',
@@ -40,55 +42,48 @@ const pdf = createPdf({
 writeFileSync('example.pdf', pdf)
 ```
 
-For image, SVG, HTML, parsing, and page rendering work, prefer the async APIs so the native work runs
-off the Node.js event loop:
+The phase 1 public API is intentionally small:
+
+- `createPdf(input): Buffer`
+- `createPdfAsync(input): Promise<Buffer>`
+- `new PdfDocumentBuilder(input?)`
+
+Use `PdfDocumentBuilder` when the document is produced in chunks and you do not want to build one
+large `pages[].elements[]` object graph before crossing the NAPI boundary:
 
 ```js
-import { writeFileSync } from 'node:fs'
-import { createPdfAsync, renderPdfPageToSvgAsync } from 'pdf-crab-js'
+const builder = new PdfDocumentBuilder({ title: 'Chunked PDF' })
 
-const pdf = await createPdfAsync({
-  title: 'Rich PDF',
-  pages: [
-    {
-      width: 210,
-      height: 297,
-      elements: [
-        {
-          type: 'textBox',
-          text: 'Wrapped text with the declarative pdf-crab-js API.',
-          x: 20,
-          y: 250,
-          width: 90,
-          fontSize: 12,
-        },
-        {
-          type: 'svg',
-          svg: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="red"/></svg>',
-          x: 20,
-          y: 200,
-          width: 30,
-          height: 30,
-        },
-      ],
-    },
-  ],
-})
+builder.startPage({ width: 210, height: 297 })
+builder.appendElements([{ type: 'text', text: 'Chunk 1', x: 20, y: 260 }])
+builder.appendElements([{ type: 'line', x1: 20, y1: 250, x2: 120, y2: 250 }])
+builder.endPage()
 
-const firstPageSvg = await renderPdfPageToSvgAsync({ pdf, pageIndex: 0 })
-
-writeFileSync('rich.pdf', pdf)
-writeFileSync('page.svg', firstPageSvg)
+writeFileSync('chunked.pdf', builder.finish())
 ```
 
-The public Node API is Buffer-first. It does not expose the full internal `printpdf` document object
-to JavaScript, because converting that structure into JS objects is slower and couples this package
-to printpdf internals. Use `parsePdf` for summaries and `renderPdfPageToSvg` when page rendering is
-needed.
+Supported elements are `text`, `textBox`, `line`, `rect`, `polygon`, and `path` with straight
+segments. Coordinates use the PDF bottom-left origin. Document/page dimensions and coordinates use
+`input.unit`, defaulting to `mm`; font sizes and stroke widths are points.
 
-`printpdf` default features are intentionally disabled in this package. Node builds enable explicit
-non-WASM features for HTML, text layout, image codecs, SVG, and Rayon; WASM-only features such as
-`js-sys`, `web-sys`, and `wasm-bindgen-futures` are not enabled.
+`pdf-writer` is a low-level PDF object/content writer. It does not provide HTML rendering, PDF
+parsing, or page-to-SVG rendering, so those former high-level APIs are out of scope for this first
+phase.
+
+## WebAssembly
+
+Browser, Deno, Bun, and portable runtimes can use the NAPI-RS WebAssembly build:
+
+```js
+import { createPdf } from 'pdf-crab-js/wasm'
+```
+
+Browser deployments must enable `SharedArrayBuffer`, which requires these response headers:
+
+```text
+Cross-Origin-Embedder-Policy: require-corp
+Cross-Origin-Opener-Policy: same-origin
+```
 
 ## Development
 
@@ -98,16 +93,22 @@ Install dependencies from the workspace root:
 pnpm install --filter pdf-crab-js
 ```
 
-Build the native binding:
+Build and test:
 
 ```bash
 pnpm --filter pdf-crab-js build
+pnpm --filter pdf-crab-js test
+pnpm --filter pdf-crab-js check
+pnpm --filter pdf-crab-js lint
+pnpm --filter pdf-crab-js fmt:check
 ```
 
-Run the unit tests:
+Build and smoke-test the WebAssembly binding:
 
 ```bash
-pnpm --filter pdf-crab-js test
+rustup target add wasm32-wasip1-threads
+pnpm --filter pdf-crab-js build:wasm
+pnpm --filter pdf-crab-js test:wasm
 ```
 
 Run the local PDF example:
@@ -118,31 +119,16 @@ pnpm --filter pdf-crab-js example
 
 The generated file is written to `packages/pdf-crab-js/examples/output/pdf-crab-js-example.pdf`.
 
-Run the `printpdf` HTML example:
+Run the PDF table benchmark from the workspace root:
 
 ```bash
-pnpm --filter pdf-crab-js example:tables-html
+pnpm --filter pdf-benchmark benchmark
 ```
 
-The generated file is written to `packages/pdf-crab-js/examples/output/pdf-crab-js-tables-html.pdf`.
-
-Run the `printpdf` example gallery:
-
-```bash
-pnpm --filter pdf-crab-js example:printpdf
-```
-
-The gallery reproduces the upstream `printpdf` text, shapes, images, SVG, layers, bookmarks,
-multi-page, HTML, table, pagination, and margin examples using the public TypeScript API.
-Generated files are written to `packages/pdf-crab-js/examples/output/`.
-
-Run linting and type checks:
-
-```bash
-pnpm --filter pdf-crab-js lint
-pnpm --filter pdf-crab-js check
-```
+The benchmark defaults to a 10-page PDF with 10 table rows per page. Use `PDF_BENCHMARK_RUNS`,
+`PDF_BENCHMARK_WARMUP`, `PDF_BENCHMARK_PAGES`, and `PDF_BENCHMARK_WRITE=1` to tune the run or write
+the generated PDF to `benchmarks/pdf/output/`.
 
 ## Release
 
-Native package publishing is handled by `napi prepublish -t npm`.
+Native and WebAssembly package publishing is handled by `napi prepublish -t npm`.

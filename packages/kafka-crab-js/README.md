@@ -859,7 +859,7 @@ The repository includes a benchmark suite that compares `kafka-crab-js` with Kaf
 From the repository root:
 
 ```bash
-cd packages/benchmark
+cd benchmarks/kafka
 
 # Set up benchmark data. Requires Kafka running locally.
 vp install
@@ -877,7 +877,7 @@ allocator arenas, sockets, librdkafka state, and Kafka metadata from one client 
 The captured run below is equivalent to:
 
 ```bash
-cd packages/benchmark
+cd benchmarks/kafka
 BENCHMARK_BATCH_SIZE=300000 BENCHMARK_BATCH_TIMEOUT_MS=2 vp run benchmark
 ```
 
@@ -945,7 +945,7 @@ BENCHMARK_MEMORY=1
 ```
 
 See the [repository benchmark snapshot](../../BENCHMARKS.md) for the latest captured run and the
-[benchmark README](../benchmark/README.md) for the full benchmark methodology and environment variables.
+[benchmark README](../../benchmarks/kafka/README.md) for the full benchmark methodology and environment variables.
 
 ## Migration Notes
 

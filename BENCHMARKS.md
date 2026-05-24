@@ -1,4 +1,4 @@
-# Kafka Crab JS Consumer Benchmarks
+# Crab JS Kafka Consumer Benchmarks
 
 This document captures a local consumer benchmark run for `kafka-crab-js` v4 against KafkaJS and `@platformatic/kafka`.
 The benchmark focuses on consumer throughput, lifecycle memory, and V8 garbage collection during the measured message
@@ -46,7 +46,7 @@ podman compose up -d
 ```
 
 ```bash
-cd packages/benchmark
+cd benchmarks/kafka
 KAFKA_BROKERS=127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094 vp run setup:consumer
 KAFKA_BROKERS=127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094 vp run benchmark
 ```

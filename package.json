@@ -1,5 +1,5 @@
 {
-  "name": "kafka-crab-monorepo",
+  "name": "crab-js-monorepo",
   "private": true,
   "type": "module",
   "scripts": {
@@ -38,5 +38,5 @@
   "engines": {
     "node": "24"
   },
-  "packageManager": "pnpm@11.0.9"
+  "packageManager": "pnpm@11.2.2"
 }

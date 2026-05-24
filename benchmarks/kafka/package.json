@@ -1,5 +1,5 @@
 {
-  "name": "kafka-crab-js-benchmark",
+  "name": "kafka-benchmark",
   "version": "1.0.0",
   "private": true,
   "description": "Benchmark suite for kafka-crab-js",

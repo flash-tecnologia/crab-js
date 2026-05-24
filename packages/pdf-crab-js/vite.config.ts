@@ -3,6 +3,7 @@ import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vi
 
 const pdfLintIgnorePatterns = [
   ...(sharedLintConfig?.ignorePatterns ?? []),
+  'browser.js',
   'index.js',
   'index.cjs',
   'index.d.ts',

@@ -12,25 +12,6 @@ pub(super) fn optional_positive_f32(value: Option<f64>, path: &str) -> Result<Op
   value.map(|value| positive_f32(value, path)).transpose()
 }
 
-pub(super) fn optional_f32(value: Option<f64>, path: &str) -> Result<Option<f32>> {
-  value.map(|value| to_f32(value, path)).transpose()
-}
-
-pub(super) fn optional_non_negative_f32(value: Option<f64>, path: &str) -> Result<Option<f32>> {
-  value
-    .map(|value| {
-      let value = to_f32(value, path)?;
-      if value < 0.0 {
-        return Err(invalid_arg(format!(
-          "{path} must be greater than or equal to 0"
-        )));
-      }
-
-      Ok(value)
-    })
-    .transpose()
-}
-
 pub(super) fn positive_f32(value: f64, path: &str) -> Result<f32> {
   let value = to_f32(value, path)?;
   if value <= 0.0 {

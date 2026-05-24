@@ -10,7 +10,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "paths": {
-      "kafka-crab-js": ["../kafka-crab-js/js-src/index.ts"]
+      "kafka-crab-js": ["../../packages/kafka-crab-js/js-src/index.ts"]
     }
   },
   "include": ["**/*.ts"]

@@ -738,19 +738,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const {
-  createPdf,
-  createPdfAsync,
-  createPdfFromHtml,
-  createPdfFromHtmlAsync,
-  parsePdf,
-  renderPdfPageToSvg,
-  renderPdfPageToSvgAsync,
-} = nativeBinding
+const { PdfDocumentBuilder, createPdf, createPdfAsync } = nativeBinding
+export { PdfDocumentBuilder }
 export { createPdf }
 export { createPdfAsync }
-export { createPdfFromHtml }
-export { createPdfFromHtmlAsync }
-export { parsePdf }
-export { renderPdfPageToSvg }
-export { renderPdfPageToSvgAsync }

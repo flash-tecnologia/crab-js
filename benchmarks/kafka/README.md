@@ -21,7 +21,7 @@ docker compose up -d
 3. Prepare the benchmark data:
 
 ```bash
-cd packages/benchmark
+cd benchmarks/kafka
 vp run setup:consumer
 ```
 

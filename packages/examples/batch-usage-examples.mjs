@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Kafka Crab JS - Simple Batch Processing Demo
+ * Crab JS Kafka - Simple Batch Processing Demo
  *
  * Produces test messages and demonstrates batch consumption.
  */
@@ -113,7 +113,7 @@ async function batchConsumptionDemo() {
 }
 
 // Main demo
-console.log('🦀 Kafka Crab JS - Batch Processing Demo')
+console.log('🦀 Crab JS Kafka - Batch Processing Demo')
 console.log('='.repeat(50))
 
 try {

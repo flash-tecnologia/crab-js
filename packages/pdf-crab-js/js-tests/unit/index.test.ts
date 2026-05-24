@@ -2,24 +2,7 @@ import { equal, match, ok, throws } from 'node:assert/strict'
 import { test } from 'vite-plus/test'
 
 import * as pdfCrab from '../../index.js'
-import {
-  createPdf,
-  createPdfAsync,
-  createPdfFromHtml,
-  createPdfFromHtmlAsync,
-  parsePdf,
-  renderPdfPageToSvg,
-  renderPdfPageToSvgAsync,
-} from '../../index.js'
-
-const PNG_1X1 = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
-  'base64',
-)
-const JPEG_1X1 = Buffer.from(
-  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAABAAEDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==',
-  'base64',
-)
+import { createPdf, createPdfAsync, PdfDocumentBuilder } from '../../index.js'
 
 function assertPdfBuffer(pdf: Buffer): void {
   ok(Buffer.isBuffer(pdf))
@@ -31,25 +14,17 @@ function createPdfUnchecked(input: unknown): Buffer {
   return createPdf(input as never)
 }
 
-function createPdfFromHtmlUnchecked(input: unknown): Buffer {
-  return createPdfFromHtml(input as never)
-}
-
-test('public API exports remain available from the unified NAPI boundary', () => {
+test('public API exports expose the pdf-writer phase surface', () => {
   const publicApi = pdfCrab as Record<string, unknown>
 
   equal(typeof createPdf, 'function')
   equal(typeof createPdfAsync, 'function')
-  equal(typeof createPdfFromHtml, 'function')
-  equal(typeof createPdfFromHtmlAsync, 'function')
-  equal(typeof parsePdf, 'function')
-  equal(typeof renderPdfPageToSvg, 'function')
-  equal(typeof renderPdfPageToSvgAsync, 'function')
-  equal(publicApi.htmlToDocument, undefined)
-  equal(publicApi.pdfToDocument, undefined)
-  equal(publicApi.documentToPdf, undefined)
-  equal(publicApi.resourcesForPage, undefined)
-  equal(publicApi.pageToSvg, undefined)
+  equal(typeof PdfDocumentBuilder, 'function')
+  equal(publicApi.createPdfFromHtml, undefined)
+  equal(publicApi.createPdfFromHtmlAsync, undefined)
+  equal(publicApi.parsePdf, undefined)
+  equal(publicApi.renderPdfPageToSvg, undefined)
+  equal(publicApi.renderPdfPageToSvgAsync, undefined)
 })
 
 test('createPdf returns a PDF buffer for one page with text', () => {
@@ -72,6 +47,7 @@ test('createPdf returns a PDF buffer for one page with text', () => {
   })
 
   assertPdfBuffer(pdf)
+  match(pdf.toString('latin1'), /Hello from pdf-crab-js/)
 })
 
 test('createPdf maps text, line, and rectangle elements', () => {
@@ -116,45 +92,21 @@ test('createPdf maps text, line, and rectangle elements', () => {
   })
 
   assertPdfBuffer(pdf)
+  const body = pdf.toString('latin1')
+  match(body, / re\n/)
+  match(body, / l\n/)
+  match(body, /Mixed elements/)
 })
 
-test('createPdf maps PNG and JPEG image elements', () => {
-  const pdf = createPdf({
-    pages: [
-      {
-        width: 120,
-        height: 120,
-        elements: [
-          { type: 'image', source: PNG_1X1, format: 'png', x: 10, y: 70, width: 30, height: 30 },
-          { type: 'image', source: JPEG_1X1, format: 'jpeg', x: 50, y: 70, width: 30, height: 30 },
-        ],
-      },
-    ],
-  })
-
-  assertPdfBuffer(pdf)
-})
-
-test('createPdf maps SVG, textBox, polygon, path, metadata, bookmarks, layers, and annotations', () => {
+test('createPdf maps textBox, polygon, path, metadata, and link annotations', () => {
   const pdf = createPdf({
     title: 'Rich PDF',
     metadata: {
       author: 'pdf-crab-js',
       subject: 'feature coverage',
-      keywords: ['pdf', 'printpdf'],
+      keywords: ['pdf', 'pdf-writer'],
+      trapped: false,
     },
-    saveOptions: {
-      optimize: true,
-      subsetFonts: true,
-      secure: true,
-      imageOptimization: {
-        quality: 0.8,
-        format: 'auto',
-      },
-    },
-    conformance: 'pdf1_3',
-    bookmarks: [{ name: 'First page', pageIndex: 0 }],
-    layers: [{ id: 'content', name: 'Content' }],
     pages: [
       {
         width: 210,
@@ -170,15 +122,6 @@ test('createPdf maps SVG, textBox, polygon, path, metadata, bookmarks, layers, a
           },
         ],
         elements: [
-          {
-            type: 'svg',
-            layer: 'content',
-            svg: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="red"/></svg>',
-            x: 20,
-            y: 230,
-            width: 30,
-            height: 30,
-          },
           {
             type: 'textBox',
             text: 'This wrapped text box proves line layout for a longer paragraph.',
@@ -215,49 +158,14 @@ test('createPdf maps SVG, textBox, polygon, path, metadata, bookmarks, layers, a
   })
 
   assertPdfBuffer(pdf)
-  const parsed = parsePdf({ pdf })
-  equal(parsed.pageCount, 1)
-  equal(parsed.metadata.title, 'Rich PDF')
+  const body = pdf.toString('latin1')
+  match(body, /Rich PDF/)
+  match(body, /pdf-writer/)
+  match(body, /https:\/\/example\.com/)
+  match(body, /This wrapped text/)
 })
 
-test('createPdfFromHtml returns a PDF buffer for printpdf HTML input', () => {
-  const pdf = createPdfFromHtml({
-    title: 'My PDF',
-    html: `
-        <html>
-          <body style="padding:10mm">
-            <p style="color: red; font-family: sans-serif;" data-chapter="1" data-subsection="First subsection">Hello!</p>
-            <div style="width:200px;height:200px;background:red;" data-chapter="1" data-subsection="Second subsection">
-              <p>World!</p>
-            </div>
-          </body>
-        </html>
-      `,
-    pageWidth: 210,
-    pageHeight: 297,
-  })
-
-  assertPdfBuffer(pdf)
-}, 60_000)
-
-test('parsePdf and renderPdfPageToSvg inspect a generated PDF', () => {
-  const pdf = createPdf({
-    pages: [
-      {
-        width: 210,
-        height: 297,
-        elements: [{ type: 'text', text: 'Render me', x: 20, y: 260 }],
-      },
-    ],
-  })
-  const parsed = parsePdf({ pdf })
-  const svg = renderPdfPageToSvg({ pdf, pageIndex: 0, imageFormats: ['png', 'jpeg'] })
-
-  equal(parsed.pageCount, 1)
-  match(svg, /<svg/)
-})
-
-test('async APIs return PDF and SVG results', async () => {
+test('createPdfAsync returns a PDF buffer', async () => {
   const pdf = await createPdfAsync({
     pages: [
       {
@@ -267,18 +175,127 @@ test('async APIs return PDF and SVG results', async () => {
       },
     ],
   })
-  const htmlPdf = await createPdfFromHtmlAsync({
-    html: '<html><body><p>Async HTML PDF</p></body></html>',
-    pageWidth: 120,
-    pageHeight: 120,
-  })
-  const svg = await renderPdfPageToSvgAsync({ pdf, pageIndex: 0 })
-  const parsed = parsePdf({ pdf })
 
   assertPdfBuffer(pdf)
-  assertPdfBuffer(htmlPdf)
-  match(svg, /<svg/)
-  equal(parsed.pageCount, 1)
+  match(pdf.toString('latin1'), /Async PDF/)
+})
+
+test('PdfDocumentBuilder builds a PDF with chunked page elements', () => {
+  const builder = new PdfDocumentBuilder({
+    title: 'Builder PDF',
+    metadata: {
+      creator: 'builder test',
+    },
+  })
+
+  builder.startPage({ width: 210, height: 297 })
+  builder.appendElements([
+    {
+      type: 'text',
+      text: 'Builder page',
+      x: 20,
+      y: 260,
+      font: 'HelveticaBold',
+    },
+  ])
+  builder.appendElements([
+    {
+      type: 'line',
+      x1: 20,
+      y1: 250,
+      x2: 120,
+      y2: 250,
+      stroke: '#2563eb',
+    },
+  ])
+  builder.appendAnnotations([
+    {
+      type: 'link',
+      x: 20,
+      y: 235,
+      width: 40,
+      height: 10,
+      url: 'https://example.com/builder',
+    },
+  ])
+  builder.endPage()
+
+  const pdf = builder.finish()
+
+  assertPdfBuffer(pdf)
+  const body = pdf.toString('latin1')
+  match(body, /Builder page/)
+  match(body, /https:\/\/example\.com\/builder/)
+})
+
+test('PdfDocumentBuilder addPage, addPages, and finishAsync work', async () => {
+  const builder = new PdfDocumentBuilder()
+
+  builder.addPage({
+    width: 210,
+    height: 297,
+    elements: [{ type: 'text', text: 'First builder page', x: 20, y: 260 }],
+  })
+  builder.addPages([
+    {
+      width: 210,
+      height: 297,
+      elements: [{ type: 'text', text: 'Second builder page', x: 20, y: 260 }],
+    },
+  ])
+
+  const pdf = await builder.finishAsync()
+
+  assertPdfBuffer(pdf)
+  const body = pdf.toString('latin1')
+  match(body, /First builder page/)
+  match(body, /Second builder page/)
+})
+
+test('PdfDocumentBuilder validates state transitions', () => {
+  const builder = new PdfDocumentBuilder()
+
+  throws(
+    () => builder.appendElements([]),
+    (error) => {
+      match((error as Error).message, /appendElements requires an open page/)
+      return true
+    },
+  )
+  throws(
+    () => builder.finish(),
+    (error) => {
+      match((error as Error).message, /pages must contain at least one page/)
+      return true
+    },
+  )
+  throws(
+    () => builder.startPage({ width: 210, height: 297 }),
+    (error) => {
+      match((error as Error).message, /already finished/)
+      return true
+    },
+  )
+})
+
+test('PdfDocumentBuilder rejects nested pages and open-page finish', () => {
+  const nestedBuilder = new PdfDocumentBuilder()
+  nestedBuilder.startPage({ width: 210, height: 297 })
+
+  throws(
+    () => nestedBuilder.startPage({ width: 210, height: 297 }),
+    (error) => {
+      match((error as Error).message, /cannot start a new page/)
+      return true
+    },
+  )
+  throws(
+    () => nestedBuilder.finish(),
+    (error) => {
+      match((error as Error).message, /cannot finish while a page is open/)
+      return true
+    },
+  )
 })
 
 test('createPdf validates missing pages', () => {
@@ -286,16 +303,6 @@ test('createPdf validates missing pages', () => {
     () => createPdfUnchecked({}),
     (error) => {
       match((error as Error).message, /pages is required/)
-      return true
-    },
-  )
-})
-
-test('createPdfFromHtml validates missing html', () => {
-  throws(
-    () => createPdfFromHtmlUnchecked({}),
-    (error) => {
-      match((error as Error).message, /html is required/)
       return true
     },
   )
@@ -344,6 +351,33 @@ test('createPdf validates missing required element fields', () => {
       }),
     (error) => {
       match((error as Error).message, /pages\[0\]\.elements\[0\]\.text is required/)
+      return true
+    },
+  )
+})
+
+test('createPdf rejects bezier path points in the pdf-writer phase', () => {
+  throws(
+    () =>
+      createPdfUnchecked({
+        pages: [
+          {
+            width: 210,
+            height: 297,
+            elements: [
+              {
+                type: 'path',
+                points: [
+                  { x: 10, y: 10 },
+                  { x: 20, y: 20, bezier: true },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    (error) => {
+      match((error as Error).message, /bezier is not supported/)
       return true
     },
   )

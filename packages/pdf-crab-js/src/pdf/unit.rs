@@ -1,5 +1,4 @@
 use napi::Result;
-use printpdf::{Mm, Pt};
 
 use super::validation::invalid_arg;
 
@@ -20,17 +19,10 @@ impl Unit {
     }
   }
 
-  pub(super) fn page_size(self, value: f32) -> Mm {
+  pub(super) fn coordinate(self, value: f32) -> f32 {
     match self {
-      Self::Mm => Mm(value),
-      Self::Pt => Pt(value).into(),
-    }
-  }
-
-  pub(super) fn coordinate(self, value: f32) -> Pt {
-    match self {
-      Self::Mm => Mm(value).into(),
-      Self::Pt => Pt(value),
+      Self::Mm => value * 72.0 / 25.4,
+      Self::Pt => value,
     }
   }
 }

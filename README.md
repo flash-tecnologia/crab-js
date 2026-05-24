@@ -1,11 +1,15 @@
-# Kafka Crab JS
+# Crab JS
 
-Native Kafka performance for Node.js, with a TypeScript API small enough to use directly.
+Native Node.js packages backed by Rust and NAPI-RS.
 
-Kafka Crab JS uses Rust, NAPI-RS, and librdkafka to bring Kafka's mature native client behavior into Node.js services.
-The goal is not to hide Kafka behind a new abstraction. The goal is to keep the API familiar while reducing JavaScript
-heap pressure, improving high-throughput consumer paths, and preserving access to librdkafka tuning when production
-workloads need it.
+Crab JS is a monorepo for focused native packages that keep JavaScript APIs small while moving heavy work into Rust.
+It currently publishes `kafka-crab-js` for Kafka workloads, `pdf-crab-js` for PDF generation, and
+`kafka-crab-js-otel` for optional OpenTelemetry instrumentation.
+
+The Kafka package uses Rust, NAPI-RS, and librdkafka to bring Kafka's mature native client behavior into Node.js
+services. The goal is not to hide Kafka behind a new abstraction. The goal is to keep the API familiar while reducing
+JavaScript heap pressure, improving high-throughput consumer paths, and preserving access to librdkafka tuning when
+production workloads need it.
 
 [![kafka-crab-js npm beta](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue)](https://www.npmjs.com/package/kafka-crab-js)
 [![kafka-crab-js-otel npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel)
@@ -13,7 +17,7 @@ workloads need it.
 
 ## Why This Exists
 
-KafkaJS is a good fit for many Node.js services. Kafka Crab JS is designed for the point where one or more of these
+KafkaJS is a good fit for many Node.js services. `kafka-crab-js` is designed for the point where one or more of these
 constraints becomes important:
 
 | Need                             | What This Monorepo Provides                                                            |
@@ -25,7 +29,7 @@ constraints becomes important:
 | Observability without core bloat | The core emits diagnostics-channel events; OTEL lives in a separate package.           |
 | Node.js integration              | ESM, CommonJS, direct APIs, Node.js `Readable` streams, and native Web Streams.        |
 
-For simple low-volume consumers, a pure JavaScript client may be enough. Kafka Crab JS is most useful when consumer
+For simple low-volume consumers, a pure JavaScript client may be enough. `kafka-crab-js` is most useful when consumer
 throughput, heap pressure, batching, native Kafka behavior, or OpenTelemetry separation are part of the decision.
 
 ## Benchmark Snapshot
@@ -48,7 +52,7 @@ repeat the benchmark in your own environment before making capacity claims.
 
 See [BENCHMARKS.md](./BENCHMARKS.md) for the latest captured benchmark run. The
 [core package benchmark section](./packages/kafka-crab-js/README.md#performance-benchmarks) and
-[benchmark package](./packages/benchmark) cover methodology, GC metrics, and profiling commands.
+[Kafka benchmark package](./benchmarks/kafka) covers methodology, GC metrics, and profiling commands.
 
 ## Packages
 
@@ -57,14 +61,16 @@ See [BENCHMARKS.md](./BENCHMARKS.md) for the latest captured benchmark run. The
 | Package                                   | Description                                                                 | npm                                                                                                                     |
 | ----------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | [kafka-crab-js](./packages/kafka-crab-js) | Core Kafka client with producer, consumer, batch, Node stream, and Web APIs | [![npm beta](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue)](https://www.npmjs.com/package/kafka-crab-js) |
+| [pdf-crab-js](./packages/pdf-crab-js)     | Native PDF generation and rendering helpers built on printpdf              | [npm package](https://www.npmjs.com/package/pdf-crab-js)                                                                |
 | [kafka-crab-js-otel](./packages/otel)     | Optional OpenTelemetry instrumentation for the core diagnostics channels    | [![npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel)             |
 
 ### Workspace Tools
 
 | Package                           | Description                                                                                                |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| [benchmark](./packages/benchmark) | Isolated-process consumer benchmark with memory, GC, throughput charts, and V8 CPU/heap profiling scripts. |
-| [examples](./packages/examples)   | Runnable producer, consumer, stream, retry, OpenTelemetry, and Grafana examples.                           |
+| [kafka-benchmark](./benchmarks/kafka) | Isolated-process consumer benchmark with memory, GC, throughput charts, and V8 CPU/heap profiling scripts. |
+| [pdf-benchmark](./benchmarks/pdf)     | PDF generation benchmark comparing local pdf-crab-js output with Node.js requests to Gotenberg.             |
+| [examples](./packages/examples)               | Runnable producer, consumer, stream, retry, OpenTelemetry, and Grafana examples.                           |
 
 ## Install
 
@@ -227,7 +233,8 @@ See the [core migration notes](./packages/kafka-crab-js/README.md#v4-type-only-r
 - [Core package README](./packages/kafka-crab-js/README.md): full API reference, tuning, troubleshooting, and benchmark analysis.
 - [OpenTelemetry package README](./packages/otel/README.md): instrumentation setup and configuration.
 - [Benchmark snapshot](./BENCHMARKS.md): captured consumer throughput, lifecycle memory, and GC results.
-- [Benchmark README](./packages/benchmark/README.md): methodology, environment variables, memory mode, GC, and profiling.
+- [Kafka benchmark README](./benchmarks/kafka/README.md): methodology, environment variables, memory mode, GC, and profiling.
+- [PDF benchmark README](./benchmarks/pdf/README.md): local pdf-crab-js and Gotenberg comparison.
 - [Examples README](./packages/examples/README.md): runnable examples for core and OTEL usage.
 
 ## Development
@@ -257,7 +264,7 @@ vp run --filter kafka-crab-js test
 vp run --filter kafka-crab-js test:integration
 
 podman compose up -d
-cd packages/benchmark
+cd benchmarks/kafka
 vp run setup:consumer
 vp run benchmark
 ```

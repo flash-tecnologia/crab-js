@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
-import { dirname } from 'node:path'
+import { readFile, writeFile } from 'node:fs/promises'
+import { basename, dirname, extname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { NapiCli } from '@napi-rs/cli'
@@ -56,14 +57,9 @@ const runCommand = (command, args) =>
     })
   })
 
-/**
- * Executes a NAPI build task with the provided options.
- * @param {@type import('@napi-rs/cli').NapiCli['build']} options
- * @returns {Promise<NapiBuildResult>}
- */
 const runNapiTask = async (options) => {
   const result = await napi.build(options)
-  await result.task
+  return result.task
 }
 
 const runNapiBuild = async ({ target, crossCompile, debug }) => {
@@ -75,19 +71,127 @@ const runNapiBuild = async ({ target, crossCompile, debug }) => {
     release: !debug,
     target,
   }
+  const outputs = []
 
   for (const bindingConfig of NAPI_BINDINGS) {
-    await runNapiTask({
-      ...commonConfig,
-      ...bindingConfig,
-    })
+    outputs.push(
+      ...(await runNapiTask({
+        ...commonConfig,
+        ...bindingConfig,
+      })),
+    )
+  }
+
+  return outputs
+}
+
+const getFormattableOutputFiles = (outputs) => {
+  const formattableExtensions = new Set(['.cjs', '.js', '.mjs', '.ts'])
+
+  return [
+    ...new Set(
+      outputs
+        .filter((output) => output.kind === 'js' || output.kind === 'dts')
+        .map((output) => relative(cwd, output.path))
+        .filter((path) => formattableExtensions.has(extname(path)) || path.endsWith('.d.ts')),
+    ),
+  ]
+}
+
+const wasmBindgenImports = `const __wasmBindgenImports = {
+  __wbindgen_placeholder__: {
+    __wbindgen_describe() {},
+  },
+  __wbindgen_externref_xform__: {
+    __wbindgen_externref_table_set_null() {},
+    __wbindgen_externref_table_grow() {
+      return -1
+    },
+  },
+}
+
+`
+
+const addWasmBindgenImportsHelper = (content) => {
+  if (content.includes('const __wasi =')) {
+    return content.replace('const __wasi =', `${wasmBindgenImports}const __wasi =`)
+  }
+
+  if (content.includes('const emnapiContext =')) {
+    return content.replace('const emnapiContext =', `${wasmBindgenImports}const emnapiContext =`)
+  }
+
+  if (content.includes('const errorOutputs =')) {
+    return content.replace('const errorOutputs =', `${wasmBindgenImports}const errorOutputs =`)
+  }
+
+  return `${wasmBindgenImports}${content}`
+}
+
+const addWasmBindgenImportsToOverwriteImports = (content) =>
+  content.replaceAll(
+    /(\s*)overwriteImports\(importObject\) {\n(\s*)importObject\.env = {/g,
+    (_, declarationIndent, bodyIndent) => `${declarationIndent}overwriteImports(importObject) {
+${bodyIndent}importObject.__wbindgen_placeholder__ = __wasmBindgenImports.__wbindgen_placeholder__
+${bodyIndent}importObject.__wbindgen_externref_xform__ = __wasmBindgenImports.__wbindgen_externref_xform__
+${bodyIndent}importObject.env = {`,
+  )
+
+const patchBrowserEntry = async (outputs) => {
+  const browserOutput = outputs.find((output) => output.kind === 'js' && basename(output.path) === 'browser.js')
+  if (!browserOutput) {
+    return
+  }
+
+  await writeFile(
+    browserOutput.path,
+    `import { Buffer as __Buffer } from 'buffer'
+
+globalThis.Buffer ??= __Buffer
+
+const __binding = await import('pdf-crab-js-wasm32-wasi')
+
+export default __binding.default ?? __binding
+export const createPdf = __binding.createPdf
+export const createPdfAsync = __binding.createPdfAsync
+export const PdfDocumentBuilder = __binding.PdfDocumentBuilder
+`,
+  )
+}
+
+const patchWasmBindgenImports = async (outputs) => {
+  const wasiOutputNames = new Set([
+    'pdf-crab-js.wasi.cjs',
+    'pdf-crab-js.wasi-browser.js',
+    'wasi-worker.mjs',
+    'wasi-worker-browser.mjs',
+  ])
+
+  for (const output of outputs) {
+    if (output.kind !== 'js' || !wasiOutputNames.has(basename(output.path))) {
+      continue
+    }
+
+    const content = await readFile(output.path, 'utf8')
+    if (content.includes('__wasmBindgenImports')) {
+      continue
+    }
+
+    const patchedContent = addWasmBindgenImportsToOverwriteImports(addWasmBindgenImportsHelper(content))
+
+    await writeFile(output.path, patchedContent)
   }
 }
 
 async function main() {
   const cliOptions = getCliOptions()
-  await runNapiBuild(cliOptions)
-  await runCommand('vp', ['fmt', 'index.js', 'index.cjs', 'index.d.ts'])
+  const outputs = await runNapiBuild(cliOptions)
+  await patchBrowserEntry(outputs)
+  await patchWasmBindgenImports(outputs)
+  const files = getFormattableOutputFiles(outputs)
+  if (files.length > 0) {
+    await runCommand('vp', ['fmt', ...files])
+  }
 }
 
 main().catch((error) => {
