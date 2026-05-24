@@ -1,6 +1,6 @@
 # pdf-html-crab-js
 
-Native Node.js package built with Rust, NAPI-RS, and Fulgur for HTML-to-PDF rendering.
+Native Node.js package built with Rust and NAPI-RS for HTML-to-PDF rendering.
 
 ## Usage
 
@@ -8,9 +8,9 @@ Node.js should use the native NAPI entrypoint:
 
 ```js
 import { writeFileSync } from 'node:fs'
-import { createPdfFromHtmlWithFulgur } from 'pdf-html-crab-js'
+import { createPdfFromHtml } from 'pdf-html-crab-js'
 
-const pdf = await createPdfFromHtmlWithFulgur({
+const pdf = await createPdfFromHtml({
   html: '<!doctype html><html><body><main><h1>Invoice</h1><p>Generated from HTML.</p></main></body></html>',
   css: 'body { font-family: sans-serif; } h1 { color: #111827; }',
   page: {
@@ -22,9 +22,9 @@ const pdf = await createPdfFromHtmlWithFulgur({
 writeFileSync('html-example.pdf', pdf)
 ```
 
-The public API is intentionally renderer-specific:
+The public API is intentionally small:
 
-- `createPdfFromHtmlWithFulgur(input): Promise<Buffer>`
+- `createPdfFromHtml(input): Promise<Buffer>`
 
 Use `pdf-crab-js` when the document is already structured as explicit PDF pages and elements.
 
@@ -33,7 +33,7 @@ Use `pdf-crab-js` when the document is already structured as explicit PDF pages 
 Browser, Deno, Bun, and portable runtimes can use the NAPI-RS WebAssembly build:
 
 ```js
-import { createPdfFromHtmlWithFulgur } from 'pdf-html-crab-js/wasm'
+import { createPdfFromHtml } from 'pdf-html-crab-js/wasm'
 ```
 
 Browser deployments must enable `SharedArrayBuffer`, which requires these response headers:

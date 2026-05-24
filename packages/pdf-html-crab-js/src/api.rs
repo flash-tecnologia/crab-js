@@ -4,22 +4,19 @@ use napi::{
 };
 
 use crate::{
-  input::CreatePdfFromHtmlWithFulgurInput, renderer::create_pdf_from_html_with_fulgur_bytes,
-  validation::invalid_arg,
+  input::CreatePdfFromHtmlInput, renderer::create_pdf_from_html_bytes, validation::invalid_arg,
 };
 
 #[napi(ts_return_type = "Promise<Buffer>")]
-pub fn create_pdf_from_html_with_fulgur(
-  input: CreatePdfFromHtmlWithFulgurInput,
-) -> AsyncTask<CreatePdfFromHtmlWithFulgurTask> {
-  AsyncTask::new(CreatePdfFromHtmlWithFulgurTask { input: Some(input) })
+pub fn create_pdf_from_html(input: CreatePdfFromHtmlInput) -> AsyncTask<CreatePdfFromHtmlTask> {
+  AsyncTask::new(CreatePdfFromHtmlTask { input: Some(input) })
 }
 
-pub(crate) struct CreatePdfFromHtmlWithFulgurTask {
-  input: Option<CreatePdfFromHtmlWithFulgurInput>,
+pub(crate) struct CreatePdfFromHtmlTask {
+  input: Option<CreatePdfFromHtmlInput>,
 }
 
-impl Task for CreatePdfFromHtmlWithFulgurTask {
+impl Task for CreatePdfFromHtmlTask {
   type Output = Vec<u8>;
   type JsValue = Buffer;
 
@@ -27,8 +24,8 @@ impl Task for CreatePdfFromHtmlWithFulgurTask {
     let input = self
       .input
       .take()
-      .ok_or_else(|| invalid_arg("createPdfFromHtmlWithFulgur input was already consumed"))?;
-    create_pdf_from_html_with_fulgur_bytes(input)
+      .ok_or_else(|| invalid_arg("createPdfFromHtml input was already consumed"))?;
+    create_pdf_from_html_bytes(input)
   }
 
   fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {

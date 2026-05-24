@@ -735,4 +735,4 @@ if (!nativeBinding) {
 }
 
 module.exports = nativeBinding
-module.exports.createPdfFromHtmlWithFulgur = nativeBinding.createPdfFromHtmlWithFulgur
+module.exports.createPdfFromHtml = nativeBinding.createPdfFromHtml

@@ -1,37 +1,37 @@
-export declare function createPdfFromHtmlWithFulgur(input: CreatePdfFromHtmlWithFulgurInput): Promise<Buffer>
+export declare function createPdfFromHtml(input: CreatePdfFromHtmlInput): Promise<Buffer>
 
-export interface CreatePdfFromHtmlWithFulgurInput {
+export interface CreatePdfFromHtmlInput {
   html: string
   title?: string
   css?: string | Array<string>
   basePath?: string
   systemFonts?: boolean
-  page?: FulgurPageInput
+  page?: HtmlPdfPageInput
   bookmarks?: boolean
   tagged?: boolean
   pdfUa?: boolean
   fonts?: Array<Buffer>
-  images?: Array<FulgurImageInput>
+  images?: Array<HtmlPdfImageInput>
 }
 
-export interface FulgurImageInput {
+export interface HtmlPdfImageInput {
   name: string
   data: Buffer
 }
 
-export interface FulgurPageCustomSizeInput {
+export interface HtmlPdfPageCustomSizeInput {
   width: number
   height: number
   unit?: 'mm' | 'pt'
 }
 
-export interface FulgurPageInput {
-  size?: 'A4' | 'LETTER' | 'A3' | FulgurPageCustomSizeInput
-  margin?: number | FulgurPageMarginInput
+export interface HtmlPdfPageInput {
+  size?: 'A4' | 'LETTER' | 'A3' | HtmlPdfPageCustomSizeInput
+  margin?: number | HtmlPdfPageMarginInput
   landscape?: boolean
 }
 
-export interface FulgurPageMarginInput {
+export interface HtmlPdfPageMarginInput {
   top: number
   right: number
   bottom: number

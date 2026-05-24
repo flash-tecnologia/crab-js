@@ -4,16 +4,14 @@ use napi::{Error, Result, Status};
 
 use crate::{
   input::{
-    CreatePdfFromHtmlWithFulgurInput, FulgurImageInput, FulgurPageCustomSizeInput, FulgurPageInput,
-    FulgurPageMarginInput,
+    CreatePdfFromHtmlInput, HtmlPdfImageInput, HtmlPdfPageCustomSizeInput, HtmlPdfPageInput,
+    HtmlPdfPageMarginInput,
   },
   unit::Unit,
   validation::{invalid_arg, positive_f32},
 };
 
-pub(crate) fn create_pdf_from_html_with_fulgur_bytes(
-  input: CreatePdfFromHtmlWithFulgurInput,
-) -> Result<Vec<u8>> {
+pub(crate) fn create_pdf_from_html_bytes(input: CreatePdfFromHtmlInput) -> Result<Vec<u8>> {
   if input.html.trim().is_empty() {
     return Err(invalid_arg("html must not be empty"));
   }
@@ -56,14 +54,14 @@ pub(crate) fn create_pdf_from_html_with_fulgur_bytes(
   builder.build().render_html(&input.html).map_err(|error| {
     Error::new(
       Status::GenericFailure,
-      format!("Fulgur failed to render HTML: {error}"),
+      format!("HTML renderer failed to render HTML: {error}"),
     )
   })
 }
 
 fn apply_page(
   mut builder: fulgur::EngineBuilder,
-  page: FulgurPageInput,
+  page: HtmlPdfPageInput,
 ) -> Result<fulgur::EngineBuilder> {
   if let Some(size) = page.size {
     builder = builder.page_size(parse_page_size(size)?);
@@ -81,7 +79,7 @@ fn apply_page(
 fn build_assets(
   css: Option<Either<String, Vec<String>>>,
   fonts: Option<Vec<Buffer>>,
-  images: Option<Vec<FulgurImageInput>>,
+  images: Option<Vec<HtmlPdfImageInput>>,
 ) -> Result<Option<AssetBundle>> {
   let mut assets = AssetBundle::new();
   let mut has_assets = false;
@@ -104,7 +102,7 @@ fn build_assets(
     for font in fonts {
       assets
         .add_font_bytes(Vec::from(font))
-        .map_err(|error| invalid_arg(format!("invalid Fulgur font asset: {error}")))?;
+        .map_err(|error| invalid_arg(format!("invalid font asset: {error}")))?;
     }
     has_assets = true;
   }
@@ -122,7 +120,7 @@ fn build_assets(
   Ok(has_assets.then_some(assets))
 }
 
-fn parse_page_size(size: Either<String, FulgurPageCustomSizeInput>) -> Result<PageSize> {
+fn parse_page_size(size: Either<String, HtmlPdfPageCustomSizeInput>) -> Result<PageSize> {
   match size {
     Either::A(size) => match size.as_str() {
       "A4" => Ok(PageSize::A4),
@@ -142,7 +140,7 @@ fn parse_page_size(size: Either<String, FulgurPageCustomSizeInput>) -> Result<Pa
   }
 }
 
-fn parse_margin(margin: Either<f64, FulgurPageMarginInput>) -> Result<Margin> {
+fn parse_margin(margin: Either<f64, HtmlPdfPageMarginInput>) -> Result<Margin> {
   match margin {
     Either::A(margin) => {
       let margin = Unit::Mm.coordinate(positive_f32(margin, "page.margin")?);

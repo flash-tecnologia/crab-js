@@ -1,9 +1,9 @@
 import { equal, ok } from 'node:assert/strict'
 
-import { createPdfFromHtmlWithFulgur } from '../index.js'
+import { createPdfFromHtml } from '../index.js'
 
-const htmlPdf = await createPdfFromHtmlWithFulgur({
-  html: '<!doctype html><html><body><h1>WASM Fulgur PDF smoke</h1><p>Rendered from HTML.</p></body></html>',
+const htmlPdf = await createPdfFromHtml({
+  html: '<!doctype html><html><body><h1>WASM HTML PDF smoke</h1><p>Rendered from HTML.</p></body></html>',
   page: {
     margin: 12,
     size: 'A4',

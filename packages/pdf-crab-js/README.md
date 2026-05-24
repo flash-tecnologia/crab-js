@@ -67,8 +67,8 @@ segments. Coordinates use the PDF bottom-left origin. Document/page dimensions a
 `input.unit`, defaulting to `mm`; font sizes and stroke widths are points.
 
 `pdf-writer` is a low-level PDF object/content writer. HTML rendering lives in `pdf-html-crab-js`
-so callers can opt into Fulgur's dependency and rendering semantics separately. PDF parsing and
-page-to-SVG rendering remain out of scope.
+so callers can opt into that rendering dependency separately. PDF parsing and page-to-SVG rendering
+remain out of scope.
 
 ## WebAssembly
 

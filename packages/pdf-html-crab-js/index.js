@@ -738,5 +738,5 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { createPdfFromHtmlWithFulgur } = nativeBinding
-export { createPdfFromHtmlWithFulgur }
+const { createPdfFromHtml } = nativeBinding
+export { createPdfFromHtml }
