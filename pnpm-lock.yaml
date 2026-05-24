@@ -203,7 +203,7 @@ importers:
         specifier: ^1.1.4
         version: 1.1.4(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
 
-  packages/pdf-html-crab-js:
+  packages/html-to-pdf-crab-js:
     dependencies:
       buffer:
         specifier: ^6.0.3

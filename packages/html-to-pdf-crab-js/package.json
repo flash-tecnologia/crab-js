@@ -1,5 +1,5 @@
 {
-  "name": "pdf-html-crab-js",
+  "name": "html-to-pdf-crab-js",
   "version": "1.0.0",
   "keywords": [
     "N-API",
@@ -18,7 +18,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/flash-tecnologia/crab-js.git",
-    "directory": "packages/pdf-html-crab-js"
+    "directory": "packages/html-to-pdf-crab-js"
   },
   "files": [
     "browser.js",
@@ -70,7 +70,7 @@
     "@napi-rs/wasm-runtime": "^1.1.4"
   },
   "napi": {
-    "binaryName": "pdf-html-crab-js",
+    "binaryName": "html-to-pdf-crab-js",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-apple-darwin",

@@ -4,7 +4,7 @@ Native Node.js packages backed by Rust and NAPI-RS.
 
 Crab JS is a monorepo for focused native packages that keep JavaScript APIs small while moving heavy work into Rust.
 It currently publishes `kafka-crab-js` for Kafka workloads, `pdf-crab-js` for low-level PDF
-generation, `pdf-html-crab-js` for HTML-to-PDF conversion, and `kafka-crab-js-otel` for optional
+generation, `html-to-pdf-crab-js` for HTML-to-PDF conversion, and `kafka-crab-js-otel` for optional
 OpenTelemetry instrumentation.
 
 The Kafka package uses Rust, NAPI-RS, and librdkafka to bring Kafka's mature native client behavior into Node.js
@@ -63,7 +63,7 @@ See [BENCHMARKS.md](./BENCHMARKS.md) for the latest captured benchmark run. The
 | ----------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | [kafka-crab-js](./packages/kafka-crab-js) | Core Kafka client with producer, consumer, batch, Node stream, and Web APIs | [![npm beta](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue)](https://www.npmjs.com/package/kafka-crab-js) |
 | [pdf-crab-js](./packages/pdf-crab-js)     | Native low-level PDF generation helpers built on pdf-writer                | [npm package](https://www.npmjs.com/package/pdf-crab-js)                                                                |
-| [pdf-html-crab-js](./packages/pdf-html-crab-js) | Native HTML-to-PDF conversion                                         | [npm package](https://www.npmjs.com/package/pdf-html-crab-js)                                                           |
+| [html-to-pdf-crab-js](./packages/html-to-pdf-crab-js) | Native HTML-to-PDF conversion                                         | [npm package](https://www.npmjs.com/package/html-to-pdf-crab-js)                                                           |
 | [kafka-crab-js-otel](./packages/otel)     | Optional OpenTelemetry instrumentation for the core diagnostics channels    | [![npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel)             |
 
 ### Workspace Tools
@@ -237,7 +237,7 @@ See the [core migration notes](./packages/kafka-crab-js/README.md#v4-type-only-r
 - [Benchmark snapshot](./BENCHMARKS.md): captured consumer throughput, lifecycle memory, and GC results.
 - [Kafka benchmark README](./benchmarks/kafka/README.md): methodology, environment variables, memory mode, GC, and profiling.
 - [PDF benchmark README](./benchmarks/pdf/README.md): local pdf-crab-js and Gotenberg comparison.
-- [PDF HTML package README](./packages/pdf-html-crab-js/README.md): HTML-to-PDF API and WASM usage.
+- [HTML to PDF package README](./packages/html-to-pdf-crab-js/README.md): HTML-to-PDF API and WASM usage.
 - [Examples README](./packages/examples/README.md): runnable examples for core and OTEL usage.
 
 ## Development
@@ -267,8 +267,8 @@ vp run --filter kafka-crab-js test
 vp run --filter kafka-crab-js test:integration
 vp run --filter pdf-crab-js build
 vp run --filter pdf-crab-js test
-vp run --filter pdf-html-crab-js build
-vp run --filter pdf-html-crab-js test
+vp run --filter html-to-pdf-crab-js build
+vp run --filter html-to-pdf-crab-js test
 
 podman compose up -d
 cd benchmarks/kafka

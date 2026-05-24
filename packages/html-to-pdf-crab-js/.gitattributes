@@ -12,7 +12,7 @@
 # Generated codes
 index.js                         linguist-detectable=false
 index.d.ts                       linguist-detectable=false
-pdf-html-crab-js.wasi-browser.js linguist-detectable=false
-pdf-html-crab-js.wasi.cjs        linguist-detectable=false
+html-to-pdf-crab-js.wasi-browser.js linguist-detectable=false
+html-to-pdf-crab-js.wasi.cjs        linguist-detectable=false
 wasi-worker-browser.mjs          linguist-detectable=false
 wasi-worker.mjs                  linguist-detectable=false
