@@ -738,3 +738,4 @@ module.exports = nativeBinding
 module.exports.PdfDocumentBuilder = nativeBinding.PdfDocumentBuilder
 module.exports.createPdf = nativeBinding.createPdf
 module.exports.createPdfAsync = nativeBinding.createPdfAsync
+module.exports.createPdfFromHtmlWithFulgur = nativeBinding.createPdfFromHtmlWithFulgur

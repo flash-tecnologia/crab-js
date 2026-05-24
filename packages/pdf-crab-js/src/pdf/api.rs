@@ -5,9 +5,10 @@ use napi::{
 
 use super::{
   document::{create_pdf_bytes, PdfDocumentState},
+  fulgur::create_pdf_from_html_with_fulgur_bytes,
   input::{
-    CreatePdfInput, PdfAnnotationInput, PdfDocumentBuilderInput, PdfElementInput, PdfPageInput,
-    PdfPageSetupInput,
+    CreatePdfFromHtmlWithFulgurInput, CreatePdfInput, PdfAnnotationInput, PdfDocumentBuilderInput,
+    PdfElementInput, PdfPageInput, PdfPageSetupInput,
   },
   validation::invalid_arg,
 };
@@ -20,6 +21,13 @@ pub fn create_pdf(input: CreatePdfInput) -> Result<Buffer> {
 #[napi(ts_return_type = "Promise<Buffer>")]
 pub fn create_pdf_async(input: CreatePdfInput) -> AsyncTask<CreatePdfTask> {
   AsyncTask::new(CreatePdfTask { input: Some(input) })
+}
+
+#[napi(ts_return_type = "Promise<Buffer>")]
+pub fn create_pdf_from_html_with_fulgur(
+  input: CreatePdfFromHtmlWithFulgurInput,
+) -> AsyncTask<CreatePdfFromHtmlWithFulgurTask> {
+  AsyncTask::new(CreatePdfFromHtmlWithFulgurTask { input: Some(input) })
 }
 
 #[napi]
@@ -120,6 +128,27 @@ impl Task for CreatePdfTask {
       .take()
       .ok_or_else(|| invalid_arg("createPdfAsync input was already consumed"))?;
     create_pdf_bytes(input)
+  }
+
+  fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {
+    Ok(Buffer::from(output))
+  }
+}
+
+pub(super) struct CreatePdfFromHtmlWithFulgurTask {
+  input: Option<CreatePdfFromHtmlWithFulgurInput>,
+}
+
+impl Task for CreatePdfFromHtmlWithFulgurTask {
+  type Output = Vec<u8>;
+  type JsValue = Buffer;
+
+  fn compute(&mut self) -> Result<Self::Output> {
+    let input = self
+      .input
+      .take()
+      .ok_or_else(|| invalid_arg("createPdfFromHtmlWithFulgur input was already consumed"))?;
+    create_pdf_from_html_with_fulgur_bytes(input)
   }
 
   fn resolve(&mut self, _env: Env, output: Self::Output) -> Result<Self::JsValue> {

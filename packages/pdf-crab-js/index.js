@@ -738,7 +738,8 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { PdfDocumentBuilder, createPdf, createPdfAsync } = nativeBinding
+const { PdfDocumentBuilder, createPdf, createPdfAsync, createPdfFromHtmlWithFulgur } = nativeBinding
 export { PdfDocumentBuilder }
 export { createPdf }
 export { createPdfAsync }
+export { createPdfFromHtmlWithFulgur }

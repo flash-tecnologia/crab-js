@@ -47,6 +47,26 @@ The phase 1 public API is intentionally small:
 - `createPdf(input): Buffer`
 - `createPdfAsync(input): Promise<Buffer>`
 - `new PdfDocumentBuilder(input?)`
+- `createPdfFromHtmlWithFulgur(input): Promise<Buffer>`
+
+Use `createPdfFromHtmlWithFulgur` when the source document is HTML/CSS and the Fulgur renderer is
+explicitly desired:
+
+```js
+import { writeFileSync } from 'node:fs'
+import { createPdfFromHtmlWithFulgur } from 'pdf-crab-js'
+
+const pdf = await createPdfFromHtmlWithFulgur({
+  html: '<!doctype html><html><body><main><h1>Invoice</h1><p>Generated from HTML.</p></main></body></html>',
+  css: 'body { font-family: sans-serif; } h1 { color: #111827; }',
+  page: {
+    size: 'A4',
+    margin: 12,
+  },
+})
+
+writeFileSync('html-example.pdf', pdf)
+```
 
 Use `PdfDocumentBuilder` when the document is produced in chunks and you do not want to build one
 large `pages[].elements[]` object graph before crossing the NAPI boundary:
@@ -66,9 +86,9 @@ Supported elements are `text`, `textBox`, `line`, `rect`, `polygon`, and `path` 
 segments. Coordinates use the PDF bottom-left origin. Document/page dimensions and coordinates use
 `input.unit`, defaulting to `mm`; font sizes and stroke widths are points.
 
-`pdf-writer` is a low-level PDF object/content writer. It does not provide HTML rendering, PDF
-parsing, or page-to-SVG rendering, so those former high-level APIs are out of scope for this first
-phase.
+`pdf-writer` is a low-level PDF object/content writer. HTML rendering is exposed only through the
+explicit Fulgur method so callers can opt into Fulgur's dependency and rendering semantics. PDF
+parsing and page-to-SVG rendering remain out of scope.
 
 ## WebAssembly
 
