@@ -59,20 +59,20 @@ See [BENCHMARKS.md](./BENCHMARKS.md) for the latest captured benchmark run. The
 
 ### Published Packages
 
-| Package                                   | Description                                                                 | npm                                                                                                                     |
-| ----------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| [kafka-crab-js](./packages/kafka-crab-js) | Core Kafka client with producer, consumer, batch, Node stream, and Web APIs | [![npm beta](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue)](https://www.npmjs.com/package/kafka-crab-js) |
-| [pdf-crab-js](./packages/pdf-crab-js)     | Native low-level PDF generation helpers built on pdf-writer                | [npm package](https://www.npmjs.com/package/pdf-crab-js)                                                                |
-| [html-to-pdf-crab-js](./packages/html-to-pdf-crab-js) | Native HTML-to-PDF conversion                                         | [npm package](https://www.npmjs.com/package/html-to-pdf-crab-js)                                                           |
-| [kafka-crab-js-otel](./packages/otel)     | Optional OpenTelemetry instrumentation for the core diagnostics channels    | [![npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel)             |
+| Package                                               | Description                                                                 | npm                                                                                                                     |
+| ----------------------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| [kafka-crab-js](./packages/kafka-crab-js)             | Core Kafka client with producer, consumer, batch, Node stream, and Web APIs | [![npm beta](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue)](https://www.npmjs.com/package/kafka-crab-js) |
+| [pdf-crab-js](./packages/pdf-crab-js)                 | Native low-level PDF generation helpers built on pdf-writer                 | [npm package](https://www.npmjs.com/package/pdf-crab-js)                                                                |
+| [html-to-pdf-crab-js](./packages/html-to-pdf-crab-js) | Native HTML-to-PDF conversion                                               | [npm package](https://www.npmjs.com/package/html-to-pdf-crab-js)                                                        |
+| [kafka-crab-js-otel](./packages/otel)                 | Optional OpenTelemetry instrumentation for the core diagnostics channels    | [![npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel)             |
 
 ### Workspace Tools
 
-| Package                           | Description                                                                                                |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Package                               | Description                                                                                                |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | [kafka-benchmark](./benchmarks/kafka) | Isolated-process consumer benchmark with memory, GC, throughput charts, and V8 CPU/heap profiling scripts. |
-| [pdf-benchmark](./benchmarks/pdf)     | PDF generation benchmark comparing local pdf-crab-js output with Node.js requests to Gotenberg.             |
-| [examples](./packages/examples)               | Runnable producer, consumer, stream, retry, OpenTelemetry, and Grafana examples.                           |
+| [pdf-benchmark](./benchmarks/pdf)     | PDF generation benchmark comparing local pdf-crab-js output with Node.js requests to Gotenberg.            |
+| [kafka-examples](./examples/kafka)    | Runnable producer, consumer, stream, retry, OpenTelemetry, and Grafana examples.                           |
 
 ## Install
 
@@ -238,7 +238,7 @@ See the [core migration notes](./packages/kafka-crab-js/README.md#v4-type-only-r
 - [Kafka benchmark README](./benchmarks/kafka/README.md): methodology, environment variables, memory mode, GC, and profiling.
 - [PDF benchmark README](./benchmarks/pdf/README.md): local pdf-crab-js and Gotenberg comparison.
 - [HTML to PDF package README](./packages/html-to-pdf-crab-js/README.md): HTML-to-PDF API and WASM usage.
-- [Examples README](./packages/examples/README.md): runnable examples for core and OTEL usage.
+- [Kafka examples README](./examples/kafka/README.md): runnable examples for core and OTEL usage.
 
 ## Development
 

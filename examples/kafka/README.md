@@ -2,22 +2,25 @@
 
 This directory contains example code demonstrating various features of kafka-crab-js.
 
+Run commands in this README from `examples/kafka` unless a command says otherwise.
+
 ## Basic Examples
 
 ### simple.mjs
 
 Basic producer and consumer example showing fundamental Kafka operations.
 
+```bash
 KAFKA_AVAILABLE=true node simple.mjs
-
-````
+```
 
 ### stream-sample.mjs
+
 Demonstrates using Kafka consumers with Node.js streams.
 
 ```bash
 KAFKA_AVAILABLE=true node stream-sample.mjs
-````
+```
 
 ### events.mjs
 
@@ -59,8 +62,8 @@ KAFKA_AVAILABLE=true node batch-usage-examples.mjs
 **Prerequisites:**
 
 ```bash
-# Start Kafka
-docker-compose up -d
+# Start Kafka using the repository Docker Compose file
+docker compose -f ../../docker-compose.yml up -d
 
 # (Optional) Start Jaeger for trace visualization
 docker run -d \
@@ -215,14 +218,14 @@ kafka-crab-js fully implements [OpenTelemetry Semantic Conventions for Messaging
 All examples require a running Kafka broker. Use the included Docker Compose:
 
 ```bash
-# Start Kafka
-docker-compose up -d
+# Start Kafka using the repository Docker Compose file
+docker compose -f ../../docker-compose.yml up -d
 
 # Run examples
 KAFKA_AVAILABLE=true node simple.mjs
 
 # Stop Kafka
-docker-compose down
+docker compose -f ../../docker-compose.yml down
 ```
 
 ## Tips
@@ -237,7 +240,7 @@ docker-compose down
 
 **"Connection refused" errors:**
 
-- Ensure Kafka is running: `docker-compose ps`
+- Ensure Kafka is running: `docker compose -f ../../docker-compose.yml ps`
 - Check broker address: `KAFKA_BROKERS=localhost:9092`
 
 **No traces in Jaeger:**

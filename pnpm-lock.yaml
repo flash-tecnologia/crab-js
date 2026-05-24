@@ -126,7 +126,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/pdf-crab-js
 
-  packages/examples:
+  examples/kafka:
     dependencies:
       '@faker-js/faker':
         specifier: 'catalog:'
@@ -157,10 +157,10 @@ importers:
         version: 1.38.0
       kafka-crab-js:
         specifier: workspace:*
-        version: link:../kafka-crab-js
+        version: link:../../packages/kafka-crab-js
       kafka-crab-js-otel:
         specifier: workspace:*
-        version: link:../otel
+        version: link:../../packages/otel
       nanoid:
         specifier: 'catalog:'
         version: 5.1.11

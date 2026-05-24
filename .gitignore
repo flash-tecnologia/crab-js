@@ -210,6 +210,6 @@ wasi-worker.mjs
 benchmarks/kafka/.profiles/
 
 # Example outputs
-packages/examples/output/
+examples/*/output/
 packages/*/examples/output/
 benchmarks/pdf/output/

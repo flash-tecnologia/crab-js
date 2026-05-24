@@ -297,7 +297,7 @@ _Benchmarks run on macOS with Apple M1 chip (December 2024)_
 
 ## Examples
 
-See the [example](https://github.com/inaiat/kafka-crab-js/tree/main/example) directory for complete examples:
+See the [examples/kafka](https://github.com/inaiat/kafka-crab-js/tree/main/examples/kafka) directory for complete examples:
 
 - `otel-tracing-example.mjs` - Tracing with custom spans
 - `otel-metrics-example.mjs` - Metrics collection setup
