@@ -22,6 +22,17 @@ Demonstrates using Kafka consumers with Node.js streams.
 KAFKA_AVAILABLE=true node stream-sample.mjs
 ```
 
+### web-stream-async-generator.ts
+
+Demonstrates using serial `createWebStreamConsumer()` with an async generator.
+
+```bash
+pnpm web-stream
+
+# Optional: override the produced message count
+MESSAGE_COUNT=20 pnpm web-stream
+```
+
 ### events.mjs
 
 Shows how to handle Kafka consumer events (rebalance, errors, etc.).
@@ -137,6 +148,8 @@ docker run -d \
 - `KAFKA_AVAILABLE` - Set to `true` to run examples (prevents running without Kafka)
 - `KAFKA_BROKERS` - Kafka broker addresses (default: `localhost:9092`)
 - `KAFKA_TOPIC` - Topic name to use (default: auto-generated)
+- `MESSAGE_COUNT` - Number of messages to produce in examples that support it
+- `PROGRESS_INTERVAL` - Message logging interval for `web-stream-async-generator.ts`
 - `OTEL_EXPORTER_TYPE` - Trace exporter type: `console` or `otlp` (default: `console`)
 - `OTEL_EXPORTER_OTLP_ENDPOINT` - OTLP endpoint URL (default: `http://localhost:4318`)
 

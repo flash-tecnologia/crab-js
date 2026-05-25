@@ -79,7 +79,7 @@ export class KafkaMetrics {
   private _consumedMessages: Counter | null = null
   private _processDuration: Histogram | null = null
 
-  constructor(config: KafkaMetricsConfig = {}) {
+  public constructor(config: KafkaMetricsConfig = {}) {
     // Validate histogram buckets if provided
     if (config.histogramBuckets) {
       KafkaMetrics._validateHistogramBuckets(config.histogramBuckets)

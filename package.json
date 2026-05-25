@@ -9,11 +9,10 @@
     "test": "vp run -r test",
     "test:integration": "vp run --filter kafka-crab-js test:integration",
     "fmt": "vp fmt",
-    "fmt:check": "vp fmt --check",
+    "fmt:fix": "vp fmt --fix",
     "check": "pnpm -r --parallel exec vp check",
-    "lint": "pnpm -r --parallel exec vp lint",
-    "lint:fix": "pnpm -r --parallel exec vp lint --fix",
-    "check:full": "pnpm fmt:check && pnpm lint && pnpm check && pnpm test"
+    "check:fix": "pnpm -r --parallel exec vp check --fix",
+    "check:full": "pnpm check && pnpm test"
   },
   "devDependencies": {
     "@opentelemetry/api": "catalog:",

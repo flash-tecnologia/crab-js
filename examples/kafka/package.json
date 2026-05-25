@@ -7,7 +7,8 @@
     "otel:trace": "tsx otel-tracing-example.mjs",
     "otel:metrics": "tsx otel-metrics-example.mjs",
     "otel:batch": "tsx otel-batch-trace.ts",
-    "simple": "node simple.mjs"
+    "simple": "node simple.mjs",
+    "web-stream": "tsx web-stream-async-generator.ts"
   },
   "dependencies": {
     "@faker-js/faker": "catalog:",

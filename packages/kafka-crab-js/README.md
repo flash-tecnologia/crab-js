@@ -22,9 +22,9 @@ pressure, native batching, or librdkafka behavior start to matter.
 | Observability without core coupling | Diagnostics-channel events power the optional `kafka-crab-js-otel` package.              |
 
 In the local isolated consumer benchmark snapshot, `kafka-crab-js v4 (stream, batch)` reached about
-`1.09M messages/sec`, ahead of the measured `@platformatic/kafka` and KafkaJS batch scenarios, while using less peak heap
-than both. Treat benchmark numbers as workload-specific; the full methodology and memory/GC breakdown are documented in
-[Performance Benchmarks](#performance-benchmarks).
+`1.17M messages/sec`, ahead of the measured `@platformatic/kafka` and KafkaJS batch scenarios, while using lower RSS
+delta and peak heap than both. Treat benchmark numbers as workload-specific; the full methodology and memory/GC
+breakdown are documented in [BENCHMARKS.md](../../BENCHMARKS.md) and [Performance Benchmarks](#performance-benchmarks).
 
 ## Highlights
 
@@ -854,19 +854,22 @@ See the [OpenTelemetry package README](../kafka-crab-js-otel/README.md) for full
 
 ## Performance Benchmarks
 
-The repository includes a benchmark suite that compares `kafka-crab-js` with KafkaJS and `@platformatic/kafka`.
+The repository includes a benchmark suite that compares `kafka-crab-js` with KafkaJS and `@platformatic/kafka`. The
+latest captured run in [BENCHMARKS.md](../../BENCHMARKS.md) was recorded on May 25, 2026 on a MacBook Pro with Apple M1,
+Node.js `v24.16.0`, and a local three-broker `apache/kafka:4.0.0` cluster.
 
 From the repository root:
 
 ```bash
+podman compose up -d
+
 cd benchmarks/kafka
 
 # Set up benchmark data. Requires Kafka running locally.
-vp install
-vp run setup:consumer
+KAFKA_BROKERS=127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094 vp run setup:consumer
 
 # Run the default isolated-process memory benchmark.
-vp run benchmark
+KAFKA_BROKERS=127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094 vp run benchmark
 ```
 
 The default benchmark runs one child Node.js process per selected scenario. This avoids carrying V8 heap pages, native
@@ -878,10 +881,10 @@ The captured run below is equivalent to:
 
 ```bash
 cd benchmarks/kafka
-BENCHMARK_BATCH_SIZE=300000 BENCHMARK_BATCH_TIMEOUT_MS=2 vp run benchmark
+KAFKA_BROKERS=127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094 vp run benchmark
 ```
 
-Batch scenarios were normalized to the comparable effective batch size of `16384`.
+The run uses the default isolated-process lifecycle-memory benchmark mode.
 
 ![Consumer benchmark snapshot](./assets/consumer-benchmark-snapshot.svg)
 
@@ -889,62 +892,70 @@ Batch scenarios were normalized to the comparable effective batch size of `16384
 
 | Rank | Scenario                            |                Result | Relative |
 | ---: | ----------------------------------- | --------------------: | -------: |
-|    1 | `kafka-crab-js v4 (stream, batch)`  | `1,089,284.97 op/sec` | `100.0%` |
-|    2 | `@platformatic/kafka`               |   `732,207.27 op/sec` |  `67.2%` |
-|    3 | `KafkaJS (eachBatch)`               |   `676,576.98 op/sec` |  `62.1%` |
-|    4 | `kafka-crab-js v4 (stream, serial)` |   `544,658.33 op/sec` |  `50.0%` |
-|    5 | `KafkaJS (eachMessage, concurrent)` |   `509,082.43 op/sec` |  `46.7%` |
-|    6 | `KafkaJS (eachMessage)`             |   `505,815.57 op/sec` |  `46.4%` |
+|    1 | `kafka-crab-js v4 (stream, batch)`  | `1,167,396.71 op/sec` | `100.0%` |
+|    2 | `@platformatic/kafka`               |   `653,355.35 op/sec` |  `56.0%` |
+|    3 | `kafka-crab-js v4 (stream, serial)` |   `558,968.71 op/sec` |  `47.9%` |
+|    4 | `KafkaJS (eachBatch)`               |   `478,411.67 op/sec` |  `41.0%` |
+|    5 | `KafkaJS (eachMessage)`             |   `431,519.93 op/sec` |  `37.0%` |
+|    6 | `KafkaJS (eachMessage, concurrent)` |   `427,265.29 op/sec` |  `36.6%` |
 
-`kafka-crab-js v4 (stream, batch)` is the fastest scenario in this run. It is about `49%` faster than
-`@platformatic/kafka` and about `61%` faster than `KafkaJS (eachBatch)`. Its tolerance is higher than the other top
-rows (`+/- 9.15%`), so the exact gap should be treated as a benchmark snapshot rather than a universal constant.
+`kafka-crab-js v4 (stream, batch)` is the fastest scenario in this run. It is about `78.7%` faster than
+`@platformatic/kafka` and about `144.0%` faster than `KafkaJS (eachBatch)`. Its tolerance was `+/- 4.40%`, so the exact
+gap should still be treated as a benchmark snapshot rather than a universal constant.
 
 For message-by-message consumption, `kafka-crab-js v4 (stream, serial)` is close to KafkaJS throughput while using much
-less lifecycle memory. In this run it is about `7.7%` faster than `KafkaJS (eachMessage)` and about `7.0%` faster than
-the concurrent KafkaJS `eachMessage` scenario.
+less lifecycle memory. In this run it is about `29.5%` faster than `KafkaJS (eachMessage)` and about `30.8%` faster
+than the concurrent KafkaJS `eachMessage` scenario.
 
 #### Memory And GC
 
-| Scenario                            |   RSS delta |  Peak heap |    GC time | GC share | Notes                                           |
-| ----------------------------------- | ----------: | ---------: | ---------: | -------: | ----------------------------------------------- |
-| `kafka-crab-js v4 (stream, serial)` |  `72.3 MiB` | `11.7 MiB` | `36.75 ms` |  `4.00%` | Best memory efficiency.                         |
-| `kafka-crab-js v4 (stream, batch)`  | `167.0 MiB` | `35.9 MiB` | `30.60 ms` |  `6.67%` | Best throughput and lowest GC time.             |
-| `KafkaJS (eachBatch)`               | `193.1 MiB` | `70.0 MiB` | `63.03 ms` |  `8.53%` | Strong batch baseline.                          |
-| `@platformatic/kafka`               | `217.6 MiB` | `93.7 MiB` | `73.62 ms` | `10.78%` | Fastest non-crab competitor.                    |
-| `KafkaJS (eachMessage)`             | `181.5 MiB` | `77.0 MiB` | `79.11 ms` |  `8.00%` | Similar throughput to v4 serial, higher memory. |
-| `KafkaJS (eachMessage, concurrent)` | `188.2 MiB` | `75.6 MiB` | `77.17 ms` |  `7.86%` | Concurrency did not improve this workload.      |
+| Scenario                            |   RSS delta |  Peak heap |    GC time | GC share | Notes                                      |
+| ----------------------------------- | ----------: | ---------: | ---------: | -------: | ------------------------------------------ |
+| `kafka-crab-js v4 (stream, serial)` |  `64.7 MiB` | `14.6 MiB` | `30.46 ms` |  `3.41%` | Lowest lifecycle RSS and heap.             |
+| `kafka-crab-js v4 (stream, batch)`  | `106.0 MiB` | `29.5 MiB` | `21.69 ms` |  `5.06%` | Best throughput, efficiency, and GC time.  |
+| `KafkaJS (eachMessage, concurrent)` | `178.3 MiB` | `72.2 MiB` | `83.77 ms` |  `7.16%` | Concurrency did not improve this workload. |
+| `KafkaJS (eachMessage)`             | `186.3 MiB` | `91.6 MiB` | `90.15 ms` |  `7.78%` | Highest peak heap and max GC pause.        |
+| `KafkaJS (eachBatch)`               | `193.4 MiB` | `83.8 MiB` | `63.05 ms` |  `6.03%` | KafkaJS batch baseline.                    |
+| `@platformatic/kafka`               | `216.0 MiB` | `87.4 MiB` | `74.27 ms` |  `9.71%` | Fastest non-crab competitor.               |
 
 Lifecycle memory includes module loading, client creation, subscription, consumption, cleanup, and retained RSS after
 cleanup. GC metrics use the narrower first-to-last-message window used for throughput.
 
-The most important memory result is efficiency, not just raw RSS. `kafka-crab-js v4 (stream, serial)` delivered
-`7529 op/sec/MiB`, the best score in the run. `kafka-crab-js v4 (stream, batch)` delivered `6521 op/sec/MiB`, ahead of
-`KafkaJS (eachBatch)` at `3504 op/sec/MiB` and `@platformatic/kafka` at `3365 op/sec/MiB`.
+The most important memory result is efficiency, not just raw RSS. `kafka-crab-js v4 (stream, batch)` delivered
+`11016 op/sec/MiB`, the best score in the run. `kafka-crab-js v4 (stream, serial)` delivered `8635 op/sec/MiB`, ahead
+of `@platformatic/kafka` at `3025 op/sec/MiB` and `KafkaJS (eachBatch)` at `2474 op/sec/MiB`.
 
 ### Benchmark Interpretation
 
-- Use `kafka-crab-js v4 (stream, batch)` when raw throughput is the priority.
-- Use `kafka-crab-js v4 (stream, serial)` when memory efficiency and low heap pressure matter most.
+- Use `kafka-crab-js v4 (stream, batch)` when raw throughput or memory efficiency is the priority.
+- Use `kafka-crab-js v4 (stream, serial)` when message-by-message processing needs the lowest lifecycle RSS and heap
+  pressure.
 - Compare batch scenarios with batch scenarios and message scenarios with message scenarios.
 - `@platformatic/kafka` is the strongest non-crab throughput competitor in this run, but it used more RSS, heap, and GC
-  time than the v4 batch scenario.
+  time than both v4 scenarios.
 - KafkaJS `eachMessage` concurrency did not help this workload.
 
 ### Benchmark Configuration
 
-Common knobs:
+Captured benchmark settings:
 
 ```bash
 BENCHMARK_ITERATIONS=100000
 BENCHMARK_RUNS=5
+BENCHMARK_FETCH_MIN_BYTES=1
+BENCHMARK_FETCH_WAIT_MS=10
+BENCHMARK_MAX_BYTES=2048
 BENCHMARK_BATCH_SIZE=4096
 BENCHMARK_BATCH_TIMEOUT_MS=2
-BENCHMARK_MAX_BYTES=2048
+BENCHMARK_KAFKAJS_EACH_MESSAGE_CONCURRENCY=3
 BENCHMARK_MEMORY=1
+BENCHMARK_MEMORY_SAMPLE_MS=100
+BENCHMARK_MEMORY_SETTLE_MS=100
+BENCHMARK_TOPIC=benchmarks
+BENCHMARK_PARTITIONS=3
 ```
 
-See the [repository benchmark snapshot](../../BENCHMARKS.md) for the latest captured run and the
+See [BENCHMARKS.md](../../BENCHMARKS.md) for the latest captured run and the
 [benchmark README](../../benchmarks/kafka/README.md) for the full benchmark methodology and environment variables.
 
 ## Migration Notes

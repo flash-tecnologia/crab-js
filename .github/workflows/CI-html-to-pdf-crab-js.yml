@@ -1,0 +1,343 @@
+name: CI html-to-pdf-crab-js
+
+env:
+  DEBUG: napi:*
+  APP_NAME: html-to-pdf-crab-js
+  MACOSX_DEPLOYMENT_TARGET: '10.13'
+  CARGO_INCREMENTAL: '1'
+
+permissions:
+  contents: write
+  id-token: write
+
+'on':
+  push:
+    tags:
+      - 'html-to-pdf-crab-js@*'
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE
+      - '**/*.gitignore'
+      - .editorconfig
+      - docs/**
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - LICENSE
+      - '**/*.gitignore'
+      - .editorconfig
+      - docs/**
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Install dependencies
+        run: pnpm install --filter html-to-pdf-crab-js
+      - name: Oxlint
+        run: pnpm --filter html-to-pdf-crab-js lint
+      - name: Cargo fmt
+        working-directory: packages/html-to-pdf-crab-js
+        run: cargo fmt -- --check
+      - name: Clippy
+        working-directory: packages/html-to-pdf-crab-js
+        run: cargo clippy -- -D warnings
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: macos-latest
+            target: x86_64-apple-darwin
+            build: pnpm --filter html-to-pdf-crab-js build --target x86_64-apple-darwin
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+            build: pnpm --filter html-to-pdf-crab-js build --target x86_64-pc-windows-msvc
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            build: pnpm --filter html-to-pdf-crab-js build --target x86_64-unknown-linux-gnu
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            build: pnpm --filter html-to-pdf-crab-js build --target x86_64-unknown-linux-musl -x
+          - host: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            build: pnpm --filter html-to-pdf-crab-js build --target aarch64-unknown-linux-gnu
+          - host: macos-latest
+            target: aarch64-apple-darwin
+            build: pnpm --filter html-to-pdf-crab-js build --target aarch64-apple-darwin
+          - host: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            build: pnpm --filter html-to-pdf-crab-js build --target aarch64-unknown-linux-musl -x
+    name: stable - ${{ matrix.settings.target }} - node@24
+    runs-on: ${{ matrix.settings.host }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.settings.target }}
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.napi-rs
+            .cargo-cache
+            packages/html-to-pdf-crab-js/target/
+          key: html-to-pdf-crab-js-${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}
+      - uses: mlugg/setup-zig@v2
+        if: ${{ contains(matrix.settings.target, 'musl') }}
+        with:
+          version: 0.14.1
+      - name: Install cargo-zigbuild
+        uses: taiki-e/install-action@v2
+        if: ${{ contains(matrix.settings.target, 'musl') }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tool: cargo-zigbuild
+      - name: Install dependencies
+        run: pnpm install --filter html-to-pdf-crab-js
+      - name: Build
+        run: ${{ matrix.settings.build }}
+        shell: bash
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: bindings-${{ matrix.settings.target }}
+          path: packages/html-to-pdf-crab-js/${{ env.APP_NAME }}.*.node
+          if-no-files-found: error
+
+  build-wasm:
+    name: stable - wasm32-wasip1-threads - node@24
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: wasm32-wasip1-threads
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.napi-rs
+            .cargo-cache
+            packages/html-to-pdf-crab-js/target/
+          key: html-to-pdf-crab-js-wasm32-wasip1-threads-cargo-ubuntu-latest
+      - name: Install dependencies
+        run: pnpm install --filter html-to-pdf-crab-js
+      - name: Build WASM
+        run: pnpm --filter html-to-pdf-crab-js build:wasm
+      - name: Test WASM
+        run: pnpm --filter html-to-pdf-crab-js test:wasm
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: bindings-wasm32-wasip1-threads
+          path: |
+            packages/html-to-pdf-crab-js/${{ env.APP_NAME }}.*.wasm
+            packages/html-to-pdf-crab-js/${{ env.APP_NAME }}.wasi*.js
+            packages/html-to-pdf-crab-js/wasi-worker*.mjs
+          if-no-files-found: error
+
+  test-macOS-windows-binding:
+    name: Test bindings on ${{ matrix.settings.target }} - node@${{ matrix.node }}
+    needs:
+      - build
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+            architecture: x64
+          - host: macos-latest
+            target: aarch64-apple-darwin
+            architecture: arm64
+          - host: macos-latest
+            target: x86_64-apple-darwin
+            architecture: x64
+        node:
+          - '22'
+          - '24'
+    runs-on: ${{ matrix.settings.host }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+          architecture: ${{ matrix.settings.architecture }}
+      - name: Install dependencies
+        run: pnpm install --filter html-to-pdf-crab-js
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: bindings-${{ matrix.settings.target }}
+          path: packages/html-to-pdf-crab-js
+      - name: List package files
+        run: ls -R packages/html-to-pdf-crab-js
+        shell: bash
+      - name: Test bindings
+        run: pnpm --filter html-to-pdf-crab-js test
+
+  test-linux-binding:
+    name: Test ${{ matrix.target }} - node@${{ matrix.node }}
+    needs:
+      - build
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+        node:
+          - '22'
+          - '24'
+    runs-on: ${{ contains(matrix.target, 'aarch64') && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - name: Output docker params
+        id: docker
+        run: |
+          node -e "
+            if ('${{ matrix.target }}'.startsWith('aarch64')) {
+              console.log('PLATFORM=linux/arm64')
+            } else {
+              console.log('PLATFORM=linux/amd64')
+            }
+          " >> $GITHUB_OUTPUT
+          node -e "
+            if ('${{ matrix.target }}'.endsWith('-musl')) {
+              console.log('IMAGE=node:${{ matrix.node }}-alpine')
+            } else {
+              console.log('IMAGE=node:${{ matrix.node }}-slim')
+            }
+          " >> $GITHUB_OUTPUT
+          echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+      - name: Install dependencies
+        run: pnpm install --filter html-to-pdf-crab-js --force
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: bindings-${{ matrix.target }}
+          path: packages/html-to-pdf-crab-js
+      - name: List package files
+        run: ls -R packages/html-to-pdf-crab-js
+        shell: bash
+      - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+        if: ${{ contains(matrix.target, 'aarch64') }}
+      - name: Test bindings
+        uses: tj-actions/docker-run@v2
+        with:
+          image: ${{ steps.docker.outputs.IMAGE }}
+          name: html-to-pdf-crab-js-test-${{ matrix.target }}-node${{ matrix.node }}
+          options: -v ${{ steps.docker.outputs.PNPM_STORE_PATH }}:${{ steps.docker.outputs.PNPM_STORE_PATH }} -v ${{ github.workspace }}:${{ github.workspace }} -w ${{ github.workspace }}/packages/html-to-pdf-crab-js --platform ${{ steps.docker.outputs.PLATFORM }}
+          args: npm run test
+
+  publish-html-to-pdf-crab-js:
+    name: Publish html-to-pdf-crab-js
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/html-to-pdf-crab-js@')
+    needs:
+      - lint
+      - build-wasm
+      - test-macOS-windows-binding
+      - test-linux-binding
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --filter html-to-pdf-crab-js
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Create npm dirs
+        run: pnpm napi create-npm-dirs
+        working-directory: packages/html-to-pdf-crab-js
+      - name: Move artifacts
+        run: pnpm napi artifacts --output-dir ../../artifacts
+        working-directory: packages/html-to-pdf-crab-js
+      - name: List package files
+        run: ls -R packages/html-to-pdf-crab-js
+        shell: bash
+      - name: Publish html-to-pdf-crab-js
+        working-directory: packages/html-to-pdf-crab-js
+        run: |
+          npm config set provenance true
+          TAG_NAME=${GITHUB_REF#refs/tags/html-to-pdf-crab-js@}
+          echo "Publishing html-to-pdf-crab-js version: $TAG_NAME"
+          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+          if [[ $TAG_NAME =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            npm publish --access public
+          elif [[ $TAG_NAME =~ alpha ]]; then
+            npm publish --tag alpha --access public
+          elif [[ $TAG_NAME =~ beta ]]; then
+            npm publish --tag beta --access public
+          elif [[ $TAG_NAME =~ rc ]]; then
+            npm publish --tag rc --access public
+          else
+            npm publish --tag next --access public
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

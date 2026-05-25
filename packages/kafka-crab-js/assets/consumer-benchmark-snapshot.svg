@@ -41,7 +41,7 @@
 
   <text x="42" y="54" class="title">Consumer benchmark snapshot</text>
   <text x="42" y="82" class="subtitle">Isolated Node.js process per scenario, lifecycle memory, and GC measured during the message window.</text>
-  <text x="42" y="106" class="muted">Run: BENCHMARK_BATCH_SIZE=300000 BENCHMARK_BATCH_TIMEOUT_MS=2 vp run benchmark. Batch scenarios normalized to 16384.</text>
+  <text x="42" y="106" class="muted">Run: vp run benchmark. Default isolated-process lifecycle-memory mode.</text>
 
   <rect x="40" y="132" width="590" height="382" rx="12" class="card" />
   <text x="66" y="166" class="section">Throughput comparison</text>
@@ -51,32 +51,32 @@
     <text x="0" y="14" class="label best">kafka-crab-js v4 batch</text>
     <rect x="230" y="1" width="250" height="18" rx="9" fill="#313244" />
     <rect x="230" y="1" width="250" height="18" rx="9" fill="url(#green)" />
-    <text x="548" y="15" class="value" text-anchor="end">1.09M/s</text>
+    <text x="548" y="15" class="value" text-anchor="end">1.17M/s</text>
 
     <text x="0" y="51" class="label good">@platformatic/kafka</text>
     <rect x="230" y="38" width="250" height="18" rx="9" fill="#313244" />
-    <rect x="230" y="38" width="168" height="18" rx="9" fill="url(#blue)" />
-    <text x="548" y="52" class="value" text-anchor="end">732k/s</text>
+    <rect x="230" y="38" width="140" height="18" rx="9" fill="url(#blue)" />
+    <text x="548" y="52" class="value" text-anchor="end">653k/s</text>
 
-    <text x="0" y="88" class="label good">KafkaJS eachBatch</text>
+    <text x="0" y="88" class="label good">kafka-crab-js v4 serial</text>
     <rect x="230" y="75" width="250" height="18" rx="9" fill="#313244" />
-    <rect x="230" y="75" width="155" height="18" rx="9" fill="url(#blue)" />
-    <text x="548" y="89" class="value" text-anchor="end">677k/s</text>
+    <rect x="230" y="75" width="120" height="18" rx="9" fill="url(#blue)" />
+    <text x="548" y="89" class="value" text-anchor="end">559k/s</text>
 
-    <text x="0" y="125" class="label good">kafka-crab-js v4 serial</text>
+    <text x="0" y="125" class="label">KafkaJS eachBatch</text>
     <rect x="230" y="112" width="250" height="18" rx="9" fill="#313244" />
-    <rect x="230" y="112" width="125" height="18" rx="9" fill="url(#blue)" />
-    <text x="548" y="126" class="value" text-anchor="end">545k/s</text>
+    <rect x="230" y="112" width="103" height="18" rx="9" fill="#89b4fa" />
+    <text x="548" y="126" class="value" text-anchor="end">478k/s</text>
 
-    <text x="0" y="162" class="label">KafkaJS eachMessage concurrent</text>
+    <text x="0" y="162" class="label">KafkaJS eachMessage</text>
     <rect x="230" y="149" width="250" height="18" rx="9" fill="#313244" />
-    <rect x="230" y="149" width="117" height="18" rx="9" fill="#89b4fa" />
-    <text x="548" y="163" class="value" text-anchor="end">509k/s</text>
+    <rect x="230" y="149" width="93" height="18" rx="9" fill="#89b4fa" />
+    <text x="548" y="163" class="value" text-anchor="end">432k/s</text>
 
-    <text x="0" y="199" class="label">KafkaJS eachMessage</text>
+    <text x="0" y="199" class="label">KafkaJS eachMessage concurrent</text>
     <rect x="230" y="186" width="250" height="18" rx="9" fill="#313244" />
-    <rect x="230" y="186" width="116" height="18" rx="9" fill="#89b4fa" />
-    <text x="548" y="200" class="value" text-anchor="end">506k/s</text>
+    <rect x="230" y="186" width="92" height="18" rx="9" fill="#89b4fa" />
+    <text x="548" y="200" class="value" text-anchor="end">427k/s</text>
 
   </g>
 
@@ -85,35 +85,35 @@
   <text x="676" y="190" class="muted">Throughput per MiB of RSS delta</text>
 
   <g transform="translate(676 218)">
-    <text x="0" y="14" class="label best">kafka-crab-js v4 serial</text>
+    <text x="0" y="14" class="label best">kafka-crab-js v4 batch</text>
     <rect x="230" y="1" width="250" height="18" rx="9" fill="#313244" />
     <rect x="230" y="1" width="250" height="18" rx="9" fill="url(#green)" />
-    <text x="548" y="15" class="value" text-anchor="end">7529</text>
+    <text x="548" y="15" class="value" text-anchor="end">11016</text>
 
-    <text x="0" y="51" class="label good">kafka-crab-js v4 batch</text>
+    <text x="0" y="51" class="label good">kafka-crab-js v4 serial</text>
     <rect x="230" y="38" width="250" height="18" rx="9" fill="#313244" />
-    <rect x="230" y="38" width="217" height="18" rx="9" fill="url(#green)" />
-    <text x="548" y="52" class="value" text-anchor="end">6521</text>
+    <rect x="230" y="38" width="196" height="18" rx="9" fill="url(#green)" />
+    <text x="548" y="52" class="value" text-anchor="end">8635</text>
 
-    <text x="0" y="88" class="label">KafkaJS eachBatch</text>
+    <text x="0" y="88" class="label">@platformatic/kafka</text>
     <rect x="230" y="75" width="250" height="18" rx="9" fill="#313244" />
-    <rect x="230" y="75" width="116" height="18" rx="9" fill="#89b4fa" />
-    <text x="548" y="89" class="value" text-anchor="end">3504</text>
+    <rect x="230" y="75" width="69" height="18" rx="9" fill="#89b4fa" />
+    <text x="548" y="89" class="value" text-anchor="end">3025</text>
 
-    <text x="0" y="125" class="label">@platformatic/kafka</text>
+    <text x="0" y="125" class="label">KafkaJS eachBatch</text>
     <rect x="230" y="112" width="250" height="18" rx="9" fill="#313244" />
-    <rect x="230" y="112" width="112" height="18" rx="9" fill="#89b4fa" />
-    <text x="548" y="126" class="value" text-anchor="end">3365</text>
+    <rect x="230" y="112" width="56" height="18" rx="9" fill="#89b4fa" />
+    <text x="548" y="126" class="value" text-anchor="end">2474</text>
 
-    <text x="0" y="162" class="label">KafkaJS eachMessage</text>
+    <text x="0" y="162" class="label">KafkaJS eachMessage concurrent</text>
     <rect x="230" y="149" width="250" height="18" rx="9" fill="#313244" />
-    <rect x="230" y="149" width="93" height="18" rx="9" fill="#89b4fa" />
-    <text x="548" y="163" class="value" text-anchor="end">2787</text>
+    <rect x="230" y="149" width="54" height="18" rx="9" fill="#89b4fa" />
+    <text x="548" y="163" class="value" text-anchor="end">2396</text>
 
-    <text x="0" y="199" class="label">KafkaJS eachMessage concurrent</text>
+    <text x="0" y="199" class="label">KafkaJS eachMessage</text>
     <rect x="230" y="186" width="250" height="18" rx="9" fill="#313244" />
-    <rect x="230" y="186" width="90" height="18" rx="9" fill="#89b4fa" />
-    <text x="548" y="200" class="value" text-anchor="end">2705</text>
+    <rect x="230" y="186" width="53" height="18" rx="9" fill="#89b4fa" />
+    <text x="548" y="200" class="value" text-anchor="end">2316</text>
 
   </g>
 
@@ -127,25 +127,29 @@
     <text x="455" y="0" class="muted" text-anchor="end">Peak heap</text>
     <line x1="0" y1="14" x2="536" y2="14" class="grid" />
 
-    <text x="0" y="40" class="label best">kafka-crab-js v4 serial</text>
-    <text x="345" y="40" class="value best" text-anchor="end">72.3 MiB</text>
-    <text x="455" y="40" class="value best" text-anchor="end">11.7 MiB</text>
+    <text x="0" y="36" class="label best">kafka-crab-js v4 serial</text>
+    <text x="345" y="36" class="value best" text-anchor="end">64.7 MiB</text>
+    <text x="455" y="36" class="value best" text-anchor="end">14.6 MiB</text>
 
-    <text x="0" y="74" class="label good">kafka-crab-js v4 batch</text>
-    <text x="345" y="74" class="value good" text-anchor="end">167.0 MiB</text>
-    <text x="455" y="74" class="value good" text-anchor="end">35.9 MiB</text>
+    <text x="0" y="68" class="label good">kafka-crab-js v4 batch</text>
+    <text x="345" y="68" class="value good" text-anchor="end">106.0 MiB</text>
+    <text x="455" y="68" class="value good" text-anchor="end">29.5 MiB</text>
 
-    <text x="0" y="108" class="label">KafkaJS eachBatch</text>
-    <text x="345" y="108" class="value" text-anchor="end">193.1 MiB</text>
-    <text x="455" y="108" class="value" text-anchor="end">70.0 MiB</text>
+    <text x="0" y="100" class="label">KafkaJS eachMessage concurrent</text>
+    <text x="345" y="100" class="value" text-anchor="end">178.3 MiB</text>
+    <text x="455" y="100" class="value" text-anchor="end">72.2 MiB</text>
 
-    <text x="0" y="142" class="label">@platformatic/kafka</text>
-    <text x="345" y="142" class="value" text-anchor="end">217.6 MiB</text>
-    <text x="455" y="142" class="value poor" text-anchor="end">93.7 MiB</text>
+    <text x="0" y="132" class="label">KafkaJS eachMessage</text>
+    <text x="345" y="132" class="value" text-anchor="end">186.3 MiB</text>
+    <text x="455" y="132" class="value poor" text-anchor="end">91.6 MiB</text>
 
-    <text x="0" y="176" class="label">KafkaJS eachMessage</text>
-    <text x="345" y="176" class="value" text-anchor="end">181.5 MiB</text>
-    <text x="455" y="176" class="value" text-anchor="end">77.0 MiB</text>
+    <text x="0" y="164" class="label">KafkaJS eachBatch</text>
+    <text x="345" y="164" class="value" text-anchor="end">193.4 MiB</text>
+    <text x="455" y="164" class="value" text-anchor="end">83.8 MiB</text>
+
+    <text x="0" y="196" class="label poor">@platformatic/kafka</text>
+    <text x="345" y="196" class="value poor" text-anchor="end">216.0 MiB</text>
+    <text x="455" y="196" class="value" text-anchor="end">87.4 MiB</text>
   </g>
 
   <rect x="650" y="540" width="590" height="286" rx="12" class="card" />
@@ -159,31 +163,36 @@
     <text x="535" y="0" class="muted" text-anchor="end">Max pause</text>
     <line x1="0" y1="14" x2="536" y2="14" class="grid" />
 
-    <text x="0" y="40" class="label best">kafka-crab-js v4 batch</text>
-    <text x="350" y="40" class="value best" text-anchor="end">30.60 ms</text>
-    <text x="450" y="40" class="value" text-anchor="end">6.67%</text>
-    <text x="535" y="40" class="value" text-anchor="end">5.84 ms</text>
+    <text x="0" y="36" class="label best">kafka-crab-js v4 batch</text>
+    <text x="350" y="36" class="value best" text-anchor="end">21.69 ms</text>
+    <text x="450" y="36" class="value" text-anchor="end">5.06%</text>
+    <text x="535" y="36" class="value" text-anchor="end">2.81 ms</text>
 
-    <text x="0" y="74" class="label good">kafka-crab-js v4 serial</text>
-    <text x="350" y="74" class="value good" text-anchor="end">36.75 ms</text>
-    <text x="450" y="74" class="value best" text-anchor="end">4.00%</text>
-    <text x="535" y="74" class="value best" text-anchor="end">0.55 ms</text>
+    <text x="0" y="68" class="label good">kafka-crab-js v4 serial</text>
+    <text x="350" y="68" class="value good" text-anchor="end">30.46 ms</text>
+    <text x="450" y="68" class="value best" text-anchor="end">3.41%</text>
+    <text x="535" y="68" class="value best" text-anchor="end">0.45 ms</text>
 
-    <text x="0" y="108" class="label">KafkaJS eachBatch</text>
-    <text x="350" y="108" class="value" text-anchor="end">63.03 ms</text>
-    <text x="450" y="108" class="value" text-anchor="end">8.53%</text>
-    <text x="535" y="108" class="value" text-anchor="end">3.64 ms</text>
+    <text x="0" y="100" class="label">KafkaJS eachBatch</text>
+    <text x="350" y="100" class="value" text-anchor="end">63.05 ms</text>
+    <text x="450" y="100" class="value" text-anchor="end">6.03%</text>
+    <text x="535" y="100" class="value" text-anchor="end">4.11 ms</text>
 
-    <text x="0" y="142" class="label">@platformatic/kafka</text>
-    <text x="350" y="142" class="value" text-anchor="end">73.62 ms</text>
-    <text x="450" y="142" class="value poor" text-anchor="end">10.78%</text>
-    <text x="535" y="142" class="value" text-anchor="end">5.03 ms</text>
+    <text x="0" y="132" class="label">@platformatic/kafka</text>
+    <text x="350" y="132" class="value" text-anchor="end">74.27 ms</text>
+    <text x="450" y="132" class="value poor" text-anchor="end">9.71%</text>
+    <text x="535" y="132" class="value" text-anchor="end">8.75 ms</text>
 
-    <text x="0" y="176" class="label poor">KafkaJS eachMessage</text>
-    <text x="350" y="176" class="value poor" text-anchor="end">79.11 ms</text>
-    <text x="450" y="176" class="value" text-anchor="end">8.00%</text>
-    <text x="535" y="176" class="value" text-anchor="end">6.00 ms</text>
+    <text x="0" y="164" class="label">KafkaJS eachMessage concurrent</text>
+    <text x="350" y="164" class="value" text-anchor="end">83.77 ms</text>
+    <text x="450" y="164" class="value" text-anchor="end">7.16%</text>
+    <text x="535" y="164" class="value" text-anchor="end">2.85 ms</text>
+
+    <text x="0" y="196" class="label poor">KafkaJS eachMessage</text>
+    <text x="350" y="196" class="value poor" text-anchor="end">90.15 ms</text>
+    <text x="450" y="196" class="value" text-anchor="end">7.78%</text>
+    <text x="535" y="196" class="value poor" text-anchor="end">11.45 ms</text>
   </g>
 
-  <text x="42" y="864" class="subtitle">Key result: v4 batch leads throughput; v4 serial leads memory efficiency. Numbers are local benchmark snapshots, not universal constants.</text>
+  <text x="42" y="864" class="subtitle">Key result: v4 batch leads throughput and memory efficiency; v4 serial uses the least lifecycle RSS. Numbers are local snapshots.</text>
 </svg>

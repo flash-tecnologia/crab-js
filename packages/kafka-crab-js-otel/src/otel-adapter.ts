@@ -117,13 +117,13 @@ export class OtelAdapter {
   private _enabled = false
   private readonly _handlers = new Map<string, (event: unknown, name: string) => void>()
 
-  constructor(config: OtelAdapterConfig = {}) {
+  public constructor(config: OtelAdapterConfig = {}) {
     this._config = config
     const tracerProvider = config.tracerProvider ?? trace
     this._tracer = tracerProvider.getTracer(PACKAGE_INFO.NAME, PACKAGE_INFO.VERSION)
   }
 
-  updateConfig(config: OtelAdapterConfig): void {
+  public updateConfig(config: OtelAdapterConfig): void {
     const mergedMetrics =
       config.metrics && typeof config.metrics === 'object' ? { ...this._config.metrics, ...config.metrics } : undefined
 
@@ -152,7 +152,7 @@ export class OtelAdapter {
   /**
    * Enable the OTEL adapter - subscribes to all diagnostic channels
    */
-  enable(): void {
+  public enable(): void {
     if (this._enabled) {
       return
     }
@@ -178,7 +178,7 @@ export class OtelAdapter {
   /**
    * Disable the OTEL adapter - unsubscribes from all channels
    */
-  disable(): void {
+  public disable(): void {
     if (!this._enabled) {
       return
     }
@@ -227,21 +227,21 @@ export class OtelAdapter {
   /**
    * Check if the adapter is enabled
    */
-  isEnabled(): boolean {
+  public isEnabled(): boolean {
     return this._enabled
   }
 
   /**
    * Check if metrics are enabled
    */
-  isMetricsEnabled(): boolean {
+  public isMetricsEnabled(): boolean {
     return this._metrics?.isEnabled() ?? false
   }
 
   /**
    * Get the tracer instance
    */
-  get tracer(): Tracer {
+  public get tracer(): Tracer {
     return this._tracer
   }
 

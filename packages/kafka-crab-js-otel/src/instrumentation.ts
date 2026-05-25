@@ -31,7 +31,7 @@ export class KafkaCrabInstrumentation {
   private _kafkaConfig: KafkaOtelInstrumentationConfig
   private _enabled = false
 
-  constructor(config: KafkaOtelInstrumentationConfig = {}) {
+  public constructor(config: KafkaOtelInstrumentationConfig = {}) {
     const metricsConfig = {
       ...DEFAULT_OTEL_CONFIG.metrics,
       ...(config.metrics && typeof config.metrics === 'object' ? config.metrics : {}),

@@ -123,8 +123,8 @@ importers:
   benchmarks/kafka:
     dependencies:
       '@platformatic/kafka':
-        specifier: ^1.33.0
-        version: 1.33.0
+        specifier: ^2.1.0
+        version: 2.1.0
       kafka-crab-js:
         specifier: workspace:*
         version: link:../../packages/kafka-crab-js
@@ -1565,9 +1565,9 @@ packages:
     resolution: {integrity: sha512-xQD5JSkQc4D15suOk7FezGDmh6Vb5e4phDoFZ/ASpa3Ft+3fOVwFOENmHtC1561zm/xHnKwI91NbMF8inpbk0Q==}
     engines: {node: '>= 22.19.0'}
 
-  '@platformatic/kafka@1.33.0':
-    resolution: {integrity: sha512-CAFUnxDfftaDAnRMgc5U3OZ7OxzOdRqLaDJDC8ts+vYb+4Il2xtwAphJctTJ9zcO8TWP9FTMGj20t/Jz+6lJiw==}
-    engines: {node: '>= 20.19.4 || >= 22.18.0 || >= 24.6.0'}
+  '@platformatic/kafka@2.1.0':
+    resolution: {integrity: sha512-3v4DugPy/24mZE9App8mI9CV24lbIfPsWMZpIswt9VnZ6gUWh+TDdjc6NYpacn7aMbs/B1sYeQRdPaLFgctPFQ==}
+    engines: {node: '>= 22.22.0 || >= 24.6.0'}
 
   '@platformatic/wasm-utils@0.2.1':
     resolution: {integrity: sha512-5rNl4h5n+hZG4LjiItQ7bVfHBqTypjldP46NXrOYW64cZr87ahngK1s9nEtCpByWg7WWjRLSxyCytgJK5gNdwQ==}
@@ -3633,7 +3633,7 @@ snapshots:
 
   '@platformatic/dynamic-buffer@0.3.1': {}
 
-  '@platformatic/kafka@1.33.0':
+  '@platformatic/kafka@2.1.0':
     dependencies:
       '@platformatic/dynamic-buffer': 0.3.1
       '@platformatic/wasm-utils': 0.2.1
@@ -4196,7 +4196,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-      '@types/node': 25.6.2
+      '@types/node': 25.9.1
       long: 5.3.2
     optional: true
 

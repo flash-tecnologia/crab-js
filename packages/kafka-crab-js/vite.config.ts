@@ -28,6 +28,20 @@ const kafkaJsSourceLintRules: NonNullable<OxlintConfig['rules']> = {
   'no-void': 'off',
   'unicorn/no-new-array': 'off',
   '@typescript-eslint/no-duplicate-type-constituents': 'allow',
+  'eslint/no-underscore-dangle': [
+    'error',
+    {
+      allow: [
+        '_destroy',
+        '_diagnosticsConfig',
+        '_diagnosticsEnabled',
+        '_instrumentConsumer',
+        '_instrumentProducer',
+        '_kafkaConsumer',
+        '_read',
+      ],
+    },
+  ],
 }
 
 const kafkaJsLintOverrides = [
