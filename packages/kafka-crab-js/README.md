@@ -850,7 +850,7 @@ if (message) {
 }
 ```
 
-See the [OpenTelemetry package README](../otel/README.md) for full tracing and metrics setup.
+See the [OpenTelemetry package README](../kafka-crab-js-otel/README.md) for full tracing and metrics setup.
 
 ## Performance Benchmarks
 

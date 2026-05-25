@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { fileURLToPath } from 'node:url'
 
+import { createPdfFromHtml } from 'html-to-pdf-crab-js'
 import { createPdf, PdfDocumentBuilder, type CreatePdfInput, type PdfElementInput } from 'pdf-crab-js'
 
 const resultMarker = '__PDF_BENCHMARK_RESULT__'
@@ -18,7 +19,7 @@ const owners = ['team-a', 'team-b', 'team-c', 'team-d'] as const
 
 type Column = (typeof columns)[number]
 type PdfBuffer = ReturnType<typeof createPdf>
-type ScenarioId = 'pdf-crab' | 'pdf-crab-builder' | 'gotenberg-node'
+type ScenarioId = 'pdf-crab' | 'pdf-crab-builder' | 'html-to-pdf-crab-js' | 'gotenberg-node'
 type ScenarioStatus = 'completed' | 'failed' | 'timeout'
 type TableRow = Record<Column, string>
 
@@ -67,6 +68,11 @@ const scenarioDefinitions: Record<ScenarioId, ScenarioDefinition> = {
     id: 'gotenberg-node',
     language: 'Node + Gotenberg',
     mode: 'gotenberg',
+  },
+  'html-to-pdf-crab-js': {
+    id: 'html-to-pdf-crab-js',
+    language: 'Node + html-to-pdf-crab',
+    mode: 'local-html',
   },
   'pdf-crab': {
     id: 'pdf-crab',
@@ -493,7 +499,7 @@ function readSelectedScenarios(): ScenarioId[] {
   const raw = process.env.PDF_BENCHMARK_ONLY?.trim()
 
   if (!raw) {
-    return ['pdf-crab', 'pdf-crab-builder', 'gotenberg-node']
+    return ['pdf-crab', 'pdf-crab-builder', 'html-to-pdf-crab-js', 'gotenberg-node']
   }
 
   const selected = raw
@@ -678,6 +684,17 @@ function createScenarioRunner(
   }
 
   const html = createBenchmarkHtml(dataset)
+
+  if (scenario.id === 'html-to-pdf-crab-js') {
+    return async () =>
+      createPdfFromHtml({
+        html,
+        page: {
+          size: 'A4',
+        },
+        title: `table benchmark (${dataset.pages} pages)`,
+      })
+  }
 
   return async () => createGotenbergPdf(config, html)
 }

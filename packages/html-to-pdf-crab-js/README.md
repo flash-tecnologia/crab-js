@@ -61,6 +61,16 @@ pnpm --filter html-to-pdf-crab-js lint
 pnpm --filter html-to-pdf-crab-js fmt:check
 ```
 
+Run local examples:
+
+```bash
+pnpm --filter html-to-pdf-crab-js-examples invoice
+pnpm --filter html-to-pdf-crab-js-examples report
+pnpm --filter html-to-pdf-crab-js-examples browser
+```
+
+Generated files are written to `examples/html-to-pdf-crab-js/output/`.
+
 Build and smoke-test the WebAssembly binding:
 
 ```bash

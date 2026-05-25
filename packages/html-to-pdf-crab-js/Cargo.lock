@@ -1050,6 +1050,7 @@ dependencies = [
 name = "html_to_pdf_crab_js"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "fulgur",
  "napi",
  "napi-build",

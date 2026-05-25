@@ -19,13 +19,6 @@ export default defineConfig({
     ignorePatterns: pdfLintIgnorePatterns,
     overrides: [
       {
-        files: ['examples/**'],
-        rules: {
-          'id-length': 'off',
-          'no-console': 'off',
-        },
-      },
-      {
         files: ['js-tests/**'],
         rules: sharedTestLintRules,
       },

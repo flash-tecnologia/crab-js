@@ -1,21 +1,36 @@
-use napi::{
-  bindgen_prelude::{AsyncTask, Buffer},
-  Env, Result, Task,
-};
+use napi::{bindgen_prelude::Buffer, Result};
+
+#[cfg(not(target_arch = "wasm32"))]
+use napi::{bindgen_prelude::AsyncTask, Env, Task};
 
 use crate::{
-  input::CreatePdfFromHtmlInput, renderer::create_pdf_from_html_bytes, validation::invalid_arg,
+  input::{CreatePdfFromHtmlInput, RenderPdfFromHtmlInput},
+  renderer::create_pdf_from_html_bytes,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::validation::invalid_arg;
+
 #[napi(ts_return_type = "Promise<Buffer>")]
+#[cfg(not(target_arch = "wasm32"))]
 pub fn create_pdf_from_html(input: CreatePdfFromHtmlInput) -> AsyncTask<CreatePdfFromHtmlTask> {
-  AsyncTask::new(CreatePdfFromHtmlTask { input: Some(input) })
+  AsyncTask::new(CreatePdfFromHtmlTask {
+    input: Some(RenderPdfFromHtmlInput::from(input)),
+  })
 }
 
+#[napi(ts_return_type = "Promise<Buffer>")]
+#[cfg(target_arch = "wasm32")]
+pub fn create_pdf_from_html(input: CreatePdfFromHtmlInput) -> Result<Buffer> {
+  create_pdf_from_html_bytes(RenderPdfFromHtmlInput::from(input)).map(Buffer::from)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) struct CreatePdfFromHtmlTask {
-  input: Option<CreatePdfFromHtmlInput>,
+  input: Option<RenderPdfFromHtmlInput>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Task for CreatePdfFromHtmlTask {
   type Output = Vec<u8>;
   type JsValue = Buffer;

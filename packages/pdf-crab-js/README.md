@@ -111,13 +111,16 @@ pnpm --filter pdf-crab-js build:wasm
 pnpm --filter pdf-crab-js test:wasm
 ```
 
-Run the local PDF example:
+Run local examples:
 
 ```bash
-pnpm --filter pdf-crab-js example
+pnpm --filter pdf-crab-js-examples example
+pnpm --filter pdf-crab-js-examples example:table
+pnpm --filter pdf-crab-js-examples browser
 ```
 
-The generated file is written to `packages/pdf-crab-js/examples/output/pdf-crab-js-example.pdf`.
+Generated files are written to `examples/pdf-crab-js/output/`. The browser example opens `/wasm/` on a local Vite
+server and renders a PDF with the generated NAPI-RS WASM browser entry.
 
 Run the PDF table benchmark from the workspace root:
 

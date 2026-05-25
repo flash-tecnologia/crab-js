@@ -20,7 +20,6 @@
   },
   "files": [
     "browser.js",
-    "examples/*.ts",
     "index.d.ts",
     "index.cjs",
     "index.js"
@@ -51,8 +50,8 @@
     "build": "node build.mjs",
     "build:debug": "node build.mjs --debug",
     "build:wasm": "node build.mjs --target wasm32-wasip1-threads",
-    "example": "tsx examples/pdf.ts",
-    "example:table": "tsx examples/table.ts",
+    "example": "pnpm --dir ../.. --filter pdf-crab-js-examples example",
+    "example:table": "pnpm --dir ../.. --filter pdf-crab-js-examples example:table",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
     "lint": "vp lint",
@@ -65,10 +64,10 @@
     "buffer": "^6.0.3"
   },
   "devDependencies": {
-    "@emnapi/core": "^1.9.2",
-    "@emnapi/runtime": "^1.9.2",
-    "@napi-rs/cli": "^3.6.2",
-    "@napi-rs/wasm-runtime": "^1.1.4"
+    "@emnapi/core": "catalog:",
+    "@emnapi/runtime": "catalog:",
+    "@napi-rs/cli": "catalog:",
+    "@napi-rs/wasm-runtime": "catalog:"
   },
   "napi": {
     "binaryName": "pdf-crab-js",

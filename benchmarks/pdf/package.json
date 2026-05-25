@@ -14,6 +14,7 @@
     "lint:fix": "vp lint --fix"
   },
   "dependencies": {
+    "html-to-pdf-crab-js": "workspace:*",
     "pdf-crab-js": "workspace:*"
   },
   "engines": {

@@ -18,5 +18,5 @@
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["index.d.ts", "examples/**/*.ts", "js-tests/**/*.ts"]
+  "include": ["index.d.ts", "js-tests/**/*.ts"]
 }

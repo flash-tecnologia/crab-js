@@ -1,0 +1,92 @@
+body {
+  color: #172033;
+  font-family: Tuffy, Arial, Helvetica, sans-serif;
+  margin: 0;
+}
+
+main {
+  padding: 8mm 6mm;
+}
+
+header {
+  align-items: end;
+  border-bottom: 2px solid #0f766e;
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 10px;
+}
+
+.eyebrow,
+.date {
+  color: #526071;
+  font-size: 10px;
+  margin: 0;
+}
+
+h1 {
+  font-size: 24px;
+  margin: 3px 0 0;
+}
+
+h2 {
+  font-size: 13px;
+  margin: 18px 0 8px;
+}
+
+.metrics {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, 1fr);
+  margin: 16px 0;
+}
+
+.metric {
+  border: 1px solid #cfe1df;
+  padding: 10px;
+}
+
+.metric span,
+.metric small {
+  color: #526071;
+  display: block;
+  font-size: 9px;
+}
+
+.metric strong {
+  color: #0f766e;
+  display: block;
+  font-size: 20px;
+  margin: 6px 0 3px;
+}
+
+table {
+  border-collapse: collapse;
+  font-size: 10px;
+  width: 100%;
+}
+
+th {
+  background: #173b44;
+  color: white;
+  padding: 7px;
+  text-align: left;
+}
+
+td {
+  border-bottom: 1px solid #d7e2e1;
+  padding: 7px;
+}
+
+th:nth-child(n + 4),
+td:nth-child(n + 4) {
+  text-align: right;
+}
+
+.status {
+  color: #0f766e;
+  font-weight: bold;
+}
+
+.status-watch {
+  color: #9a6700;
+}

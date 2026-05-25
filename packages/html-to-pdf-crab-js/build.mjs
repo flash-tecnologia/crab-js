@@ -137,6 +137,14 @@ ${bodyIndent}importObject.__wbindgen_externref_xform__ = __wasmBindgenImports.__
 ${bodyIndent}importObject.env = {`,
   )
 
+const useAsyncBrowserWasmInstantiation = (content) =>
+  content
+    .replace(
+      'instantiateNapiModuleSync as __emnapiInstantiateNapiModuleSync',
+      'instantiateNapiModule as __emnapiInstantiateNapiModule',
+    )
+    .replace('__emnapiInstantiateNapiModuleSync(__wasmFile, {', 'await __emnapiInstantiateNapiModule(__wasmFile, {')
+
 const patchBrowserEntry = async (outputs) => {
   const browserOutput = outputs.find((output) => output.kind === 'js' && basename(output.path) === 'browser.js')
   if (!browserOutput) {
@@ -152,7 +160,25 @@ globalThis.Buffer ??= __Buffer
 const __binding = await import('html-to-pdf-crab-js-wasm32-wasi')
 
 export default __binding.default ?? __binding
-export const createPdfFromHtml = __binding.createPdfFromHtml
+
+function toBase64(value) {
+  return __Buffer.from(value).toString('base64')
+}
+
+function normalizeInput(input) {
+  return {
+    ...input,
+    fonts: input.fonts?.map(toBase64),
+    images: input.images?.map((image) => ({
+      ...image,
+      data: toBase64(image.data),
+    })),
+  }
+}
+
+export function createPdfFromHtml(input) {
+  return Promise.resolve(__binding.createPdfFromHtml(normalizeInput(input)))
+}
 `,
   )
 }
@@ -175,7 +201,10 @@ const patchWasmBindgenImports = async (outputs) => {
       continue
     }
 
-    const patchedContent = addWasmBindgenImportsToOverwriteImports(addWasmBindgenImportsHelper(content))
+    let patchedContent = addWasmBindgenImportsToOverwriteImports(addWasmBindgenImportsHelper(content))
+    if (basename(output.path) === 'html-to-pdf-crab-js.wasi-browser.js') {
+      patchedContent = useAsyncBrowserWasmInstantiation(patchedContent)
+    }
 
     await writeFile(output.path, patchedContent)
   }

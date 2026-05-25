@@ -1,17 +1,18 @@
+use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use fulgur::{AssetBundle, Engine, Margin, PageSize};
-use napi::bindgen_prelude::{Buffer, Either};
+use napi::bindgen_prelude::Either;
 use napi::{Error, Result, Status};
 
 use crate::{
   input::{
-    CreatePdfFromHtmlInput, HtmlPdfImageInput, HtmlPdfPageCustomSizeInput, HtmlPdfPageInput,
-    HtmlPdfPageMarginInput,
+    HtmlPdfPageCustomSizeInput, HtmlPdfPageInput, HtmlPdfPageMarginInput, RenderPdfBinaryInput,
+    RenderPdfFontInput, RenderPdfFromHtmlInput, RenderPdfImageInput,
   },
   unit::Unit,
   validation::{invalid_arg, positive_f32},
 };
 
-pub(crate) fn create_pdf_from_html_bytes(input: CreatePdfFromHtmlInput) -> Result<Vec<u8>> {
+pub(crate) fn create_pdf_from_html_bytes(input: RenderPdfFromHtmlInput) -> Result<Vec<u8>> {
   if input.html.trim().is_empty() {
     return Err(invalid_arg("html must not be empty"));
   }
@@ -78,8 +79,8 @@ fn apply_page(
 
 fn build_assets(
   css: Option<Either<String, Vec<String>>>,
-  fonts: Option<Vec<Buffer>>,
-  images: Option<Vec<HtmlPdfImageInput>>,
+  fonts: Option<RenderPdfFontInput>,
+  images: Option<Vec<RenderPdfImageInput>>,
 ) -> Result<Option<AssetBundle>> {
   let mut assets = AssetBundle::new();
   let mut has_assets = false;
@@ -99,10 +100,17 @@ fn build_assets(
   }
 
   if let Some(fonts) = fonts {
-    for font in fonts {
-      assets
-        .add_font_bytes(Vec::from(font))
-        .map_err(|error| invalid_arg(format!("invalid font asset: {error}")))?;
+    match fonts {
+      RenderPdfFontInput::Bytes(fonts) => {
+        for font in fonts {
+          add_font_asset(&mut assets, font)?;
+        }
+      }
+      RenderPdfFontInput::Base64(fonts) => {
+        for font in fonts {
+          add_font_asset(&mut assets, decode_base64_asset(font, "fonts[]")?)?;
+        }
+      }
     }
     has_assets = true;
   }
@@ -112,12 +120,28 @@ fn build_assets(
       if image.name.trim().is_empty() {
         return Err(invalid_arg("images[].name must not be empty"));
       }
-      assets.add_image(image.name, Vec::from(image.data));
+      let data = match image.data {
+        RenderPdfBinaryInput::Bytes(data) => data,
+        RenderPdfBinaryInput::Base64(data) => decode_base64_asset(data, "images[].data")?,
+      };
+      assets.add_image(image.name, data);
     }
     has_assets = true;
   }
 
   Ok(has_assets.then_some(assets))
+}
+
+fn add_font_asset(assets: &mut AssetBundle, font: Vec<u8>) -> Result<()> {
+  assets
+    .add_font_bytes(font)
+    .map_err(|error| invalid_arg(format!("invalid font asset: {error}")))
+}
+
+fn decode_base64_asset(data: String, field: &str) -> Result<Vec<u8>> {
+  BASE64_STANDARD
+    .decode(data)
+    .map_err(|error| invalid_arg(format!("invalid {field} base64 asset: {error}")))
 }
 
 fn parse_page_size(size: Either<String, HtmlPdfPageCustomSizeInput>) -> Result<PageSize> {
