@@ -176,6 +176,7 @@ jobs:
           name: bindings-wasm32-wasip1-threads
           path: |
             packages/html-to-pdf-crab-js/${{ env.APP_NAME }}.*.wasm
+            packages/html-to-pdf-crab-js/${{ env.APP_NAME }}.wasi.cjs
             packages/html-to-pdf-crab-js/${{ env.APP_NAME }}.wasi*.js
             packages/html-to-pdf-crab-js/wasi-worker*.mjs
           if-no-files-found: error
