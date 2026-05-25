@@ -7,6 +7,26 @@ through a small TypeScript-friendly API.
 [![npm beta version](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue.svg)](https://www.npmjs.com/package/kafka-crab-js)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## Version 4
+
+`kafka-crab-js` v4 is the current beta line. It focuses on high-throughput consumers, lower JavaScript heap pressure,
+and a cleaner monorepo release model under [`flash-tecnologia/crab-js`](https://github.com/flash-tecnologia/crab-js).
+
+The main v4 additions are:
+
+- Native Web Stream consumers through `client.createWebStreamConsumer()`, with explicit `serial` and `batch` modes.
+- Direct batch consumption through `consumer.recvBatch(size, timeoutMs)` for workers that can process chunks.
+- Compact native batch streaming internally, reducing native-to-JavaScript marshalling overhead before expanding to the
+  public `Message[]` API.
+- Serial Web Stream prefetching, so message-by-message code still benefits from small native batches.
+- Diagnostics-channel events in the core package, with OpenTelemetry tracing and metrics moved to the optional
+  `kafka-crab-js-otel` package.
+- Updated TypeScript exports where runtime enum-like values are now string literal types, avoiding missing runtime
+  exports in ESM/CommonJS consumers.
+
+For production adoption, treat v4 as a beta release: validate it with your broker settings, payload sizes, partition
+count, commit strategy, and shutdown path before replacing an existing Kafka client.
+
 ## Why Kafka Crab JS?
 
 KafkaJS is a strong default for many Node.js services. Kafka Crab JS is for the cases where Kafka throughput, memory
@@ -29,8 +49,9 @@ breakdown are documented in [BENCHMARKS.md](../../BENCHMARKS.md) and [Performanc
 ## Highlights
 
 - Native librdkafka client exposed through a TypeScript-friendly API.
-- Producer, direct consumer, Node.js `Readable` stream, and native Web Stream consumer APIs.
+- Producer, direct consumer, Node.js `Readable` stream, and v4 native Web Stream consumer APIs.
 - High-throughput batch receive APIs for workloads that can process more than one message at a time.
+- Compact batch streaming and serial prefetching to reduce native boundary crossings.
 - Manual commit helpers that commit `message.offset + 1` correctly.
 - Optional diagnostics-channel instrumentation for OpenTelemetry through `kafka-crab-js-otel`.
 - Advanced librdkafka settings are forwarded through `configuration` without forcing a custom allowlist.
@@ -43,22 +64,23 @@ breakdown are documented in [BENCHMARKS.md](../../BENCHMARKS.md) and [Performanc
 
 ## Table Of Contents
 
-1. [Installation](#installation)
-2. [Module Usage](#module-usage)
-3. [Quick Start](#quick-start)
-4. [Message Model](#message-model)
-5. [Choosing A Consumer API](#choosing-a-consumer-api)
-6. [Producer API](#producer-api)
-7. [Consumer API](#consumer-api)
-8. [Stream Consumers](#stream-consumers)
-9. [Batching, Backpressure, And Tuning](#batching-backpressure-and-tuning)
-10. [Configuration](#configuration)
-11. [OpenTelemetry](#opentelemetry)
-12. [Performance Benchmarks](#performance-benchmarks)
-13. [Migration Notes](#migration-notes)
-14. [Troubleshooting](#troubleshooting)
-15. [Development](#development)
-16. [License](#license)
+1. [Version 4](#version-4)
+2. [Installation](#installation)
+3. [Module Usage](#module-usage)
+4. [Quick Start](#quick-start)
+5. [Message Model](#message-model)
+6. [Choosing A Consumer API](#choosing-a-consumer-api)
+7. [Producer API](#producer-api)
+8. [Consumer API](#consumer-api)
+9. [Stream Consumers](#stream-consumers)
+10. [Batching, Backpressure, And Tuning](#batching-backpressure-and-tuning)
+11. [Configuration](#configuration)
+12. [OpenTelemetry](#opentelemetry)
+13. [Performance Benchmarks](#performance-benchmarks)
+14. [Migration Notes](#migration-notes)
+15. [Troubleshooting](#troubleshooting)
+16. [Development](#development)
+17. [License](#license)
 
 ## Installation
 
