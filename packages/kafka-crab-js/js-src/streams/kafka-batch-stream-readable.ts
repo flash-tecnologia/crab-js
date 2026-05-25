@@ -7,6 +7,7 @@ const DEFAULT_BATCH_TIMEOUT = 1000
 export interface KafkaBatchStreamReadableOptions extends KafkaStreamReadableOptions {
   batchSize: number
   batchTimeout?: number
+  sourceStream?: ReadableStream<Message[]>
 }
 
 /**
@@ -15,55 +16,77 @@ export interface KafkaBatchStreamReadableOptions extends KafkaStreamReadableOpti
  */
 export class KafkaBatchStreamReadable extends BaseKafkaStreamReadable {
   private pendingMessages: Message[] = []
+  private pendingMessageIndex = 0
   private readonly batchSize: number
   private readonly batchTimeout: number
+  private readonly sourceReader?: ReadableStreamDefaultReader<Message[]>
+  private readInFlight = false
+  private pendingRead = false
 
   /**
    * Creates a KafkaBatchStreamReadable instance
    */
-  constructor(
-    streamOptions: KafkaBatchStreamReadableOptions,
-  ) {
-    const { batchSize, batchTimeout = DEFAULT_BATCH_TIMEOUT, ...opts } = streamOptions
+  public constructor(streamOptions: KafkaBatchStreamReadableOptions) {
+    const { batchSize, batchTimeout = DEFAULT_BATCH_TIMEOUT, sourceStream, kafkaConsumer, ...opts } = streamOptions
 
     // Set highWaterMark to batch size for optimal performance
     opts.highWaterMark = Math.max(batchSize, opts.highWaterMark || 16)
 
-    super({ ...streamOptions, ...opts })
+    super({ kafkaConsumer, ...opts })
     this.batchSize = batchSize
     this.batchTimeout = batchTimeout
+    this.sourceReader = sourceStream?.getReader()
   }
 
   /**
    * Gets current batch configuration
    * @returns {object} Current batch settings
    */
-  getBatchConfig(): { batchSize: number; batchTimeout: number } {
+  public getBatchConfig(): { batchSize: number; batchTimeout: number } {
     return {
       batchSize: this.batchSize,
       batchTimeout: this.batchTimeout,
     }
   }
 
-  /**
-   * Internal method called by the Readable stream to fetch batch messages
-   * @private
-   */
-  async _read() {
-    if (this.destroyed) {
-      return
+  private drainPendingMessages(): boolean {
+    while (this.pendingMessageIndex < this.pendingMessages.length) {
+      const message = this.pendingMessages[this.pendingMessageIndex]
+      this.pendingMessageIndex += 1
+      if (!this.push(message)) {
+        return false
+      }
     }
-    try {
-      // First, push any pending messages
-      while (this.pendingMessages.length > 0) {
-        const message = this.pendingMessages.shift()
-        if (!this.push(message)) {
-          return // Backpressure, wait for next _read()
-        }
+
+    this.pendingMessages = []
+    this.pendingMessageIndex = 0
+    return true
+  }
+
+  private async readNextBatch(): Promise<Message[] | null> {
+    if (this.sourceReader) {
+      const chunk = await this.sourceReader.read()
+      if (chunk.done) {
+        return null
       }
 
-      // Fetch new batch if no pending messages
-      const messages = await this.kafkaConsumer.recvBatch(this.batchSize, this.batchTimeout)
+      return chunk.value ?? []
+    }
+
+    return this.kafkaConsumer.recvBatch(this.batchSize, this.batchTimeout)
+  }
+
+  private async pullNextBatch() {
+    try {
+      if (!this.drainPendingMessages()) {
+        return
+      }
+
+      const messages = await this.readNextBatch()
+      if (!messages) {
+        this.push(null)
+        return
+      }
 
       if (messages.length === 0) {
         // No data this poll; schedule another read instead of ending the stream
@@ -73,17 +96,49 @@ export class KafkaBatchStreamReadable extends BaseKafkaStreamReadable {
         return
       }
 
-      // Try to push messages, buffer remainder
-      for (let idx = 0; idx < messages.length; idx++) {
-        if (!this.push(messages[idx])) {
-          // Buffer remaining messages
-          this.pendingMessages = messages.slice(idx + 1)
-          break
-        }
-      }
+      this.pendingMessages = messages
+      this.pendingMessageIndex = 0
+      this.drainPendingMessages()
     } catch (error) {
+      if (this.destroyed) {
+        return
+      }
+
       // Use destroy() instead of emit('error') to properly terminate the stream
       this.destroy(error instanceof Error ? error : new Error(String(error)))
+    } finally {
+      this.readInFlight = false
+
+      if (this.pendingRead && !this.destroyed) {
+        this.pendingRead = false
+        this._read()
+      }
     }
+  }
+
+  protected async cancelSourceReader(reason: unknown): Promise<void> {
+    if (!this.sourceReader) {
+      return
+    }
+
+    await this.sourceReader.cancel(reason)
+  }
+
+  /**
+   * Internal method called by the Readable stream to fetch batch messages
+   * @private
+   */
+  public _read() {
+    if (this.destroyed) {
+      return
+    }
+
+    if (this.readInFlight) {
+      this.pendingRead = true
+      return
+    }
+
+    this.readInFlight = true
+    this.pullNextBatch().catch(() => undefined)
   }
 }

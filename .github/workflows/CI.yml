@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
       - name: Setup node
         uses: actions/setup-node@v6
         with:
@@ -47,10 +47,10 @@ jobs:
           components: clippy, rustfmt
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --filter kafka-crab-js
 
       - name: ESLint
-        run: pnpm lint
+        run: pnpm --filter kafka-crab-js lint
 
       - name: Cargo fmt
         working-directory: packages/kafka-crab-js
@@ -73,8 +73,7 @@ jobs:
             build: pnpm build --target x86_64-unknown-linux-gnu
           - host: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            container_image: ghcr.io/rust-cross/rust-musl-cross:x86_64-musl
-            build: pnpm build --target x86_64-unknown-linux-musl
+            build: pnpm build --target x86_64-unknown-linux-musl -x
           - host: macos-latest
             target: aarch64-apple-darwin
             build: pnpm build --target aarch64-apple-darwin
@@ -83,20 +82,16 @@ jobs:
             build: pnpm build --target aarch64-unknown-linux-gnu
           - host: ubuntu-latest
             target: aarch64-unknown-linux-musl
-            container_image: ghcr.io/rust-cross/rust-musl-cross:aarch64-unknown-linux-musl
-            build: |
-              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-unknown-linux-musl-gcc
-              pnpm build --target aarch64-unknown-linux-musl
+            build: pnpm build --target aarch64-unknown-linux-musl -x
     name: stable - ${{ matrix.settings.target }} - node@22
     runs-on: ${{ matrix.settings.host }}
-    container: ${{ matrix.settings.container_image || '' }}
     defaults:
       run:
         working-directory: packages/kafka-crab-js
     steps:
       - uses: actions/checkout@v6
       - name: setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
       - name: Setup node
         uses: actions/setup-node@v6
         with:
@@ -110,7 +105,7 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.settings.target }}
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry/index/
@@ -120,6 +115,17 @@ jobs:
             .cargo-cache
             packages/kafka-crab-js/target/
           key: ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}
+      - uses: mlugg/setup-zig@v2
+        if: ${{ contains(matrix.settings.target, 'musl') }}
+        with:
+          version: 0.14.1
+      - name: Install cargo-zigbuild
+        uses: taiki-e/install-action@v2
+        if: ${{ contains(matrix.settings.target, 'musl') }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tool: cargo-zigbuild
       - name: Setup toolchain
         run: ${{ matrix.settings.setup }}
         if: ${{ matrix.settings.setup }}
@@ -138,7 +144,7 @@ jobs:
         run: ${{ matrix.settings.build }}
         shell: bash
       - name: Upload artifact Dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         # copy dist folder only one time
         if: matrix.settings.target == 'x86_64-unknown-linux-gnu'
         with:
@@ -146,7 +152,7 @@ jobs:
           path: packages/kafka-crab-js/dist
           if-no-files-found: error
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: matrix.settings.target != 'wasm32-wasip1-threads'
         with:
           name: bindings-${{ matrix.settings.target }}
@@ -155,7 +161,7 @@ jobs:
             packages/kafka-crab-js/dist
           if-no-files-found: error
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         if: matrix.settings.target == 'wasm32-wasip1-threads'
         with:
           name: bindings-${{ matrix.settings.target }}
@@ -177,13 +183,13 @@ jobs:
             target: aarch64-apple-darwin
             architecture: arm64
         node:
-          - '20'
           - '22'
+          - '24'
     runs-on: ${{ matrix.settings.host }}
     steps:
       - uses: actions/checkout@v6
       - name: setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
       - name: Setup node
         uses: actions/setup-node@v6
         with:
@@ -193,7 +199,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --filter kafka-crab-js
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: bindings-${{ matrix.settings.target }}
           path: packages/kafka-crab-js
@@ -217,13 +223,13 @@ jobs:
           - aarch64-unknown-linux-gnu
           - aarch64-unknown-linux-musl
         node:
-          - '20'
           - '22'
+          - '24'
     runs-on: ${{ contains(matrix.target, 'aarch64') && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
       - name: setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
       - name: Setup node
         uses: actions/setup-node@v6
         with:
@@ -251,9 +257,9 @@ jobs:
           echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
       # use --force to download the all platform/arch dependencies
       - name: Install dependencies
-        run: pnpm install --force
+        run: pnpm install --filter kafka-crab-js --force
       - name: Download artifacts
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: bindings-${{ matrix.target }}
           path: packages/kafka-crab-js
@@ -268,7 +274,7 @@ jobs:
       - run: docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
         if: ${{ contains(matrix.target, 'armv7') }}
       - name: Test bindings
-        uses: tj-actions/docker-run@v2.2.1
+        uses: tj-actions/docker-run@v2
         with:
           image: ${{ steps.docker.outputs.IMAGE }}
           name: kafka-crab-js-test-${{ matrix.target }}-node${{ matrix.node }}
@@ -286,16 +292,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
       - name: Setup node
         uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --filter kafka-crab-js
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: create npm dirs
@@ -317,7 +323,9 @@ jobs:
           npm config set provenance true
           TAG_NAME=${GITHUB_REF#refs/tags/kafka-crab-js@}
           echo "Publishing kafka-crab-js version: $TAG_NAME"
-          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+          if [[ -n "${NPM_TOKEN:-}" ]]; then
+            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+          fi
 
           if [[ $TAG_NAME =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Stable release detected"

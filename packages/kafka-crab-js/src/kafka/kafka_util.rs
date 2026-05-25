@@ -6,7 +6,8 @@ use rdkafka::{
   Message as RdMessage,
 };
 
-use super::producer::model::Message;
+use super::producer::model::{Message, MessageHeaders};
+const SMALL_HEADERS_FAST_PATH_MAX: usize = 2;
 
 pub trait IntoNapiError {
   fn into_napi_error(self, context: &str) -> Error;
@@ -28,30 +29,97 @@ pub fn hashmap_to_kafka_headers(map: &HashMap<String, Buffer>) -> OwnedHeaders {
   })
 }
 
-pub fn kafka_headers_to_hashmap_buffer(
-  headers: Option<&BorrowedHeaders>,
-) -> HashMap<String, Buffer> {
-  match headers {
-    Some(value) => value
-      .iter()
-      .filter_map(|it| it.value.map(|v| (it.key.to_owned(), v.into())))
-      .collect::<HashMap<String, Buffer>>(),
-    _ => HashMap::new(),
+#[inline]
+pub(crate) fn borrowed_headers_to_message_headers(
+  headers: &BorrowedHeaders,
+) -> Option<MessageHeaders> {
+  let header_count = headers.count();
+  if header_count == 0 {
+    return None;
+  }
+
+  if header_count <= SMALL_HEADERS_FAST_PATH_MAX {
+    return borrowed_headers_to_message_headers_small(headers, header_count);
+  }
+
+  let mut entries: Option<Vec<(String, Buffer)>> = None;
+  for index in 0..header_count {
+    let header = headers.get(index);
+    if let Some(value) = header.value {
+      let header_entries = entries.get_or_insert_with(|| Vec::with_capacity(header_count));
+      header_entries.push((header.key.to_owned(), value.into()));
+    }
+  }
+
+  entries.map(MessageHeaders::new)
+}
+
+#[inline]
+fn borrowed_headers_to_message_headers_small(
+  headers: &BorrowedHeaders,
+  header_count: usize,
+) -> Option<MessageHeaders> {
+  debug_assert!(header_count <= SMALL_HEADERS_FAST_PATH_MAX);
+
+  if header_count == 1 {
+    let header = headers.get(0);
+    return header
+      .value
+      .map(|value| MessageHeaders::one(header.key.to_owned(), value.into()));
+  }
+
+  let first = headers.get(0);
+  let second = headers.get(1);
+
+  match (first.value, second.value) {
+    (None, None) => None,
+    (Some(first_value), None) => Some(MessageHeaders::new(vec![(
+      first.key.to_owned(),
+      first_value.into(),
+    )])),
+    (None, Some(second_value)) => Some(MessageHeaders::new(vec![(
+      second.key.to_owned(),
+      second_value.into(),
+    )])),
+    (Some(first_value), Some(second_value)) => Some(MessageHeaders::new(vec![
+      (first.key.to_owned(), first_value.into()),
+      (second.key.to_owned(), second_value.into()),
+    ])),
   }
 }
 
+#[inline]
 pub fn create_message(message: &BorrowedMessage<'_>, payload: &[u8]) -> Message {
-  let key: Option<Buffer> = message.key().map(|bytes| bytes.into());
-  let headers = Some(kafka_headers_to_hashmap_buffer(message.headers()));
-  let payload_js = Message::new(
-    payload.into(),
-    key,
-    headers,
-    message.topic().to_owned(),
-    message.partition(),
-    message.offset(),
-  );
-  payload_js
+  let topic = message.topic().to_owned();
+  let partition = message.partition();
+  let offset = message.offset();
+  match (message.key(), message.headers()) {
+    (None, None) => Message::new(payload.into(), None, None, topic, partition, offset),
+    (Some(key), None) => Message::new(
+      payload.into(),
+      Some(key.into()),
+      None,
+      topic,
+      partition,
+      offset,
+    ),
+    (None, Some(headers)) => Message::new(
+      payload.into(),
+      None,
+      borrowed_headers_to_message_headers(headers),
+      topic,
+      partition,
+      offset,
+    ),
+    (Some(key), Some(headers)) => Message::new(
+      payload.into(),
+      Some(key.into()),
+      borrowed_headers_to_message_headers(headers),
+      topic,
+      partition,
+      offset,
+    ),
+  }
 }
 
 pub fn convert_config_values_to_strings(

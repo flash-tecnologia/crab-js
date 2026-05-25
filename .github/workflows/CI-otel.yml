@@ -4,21 +4,21 @@ permissions:
   contents: write
   id-token: write
 
-"on":
+'on':
   push:
     tags:
-      - "kafka-crab-js-otel@*"
+      - 'kafka-crab-js-otel@*'
     paths-ignore:
-      - "**/*.md"
+      - '**/*.md'
       - LICENSE
-      - "**/*.gitignore"
+      - '**/*.gitignore'
       - .editorconfig
       - docs/**
   pull_request:
     paths-ignore:
-      - "**/*.md"
+      - '**/*.md'
       - LICENSE
-      - "**/*.gitignore"
+      - '**/*.gitignore'
       - .editorconfig
       - docs/**
 
@@ -37,13 +37,13 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --filter kafka-crab-js-otel...
-      - name: Generate kafka-crab-js type declarations
-        run: pnpm --filter kafka-crab-js postbuild
+      # - name: Generate kafka-crab-js type declarations
+      #   run: pnpm --filter kafka-crab-js postbuild
       - name: Build OTEL package
         run: pnpm --filter kafka-crab-js-otel build
       - name: Publish kafka-crab-js-otel
         if: startsWith(github.ref, 'refs/tags/kafka-crab-js-otel@')
-        working-directory: packages/otel
+        working-directory: packages/kafka-crab-js-otel
         run: |
           npm config set provenance true
           TAG_NAME=${GITHUB_REF#refs/tags/kafka-crab-js-otel@}

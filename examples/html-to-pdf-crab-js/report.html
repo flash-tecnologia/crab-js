@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>HTML-to-PDF Operational Report</title>
+    <link rel="stylesheet" href="./report.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <p class="eyebrow">Operations</p>
+          <h1>HTML-to-PDF Rendering Report</h1>
+        </div>
+        <p class="date">May 24, 2026</p>
+      </header>
+
+      <section class="metrics">
+        <article class="metric">
+          <span>Documents</span>
+          <strong>18,420</strong>
+          <small>+12.6%</small>
+        </article>
+        <article class="metric">
+          <span>Median render</span>
+          <strong>84 ms</strong>
+          <small>-9.1%</small>
+        </article>
+        <article class="metric">
+          <span>Error rate</span>
+          <strong>0.08%</strong>
+          <small>-0.03 pp</small>
+        </article>
+        <article class="metric">
+          <span>PDF size p95</span>
+          <strong>142 KB</strong>
+          <small>+4.8%</small>
+        </article>
+      </section>
+
+      <section>
+        <h2>Queues</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Owner</th>
+              <th>Queue</th>
+              <th>P95</th>
+              <th>Volume</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="status">Healthy</span></td>
+              <td>Platform</td>
+              <td>invoice-rendering</td>
+              <td>126 ms</td>
+              <td>9,340</td>
+            </tr>
+            <tr>
+              <td><span class="status">Healthy</span></td>
+              <td>Benefits</td>
+              <td>statement-export</td>
+              <td>188 ms</td>
+              <td>5,210</td>
+            </tr>
+            <tr>
+              <td><span class="status status-watch">Watch</span></td>
+              <td>Finance</td>
+              <td>bulk-reports</td>
+              <td>412 ms</td>
+              <td>2,870</td>
+            </tr>
+            <tr>
+              <td><span class="status">Healthy</span></td>
+              <td>People</td>
+              <td>letters</td>
+              <td>95 ms</td>
+              <td>1,000</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>

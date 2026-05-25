@@ -1,140 +1,100 @@
-# kafka-crab-js
+# Crab JS
 
-A high-performance Kafka client for Node.js built with Rust (via napi-rs).
+Native Node.js packages backed by Rust and NAPI-RS.
 
-## Packages
+Crab JS is a monorepo for focused native packages that keep JavaScript APIs small while moving heavy work into Rust.
+The root README is intentionally a high-level map. Package APIs, examples, benchmarks, and operational guidance live
+next to the project that owns them.
 
-This monorepo contains two packages:
+[![kafka-crab-js npm beta](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue)](https://www.npmjs.com/package/kafka-crab-js)
+[![kafka-crab-js-otel npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-| Package | Description | npm |
-|---------|-------------|-----|
-| [kafka-crab-js](./packages/kafka-crab-js) | Core Kafka client with producer, consumer, and streaming APIs | [![npm](https://img.shields.io/npm/v/kafka-crab-js)](https://www.npmjs.com/package/kafka-crab-js) |
-| [kafka-crab-js-otel](./packages/kafka-crab-js-otel) | OpenTelemetry instrumentation (tracing & metrics) | [![npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel) |
+## Projects
 
-## Quick Start
+### Published Packages
 
-### Basic Usage (Core Package Only)
+| Package                                               | Purpose                                                                            | Documentation                                      |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
+| [kafka-crab-js](./packages/kafka-crab-js)             | Native Kafka client with producer, consumer, batch, Node stream, and Web APIs.     | [README](./packages/kafka-crab-js/README.md)       |
+| [pdf-crab-js](./packages/pdf-crab-js)                 | Low-level PDF generation helpers built on pdf-writer, with native and WASM builds. | [README](./packages/pdf-crab-js/README.md)         |
+| [html-to-pdf-crab-js](./packages/html-to-pdf-crab-js) | HTML-to-PDF conversion backed by Fulgur, with native and WASM builds.              | [README](./packages/html-to-pdf-crab-js/README.md) |
+| [kafka-crab-js-otel](./packages/kafka-crab-js-otel)   | Optional OpenTelemetry instrumentation for `kafka-crab-js` diagnostics channels.   | [README](./packages/kafka-crab-js-otel/README.md)  |
+
+### Examples
+
+| Example Package                                                | Purpose                                                                 |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| [kafka-examples](./examples/kafka)                             | Producer, consumer, stream, retry, OpenTelemetry, and Grafana examples. |
+| [pdf-crab-js-examples](./examples/pdf-crab-js)                 | Node and browser WASM examples for low-level PDF generation.            |
+| [html-to-pdf-crab-js-examples](./examples/html-to-pdf-crab-js) | Node and browser WASM examples for HTML-to-PDF rendering.               |
+
+### Benchmarks
+
+| Benchmark Package                     | Purpose                                                                                           |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| [kafka-benchmark](./benchmarks/kafka) | Isolated-process consumer benchmark with memory, GC, throughput charts, and V8 profiling scripts. |
+| [pdf-benchmark](./benchmarks/pdf)     | PDF generation benchmark comparing local `pdf-crab-js` output with Node.js requests to Gotenberg. |
+| [BENCHMARKS.md](./BENCHMARKS.md)      | Latest captured Kafka benchmark snapshot and notes.                                               |
+
+## Package Boundaries
+
+- `kafka-crab-js` owns Kafka producer/consumer APIs and native librdkafka integration.
+- `kafka-crab-js-otel` owns OpenTelemetry tracing and metrics. OTEL is intentionally outside the core Kafka package.
+- `pdf-crab-js` owns explicit PDF construction from structured page and drawing-element inputs.
+- `html-to-pdf-crab-js` owns HTML/CSS rendering to PDF. It carries the Fulgur dependency separately from
+  `pdf-crab-js`.
+- Browser WASM usage for PDF packages is demonstrated in each example package and requires COOP/COEP headers for
+  `SharedArrayBuffer`.
+
+## Install
+
+Install only the package you need:
 
 ```bash
-npm install kafka-crab-js
+pnpm add kafka-crab-js
+pnpm add kafka-crab-js-otel
+pnpm add pdf-crab-js
+pnpm add html-to-pdf-crab-js
 ```
 
-```javascript
-import { KafkaClient } from 'kafka-crab-js'
-
-const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  clientId: 'my-app',
-})
-
-// Producer
-const producer = client.createProducer()
-await producer.send({
-  topic: 'my-topic',
-  messages: [{ payload: Buffer.from('Hello Kafka!') }],
-})
-
-// Consumer
-const consumer = client.createConsumer({ groupId: 'my-group' })
-await consumer.subscribe('my-topic')
-const message = await consumer.recv()
-console.log(message.payload.toString())
-```
-
-### With OpenTelemetry Instrumentation
-
-```bash
-npm install kafka-crab-js kafka-crab-js-otel @opentelemetry/api @opentelemetry/sdk-node
-```
-
-```javascript
-import { KafkaClient } from 'kafka-crab-js'
-import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
-
-// Enable OTEL before creating client
-enableOtelInstrumentation({
-  serviceName: 'my-kafka-service',
-  metrics: { enabled: true },
-})
-
-// Create client with diagnostics enabled
-const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  clientId: 'my-app',
-  diagnostics: true, // Required for OTEL instrumentation
-})
-
-// Spans are created automatically for producer/consumer operations
-const producer = client.createProducer()
-await producer.send({ topic: 'my-topic', messages: [...] })
-
-// For consumers, call endSpan() when processing is complete
-const message = await consumer.recv()
-// ... process message ...
-endSpan(message)
-```
-
-## Features
-
-### Core Package (`kafka-crab-js`)
-
-- 🦀 **Rust Performance** - Native Kafka bindings via librdkafka
-- 📨 **Producer** - Send messages with keys, headers, and partitioning
-- 📥 **Consumer** - Manual commit, auto-commit, and offset management
-- 🌊 **Streams** - Node.js Readable streams for message consumption
-- 🔄 **Batch Operations** - Efficient batch produce and consume
-- 🔌 **Diagnostics Channel** - Integration point for observability
-
-### OTEL Package (`kafka-crab-js-otel`)
-
-- 🔭 **Distributed Tracing** - Automatic span creation with context propagation
-- 📊 **Metrics** - Producer/consumer metrics following OTel semantic conventions
-- ⚡ **Zero Overhead** - Uses `diagnostics_channel` for near-zero cost when disabled
-- 🎯 **Configurable** - Control payload capture, topic filtering, custom hooks
-
-## Documentation
-
-- [Core Package README](./packages/kafka-crab-js/README.md) - Full API documentation
-- [OTEL Package README](./packages/kafka-crab-js-otel/README.md) - Instrumentation setup and configuration
-- [Examples](./example/) - Complete working examples
-
-## Examples
-
-| Example | Description |
-|---------|-------------|
-| [otel-tracing-example.mjs](./example/otel-tracing-example.mjs) | Distributed tracing with custom spans |
-| [otel-metrics-example.mjs](./example/otel-metrics-example.mjs) | Metrics collection and export |
-| [otel-grafana-validation.mjs](./example/otel-grafana-validation.mjs) | Full Grafana/Tempo/Prometheus integration |
+See each package README for npm/yarn variants, peer dependencies, API usage, and WASM notes.
 
 ## Development
 
+Install dependencies from the workspace root:
+
 ```bash
-# Install dependencies
-pnpm install
-
-# Build all packages
-pnpm build
-
-# Run tests
-pnpm test
-
-# Lint
-pnpm lint
-
-# Format
-pnpm fmt
+vp install
 ```
+
+Run the whole workspace check:
+
+```bash
+vp check
+```
+
+Focused commands are documented in the owning project READMEs:
+
+| Task                                     | Documentation                                                            |
+| ---------------------------------------- | ------------------------------------------------------------------------ |
+| Build/test Kafka core                    | [kafka-crab-js](./packages/kafka-crab-js/README.md)                      |
+| Build/test Kafka OTEL                    | [kafka-crab-js-otel](./packages/kafka-crab-js-otel/README.md)            |
+| Build/test low-level PDF native and WASM | [pdf-crab-js](./packages/pdf-crab-js/README.md)                          |
+| Build/test HTML-to-PDF native and WASM   | [html-to-pdf-crab-js](./packages/html-to-pdf-crab-js/README.md)          |
+| Run Kafka examples                       | [examples/kafka](./examples/kafka/README.md)                             |
+| Run PDF examples                         | [examples/pdf-crab-js](./examples/pdf-crab-js/README.md)                 |
+| Run HTML-to-PDF examples                 | [examples/html-to-pdf-crab-js](./examples/html-to-pdf-crab-js/README.md) |
+| Run Kafka benchmarks                     | [benchmarks/kafka](./benchmarks/kafka/README.md)                         |
+| Run PDF benchmarks                       | [benchmarks/pdf](./benchmarks/pdf/README.md)                             |
 
 ## Requirements
 
-- Node.js >= 20
-- Rust toolchain (for building from source)
-- librdkafka (bundled)
+- Node.js `>= 22` for published packages.
+- Rust toolchain when building native bindings from source.
+- Kafka broker access only for Kafka integration tests, Kafka examples, and Kafka benchmarks.
+- No separate librdkafka install is required for published Kafka binaries.
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.

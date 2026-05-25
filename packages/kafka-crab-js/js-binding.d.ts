@@ -96,6 +96,18 @@ export declare class KafkaConsumer {
    */
   recvBatch(size: number, timeoutMs: number): Promise<Array<Message>>
   /**
+   * Receives messages as a native Web `ReadableStream`.
+   * Uses a small internal batch prefetch to reduce native boundary crossings.
+   */
+  recvStream(prefetchSize?: number | undefined | null, prefetchTimeoutMs?: number | undefined | null): ReadableStream<Message>
+  /** Receives batches of messages as a native Web `ReadableStream`. */
+  recvBatchStream(size: number, timeoutMs: number): ReadableStream<Array<Message>>
+  /**
+   * Receives metadata batches as a compact native Web `ReadableStream`.
+   * Intended for JS-side expansion to preserve the public `Message[]` API with less native marshalling overhead.
+   */
+  recvBatchStreamCompact(size: number, timeoutMs: number): ReadableStream<CompactMessageBatch>
+  /**
    * Commits an offset for a specific topic partition.
    * This marks the offset as processed, so the consumer will not receive
    * messages before this offset after a restart.
@@ -139,6 +151,22 @@ export declare class KafkaProducer {
 
 export type CommitMode =  'Sync'|
 'Async';
+
+export interface CompactMessageBatch {
+  payloads: Array<Buffer>
+  keys?: Array<Buffer | undefined>
+  sharedKey?: Buffer
+  keyDictionary?: Array<Buffer>
+  keyDictionaryIndexes?: Array<number>
+  topic?: string
+  topics?: Array<string>
+  partitions: Array<number>
+  offsets: Array<number>
+  sharedHeaderKey?: string
+  sharedHeaderValue?: Buffer
+  sharedHeaderValues?: Array<Buffer | undefined>
+  headers?: Array<Record<string, Buffer> | undefined>
+}
 
 export interface ConsumerConfiguration {
   groupId: string

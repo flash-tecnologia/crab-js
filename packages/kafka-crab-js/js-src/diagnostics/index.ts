@@ -40,7 +40,9 @@ export {
 
 export {
   type DiagnosticInstrumentationConfig,
+  instrumentBatchReadableStream,
   instrumentBatchReceive,
+  instrumentConsumerReadableStream,
   instrumentConsumerReceive,
   instrumentProducerSend,
 } from './instrumentation.js'

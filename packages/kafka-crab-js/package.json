@@ -1,23 +1,59 @@
 {
   "name": "kafka-crab-js",
-  "version": "3.1.0",
-  "type": "module",
-  "engines": {
-    "node": ">=22"
+  "version": "4.0.0-beta.3",
+  "keywords": [
+    "N-API",
+    "consumer",
+    "diagnostics_channel",
+    "kafka",
+    "librdkafka",
+    "napi",
+    "napi-rs",
+    "node-addon",
+    "node-addon-api",
+    "producer",
+    "rust",
+    "streaming"
+  ],
+  "homepage": "https://github.com/flash-tecnologia/crab-js",
+  "license": "MIT",
+  "author": "inaiat@gmail.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flash-tecnologia/crab-js.git",
+    "directory": "packages/kafka-crab-js"
   },
+  "files": [
+    "assets",
+    "dist",
+    "js-binding.js",
+    "js-binding.d.ts",
+    "js-binding.cjs"
+  ],
+  "type": "module",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
   },
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist",
-    "js-binding.js",
-    "js-binding.d.ts",
-    "js-binding.cjs"
-  ],
+  "scripts": {
+    "check": "vp check",
+    "artifacts": "napi artifacts",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "build": "node build.mjs",
+    "prepublishOnly": "napi prepublish -t npm",
+    "test": "vp test run js-tests/unit",
+    "test:integration": "node --test js-tests/integration/*.test.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@napi-rs/cli": "^3.6.2"
+  },
   "napi": {
     "binaryName": "kafka-crab-js",
     "targets": [
@@ -29,40 +65,7 @@
       "aarch64-unknown-linux-musl"
     ]
   },
-  "license": "MIT",
-  "author": "inaiat@gmail.com",
-  "homepage": "https://github.com/flash-tecnologia/kafka-crab-js",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/flash-tecnologia/kafka-crab-js.git"
-  },
-  "keywords": [
-    "kafka",
-    "rust",
-    "napi",
-    "librdkafka",
-    "streaming",
-    "producer",
-    "consumer",
-    "napi-rs",
-    "N-API",
-    "node-addon",
-    "node-addon-api",
-    "diagnostics_channel"
-  ],
-  "scripts": {
-    "typecheck": "tsc -p . --noEmit",
-    "artifacts": "napi artifacts",
-    "prebuild": "rimraf dist",
-    "build": "node build.mjs",
-    "postbuild": "tsc -p tsconfig.base.json --emitDeclarationOnly --declaration --outDir dist",
-    "build:debug": "napi build --platform",
-    "prepublishOnly": "napi prepublish -t npm",
-    "test": "node --test __test__/unit/*.test.*",
-    "test:integration": "node --test __test__/integration/*.test.*"
-  },
-  "dependencies": {},
-  "devDependencies": {
-    "@napi-rs/cli": "^3.5.1"
+  "engines": {
+    "node": ">=22"
   }
 }

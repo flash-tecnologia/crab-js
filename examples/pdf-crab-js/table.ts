@@ -1,0 +1,214 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { PdfDocumentBuilder, type PdfElementInput } from 'pdf-crab-js'
+
+const currentDirectory = dirname(fileURLToPath(import.meta.url))
+const outputDirectory = join(currentDirectory, 'output')
+const outputPath = join(outputDirectory, 'pdf-crab-js-table-example.pdf')
+
+const tableX = 18
+const tableTopY = 232
+const tableWidth = 174
+const headerHeight = 11
+const rowHeight = 12
+const cellPaddingX = 3
+
+const columns = [
+  { key: 'id', label: 'ID', width: 18 },
+  { key: 'customer', label: 'Customer', width: 44 },
+  { key: 'region', label: 'Region', width: 26 },
+  { key: 'status', label: 'Status', width: 31 },
+  { key: 'amount', label: 'Amount', width: 28 },
+  { key: 'owner', label: 'Owner', width: 27 },
+] as const
+
+type Column = (typeof columns)[number]
+type ColumnKey = Column['key']
+type TableRow = Record<ColumnKey, string>
+
+const rows: TableRow[] = [
+  { amount: '1,240.00', customer: 'Acme North', id: '000001', owner: 'team-a', region: 'LATAM', status: 'paid' },
+  { amount: '2,870.50', customer: 'Beacon Labs', id: '000002', owner: 'team-b', region: 'NA', status: 'pending' },
+  { amount: '940.20', customer: 'Crimson Works', id: '000003', owner: 'team-c', region: 'EMEA', status: 'paid' },
+  { amount: '4,210.90', customer: 'Delta One', id: '000004', owner: 'team-d', region: 'APAC', status: 'overdue' },
+  { amount: '1,780.35', customer: 'Evergreen Co', id: '000005', owner: 'team-a', region: 'LATAM', status: 'refunded' },
+  { amount: '3,540.00', customer: 'Northstar', id: '000006', owner: 'team-b', region: 'NA', status: 'paid' },
+]
+
+function appendText(
+  elements: PdfElementInput[],
+  text: string,
+  x: number,
+  y: number,
+  options: {
+    fill?: string
+    font?: string
+    fontSize?: number
+  } = {},
+): void {
+  elements.push({
+    fill: options.fill ?? '#111827',
+    font: options.font,
+    fontSize: options.fontSize ?? 8,
+    text,
+    type: 'text',
+    x,
+    y,
+  })
+}
+
+function appendHeader(elements: PdfElementInput[]): void {
+  appendText(elements, 'Simple Revenue Table', tableX, 268, {
+    font: 'HelveticaBold',
+    fontSize: 18,
+  })
+  appendText(elements, 'A table built with rectangles, lines, and text elements.', tableX, 257, {
+    fill: '#475569',
+    fontSize: 9,
+  })
+
+  elements.push({
+    fill: '#e2e8f0',
+    height: headerHeight,
+    type: 'rect',
+    width: tableWidth,
+    x: tableX,
+    y: tableTopY - headerHeight,
+  })
+}
+
+function appendBodyBackgrounds(elements: PdfElementInput[]): void {
+  for (let index = 0; index < rows.length; index += 1) {
+    elements.push({
+      fill: index % 2 === 0 ? '#ffffff' : '#f8fafc',
+      height: rowHeight,
+      type: 'rect',
+      width: tableWidth,
+      x: tableX,
+      y: tableTopY - headerHeight - (index + 1) * rowHeight,
+    })
+  }
+}
+
+function appendGrid(elements: PdfElementInput[]): void {
+  const tableBottomY = tableTopY - headerHeight - rows.length * rowHeight
+
+  for (let index = 0; index <= rows.length + 1; index += 1) {
+    const y = tableTopY - (index === 0 ? 0 : headerHeight + (index - 1) * rowHeight)
+
+    elements.push({
+      stroke: '#cbd5e1',
+      strokeWidth: index === 0 || index === rows.length + 1 ? 0.8 : 0.4,
+      type: 'line',
+      x1: tableX,
+      x2: tableX + tableWidth,
+      y1: y,
+      y2: y,
+    })
+  }
+
+  let x = tableX
+
+  for (const column of columns) {
+    elements.push({
+      stroke: '#cbd5e1',
+      strokeWidth: 0.4,
+      type: 'line',
+      x1: x,
+      x2: x,
+      y1: tableTopY,
+      y2: tableBottomY,
+    })
+    x += column.width
+  }
+
+  elements.push({
+    stroke: '#cbd5e1',
+    strokeWidth: 0.4,
+    type: 'line',
+    x1: tableX + tableWidth,
+    x2: tableX + tableWidth,
+    y1: tableTopY,
+    y2: tableBottomY,
+  })
+}
+
+function appendColumnLabels(elements: PdfElementInput[]): void {
+  let x = tableX
+
+  for (const column of columns) {
+    appendText(elements, column.label, x + cellPaddingX, tableTopY - 7, {
+      fill: '#0f172a',
+      font: 'HelveticaBold',
+      fontSize: 7,
+    })
+    x += column.width
+  }
+}
+
+function appendRow(elements: PdfElementInput[], row: TableRow, rowIndex: number): void {
+  let x = tableX
+  const y = tableTopY - headerHeight - rowIndex * rowHeight - 7.5
+
+  for (const column of columns) {
+    appendText(elements, row[column.key], x + cellPaddingX, y, {
+      fill: '#111827',
+      fontSize: 7,
+    })
+    x += column.width
+  }
+}
+
+function createChunk(append: (elements: PdfElementInput[]) => void): PdfElementInput[] {
+  const elements: PdfElementInput[] = []
+
+  append(elements)
+
+  return elements
+}
+
+function createRowChunk(row: TableRow, rowIndex: number): PdfElementInput[] {
+  return createChunk((elements) => {
+    appendRow(elements, row, rowIndex)
+  })
+}
+
+function createFooterChunk(): PdfElementInput[] {
+  return createChunk((elements) => {
+    appendText(elements, 'Generated by pdf-crab-js', tableX, 36, {
+      fill: '#64748b',
+      fontSize: 8,
+    })
+  })
+}
+
+const builder = new PdfDocumentBuilder({
+  metadata: {
+    creator: 'pdf-crab-js example',
+    producer: 'pdf-crab-js',
+    title: 'pdf-crab-js table example',
+  },
+  title: 'pdf-crab-js table example',
+  unit: 'mm',
+})
+
+builder.startPage({ height: 297, width: 210 })
+builder.appendElements(createChunk(appendHeader))
+builder.appendElements(createChunk(appendBodyBackgrounds))
+builder.appendElements(createChunk(appendGrid))
+builder.appendElements(createChunk(appendColumnLabels))
+for (const [rowIndex, row] of rows.entries()) {
+  builder.appendElements(createRowChunk(row, rowIndex))
+}
+builder.appendElements(createFooterChunk())
+builder.endPage()
+
+const pdf = builder.finish()
+
+mkdirSync(outputDirectory, { recursive: true })
+writeFileSync(outputPath, pdf)
+
+console.log(`Generated ${outputPath}`)
+console.log(`Size: ${pdf.length.toLocaleString()} bytes`)

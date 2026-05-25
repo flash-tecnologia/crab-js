@@ -200,3 +200,16 @@ packages/kafka-crab-js/target
 !.yarn/versions
 
 *.node
+*.wasm32-wasi*.wasm
+*.wasi-browser.js
+*.wasi.cjs
+wasi-worker-browser.mjs
+wasi-worker.mjs
+
+# Local benchmark profiling artifacts
+benchmarks/kafka/.profiles/
+
+# Example outputs
+examples/*/output/
+packages/*/examples/output/
+benchmarks/pdf/output/

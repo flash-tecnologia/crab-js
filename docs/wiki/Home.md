@@ -1,6 +1,7 @@
-# Kafka Crab JS Documentation
+# Crab JS Documentation
 
-A Node.js native binding for Apache Kafka using Rust, providing high performance and type safety.
+Documentation for the Crab JS native Node.js packages. This wiki currently focuses on `kafka-crab-js`, the Kafka
+binding built with Rust for high performance and type safety.
 
 ## Installation
 
@@ -17,6 +18,7 @@ pnpm install kafka-crab-js
 This change reduces the core package size and makes OTEL an opt-in dependency.
 
 **Before (v2.x):**
+
 ```typescript
 import { KafkaClient } from 'kafka-crab-js'
 
@@ -31,6 +33,7 @@ const client = new KafkaClient({
 ```
 
 **After (v3.x):**
+
 ```typescript
 import { KafkaClient } from 'kafka-crab-js'
 import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
@@ -56,9 +59,10 @@ endSpan(message)
 
 ### Package Structure
 
-| Package | Description |
-|---------|-------------|
-| `kafka-crab-js` | Core Kafka client (producer, consumer, streams) |
+| Package              | Description                                      |
+| -------------------- | ------------------------------------------------ |
+| `kafka-crab-js`      | Core Kafka client (producer, consumer, streams)  |
+| `pdf-crab-js`        | Native PDF generation and rendering helpers      |
 | `kafka-crab-js-otel` | OpenTelemetry instrumentation (separate install) |
 
 ## Basic Usage
@@ -66,7 +70,7 @@ endSpan(message)
 ### Creating a Kafka Client
 
 ```typescript
-import { KafkaClient } from 'kafka-crab-js';
+import { KafkaClient } from 'kafka-crab-js'
 
 const kafkaClient = new KafkaClient({
   brokers: 'localhost:9092',
@@ -79,7 +83,7 @@ const kafkaClient = new KafkaClient({
   },
   // v3.0.0+: Enable for OTEL instrumentation
   diagnostics: true,
-});
+})
 ```
 
 ### Producer Example
@@ -88,23 +92,25 @@ const kafkaClient = new KafkaClient({
 async function produceMessages() {
   const producer = kafkaClient.createProducer({
     configuration: {
-      'message.timeout.ms': '5000'
-    }
-  });
+      'message.timeout.ms': '5000',
+    },
+  })
 
   try {
     const result = await producer.send({
       topic: 'my-topic',
-      messages: [{
-        key: Buffer.from('message-key'),
-        headers: { 'correlation-id': Buffer.from('correlation-123') },
-        payload: Buffer.from(JSON.stringify({ id: 1, name: 'Test Message' })),
-      }],
-    });
+      messages: [
+        {
+          key: Buffer.from('message-key'),
+          headers: { 'correlation-id': Buffer.from('correlation-123') },
+          payload: Buffer.from(JSON.stringify({ id: 1, name: 'Test Message' })),
+        },
+      ],
+    })
 
-    console.log('Message sent. Offset:', result);
+    console.log('Message sent. Offset:', result)
   } catch (error) {
-    console.error('Error sending message', error);
+    console.error('Error sending message', error)
   }
 }
 ```
@@ -118,28 +124,27 @@ async function consumeMessages() {
     configuration: {
       'auto.offset.reset': 'earliest',
     },
-  });
+  })
 
-  await consumer.subscribe('my-topic');
+  await consumer.subscribe('my-topic')
 
   try {
     while (true) {
-      const message = await consumer.recv();
+      const message = await consumer.recv()
       if (!message) {
-        console.log('Consumer disconnected');
-        break;
+        console.log('Consumer disconnected')
+        break
       }
 
       console.log('Received message:', {
         payload: message.payload.toString(),
         partition: message.partition,
         offset: message.offset,
-        headers: Object.entries(message.headers)
-          .map(([k, v]) => ({ [k]: v.toString() })),
-      });
+        headers: Object.entries(message.headers).map(([k, v]) => ({ [k]: v.toString() })),
+      })
     }
   } finally {
-    await consumer.disconnect();
+    await consumer.disconnect()
   }
 }
 ```
@@ -154,13 +159,13 @@ async function streamConsumer() {
     configuration: {
       'auto.offset.reset': 'earliest',
     },
-  });
+  })
 
   await kafkaStream.subscribe([
     { topic: 'my-topic' },
     // Or for specific offsets:
     // { topic: 'my-topic', allOffsets: { position: 'Beginning' } }
-  ]);
+  ])
 
   kafkaStream.on('data', (message) => {
     console.log('Message received:', {
@@ -168,16 +173,16 @@ async function streamConsumer() {
       offset: message.offset,
       partition: message.partition,
       topic: message.topic,
-    });
-  });
+    })
+  })
 
   kafkaStream.on('error', (error) => {
-    console.error('Stream error:', error);
-  });
+    console.error('Stream error:', error)
+  })
 
   kafkaStream.on('close', () => {
-    console.log('Stream ended');
-  });
+    console.log('Stream ended')
+  })
 
   // Proper cleanup - use destroy() for streams
   // This ensures all async operations complete before the stream closes
@@ -193,24 +198,24 @@ async function batchStreamConsumer() {
   const batchStream = kafkaClient.createStreamConsumer({
     groupId: 'my-batch-group',
     enableAutoCommit: true,
-    batchSize: 10,        // Process up to 10 messages at a time
-    batchTimeout: 1000,   // Wait up to 1000ms for batch to fill
-  });
+    batchSize: 10, // Process up to 10 messages at a time
+    batchTimeout: 1000, // Wait up to 1000ms for batch to fill
+  })
 
-  await batchStream.subscribe([{ topic: 'my-topic' }]);
+  await batchStream.subscribe([{ topic: 'my-topic' }])
 
   // Get batch configuration
-  const config = batchStream.getBatchConfig();
-  console.log('Batch config:', config); // { batchSize: 10, batchTimeout: 1000 }
+  const config = batchStream.getBatchConfig()
+  console.log('Batch config:', config) // { batchSize: 10, batchTimeout: 1000 }
 
   batchStream.on('data', (message) => {
     // Messages are delivered individually but fetched in batches
-    console.log('Message received:', message.payload.toString());
-  });
+    console.log('Message received:', message.payload.toString())
+  })
 
   batchStream.on('error', (error) => {
-    console.error('Stream error:', error);
-  });
+    console.error('Stream error:', error)
+  })
 }
 ```
 
@@ -223,34 +228,34 @@ When working with stream consumers, always use `destroy()` for proper cleanup. T
  * Properly cleans up a stream consumer
  */
 async function cleanupStreamConsumer(streamConsumer) {
-  if (!streamConsumer) return;
+  if (!streamConsumer) return
 
   return new Promise((resolve) => {
     // If already destroyed, resolve immediately
     if (streamConsumer.destroyed) {
-      resolve();
-      return;
+      resolve()
+      return
     }
 
     // Wait for close event which fires after destroy is complete
     streamConsumer.once('close', () => {
-      resolve();
-    });
+      resolve()
+    })
 
     // Destroy the stream - this triggers _destroy() which handles
     // unsubscribe and disconnect properly
-    streamConsumer.destroy();
-  });
+    streamConsumer.destroy()
+  })
 }
 
 // Usage
-const stream = kafkaClient.createStreamConsumer({ groupId: 'my-group' });
-await stream.subscribe('my-topic');
+const stream = kafkaClient.createStreamConsumer({ groupId: 'my-group' })
+await stream.subscribe('my-topic')
 
 // ... process messages ...
 
 // Cleanup
-await cleanupStreamConsumer(stream);
+await cleanupStreamConsumer(stream)
 ```
 
 ### Enabling OpenTelemetry Instrumentation (v3.0.0+)
@@ -288,10 +293,12 @@ const client = new KafkaClient({
 const producer = client.createProducer()
 await producer.send({
   topic: 'otel-topic',
-  messages: [{
-    payload: Buffer.from('hello world'),
-    headers: { 'custom-header': 'value' },
-  }],
+  messages: [
+    {
+      payload: Buffer.from('hello world'),
+      headers: { 'custom-header': 'value' },
+    },
+  ],
 })
 
 // Consumer - call endSpan() when done processing
@@ -306,9 +313,9 @@ endSpan(message) // End the processing span
 
 ```typescript
 async function consumerWithRetry() {
-  const MAX_RETRIES = 5;
-  const RETRY_DELAY = 5000; // 5 seconds
-  let retryCount = 0;
+  const MAX_RETRIES = 5
+  const RETRY_DELAY = 5000 // 5 seconds
+  let retryCount = 0
 
   async function createConsumer() {
     const kafkaStream = kafkaClient.createStreamConsumer({
@@ -317,33 +324,31 @@ async function consumerWithRetry() {
       configuration: {
         'auto.offset.reset': 'earliest',
       },
-    });
+    })
 
-    await kafkaStream.subscribe([
-      { topic: 'my-topic' },
-    ]);
+    await kafkaStream.subscribe([{ topic: 'my-topic' }])
 
-    return kafkaStream;
+    return kafkaStream
   }
 
   async function handleRetry() {
     if (retryCount < MAX_RETRIES) {
-      retryCount++;
+      retryCount++
       console.log(
-        `Attempting to restart consumer (attempt ${retryCount}/${MAX_RETRIES}) in ${RETRY_DELAY / 1000} seconds...`
-      );
-      setTimeout(setupConsumerWithRetry, RETRY_DELAY);
+        `Attempting to restart consumer (attempt ${retryCount}/${MAX_RETRIES}) in ${RETRY_DELAY / 1000} seconds...`,
+      )
+      setTimeout(setupConsumerWithRetry, RETRY_DELAY)
     } else {
-      console.error(`Maximum retry attempts (${MAX_RETRIES}) reached. Stopping consumer.`);
-      process.exit(1);
+      console.error(`Maximum retry attempts (${MAX_RETRIES}) reached. Stopping consumer.`)
+      process.exit(1)
     }
   }
 
   async function setupConsumerWithRetry() {
-    let kafkaStream;
+    let kafkaStream
     try {
-      kafkaStream = await createConsumer();
-      retryCount = 0; // Reset retry count on successful connection
+      kafkaStream = await createConsumer()
+      retryCount = 0 // Reset retry count on successful connection
 
       kafkaStream.on('data', (message) => {
         console.log('Message received:', {
@@ -351,29 +356,29 @@ async function consumerWithRetry() {
           offset: message.offset,
           partition: message.partition,
           topic: message.topic,
-        });
-      });
+        })
+      })
 
       kafkaStream.on('error', async (error) => {
-        console.error('Stream error:', error);
+        console.error('Stream error:', error)
         // Use destroy() for proper cleanup before retry
-        kafkaStream.destroy();
-        handleRetry();
-      });
+        kafkaStream.destroy()
+        handleRetry()
+      })
 
       kafkaStream.on('close', () => {
-        console.log('Stream ended');
-      });
+        console.log('Stream ended')
+      })
     } catch (error) {
-      console.error('Error setting up consumer:', error);
+      console.error('Error setting up consumer:', error)
       if (kafkaStream) {
-        kafkaStream.destroy();
+        kafkaStream.destroy()
       }
-      handleRetry();
+      handleRetry()
     }
   }
 
-  await setupConsumerWithRetry();
+  await setupConsumerWithRetry()
 }
 ```
 
@@ -384,21 +389,24 @@ async function consumerWithRetry() {
 Main client class that creates producers and consumers.
 
 #### Constructor
+
 ```typescript
 new KafkaClient(kafkaConfiguration: KafkaConfiguration)
 ```
 
 #### Configuration Options
+
 ```typescript
 interface KafkaConfiguration {
-  brokers: string;                // Comma-separated list of brokers
-  clientId?: string;              // Client identifier
-  logLevel?: 'debug' | 'info' | 'warning' | 'error';  // Default: 'info'
-  brokerAddressFamily?: 'v4' | 'v6'; // IP version, default: 'v4'
-  securityProtocol?: string;      // Default: 'Plaintext'
-  diagnostics?: boolean;          // v3.0.0+: Enable diagnostics channel for OTEL
-  configuration?: {               // Additional librdkafka configuration
-    [key: string]: string;
+  brokers: string // Comma-separated list of brokers
+  clientId?: string // Client identifier
+  logLevel?: 'debug' | 'info' | 'warning' | 'error' // Default: 'info'
+  brokerAddressFamily?: 'v4' | 'v6' // IP version, default: 'v4'
+  securityProtocol?: string // Default: 'Plaintext'
+  diagnostics?: boolean // v3.0.0+: Enable diagnostics channel for OTEL
+  configuration?: {
+    // Additional librdkafka configuration
+    [key: string]: string
   }
 }
 ```
@@ -417,10 +425,12 @@ interface KafkaConfiguration {
 ### KafkaProducer
 
 #### Configuration
+
 ```typescript
 interface ProducerConfiguration {
-  configuration?: {           // Additional producer configuration
-    [key: string]: string;
+  configuration?: {
+    // Additional producer configuration
+    [key: string]: string
   }
 }
 ```
@@ -432,25 +442,27 @@ interface ProducerConfiguration {
 
 ```typescript
 interface ProducerRecord {
-  topic: string;
+  topic: string
   messages: Array<{
-    key?: Buffer;
-    payload: Buffer;
-    headers?: Record<string, Buffer>;
-  }>;
+    key?: Buffer
+    payload: Buffer
+    headers?: Record<string, Buffer>
+  }>
 }
 ```
 
 ### KafkaConsumer
 
 #### Configuration
+
 ```typescript
 interface ConsumerConfiguration {
-  groupId: string;            // Consumer group ID
-  enableAutoCommit?: boolean; // Whether to auto-commit offsets
-  configuration?: {           // Additional consumer configuration
-    'auto.offset.reset'?: 'earliest' | 'latest';
-    [key: string]: string;
+  groupId: string // Consumer group ID
+  enableAutoCommit?: boolean // Whether to auto-commit offsets
+  configuration?: {
+    // Additional consumer configuration
+    'auto.offset.reset'?: 'earliest' | 'latest'
+    [key: string]: string
   }
 }
 ```
@@ -480,11 +492,12 @@ interface ConsumerConfiguration {
 Extends Node.js Readable stream interface for Kafka consumption.
 
 #### Stream Consumer Configuration
+
 ```typescript
 interface StreamConsumerConfiguration extends ConsumerConfiguration {
-  batchSize?: number;     // If > 1, creates KafkaBatchStreamReadable
-  batchTimeout?: number;  // Timeout for batch collection (default: 1000ms)
-  streamOptions?: ReadableOptions;
+  batchSize?: number // If > 1, creates KafkaBatchStreamReadable
+  batchTimeout?: number // Timeout for batch collection (default: 1000ms)
+  streamOptions?: ReadableOptions
 }
 ```
 
@@ -521,29 +534,30 @@ interface StreamConsumerConfiguration extends ConsumerConfiguration {
 
 ```typescript
 interface Message {
-  topic: string;
-  partition: number;
-  offset: number;
-  timestamp: number;
-  payload: Buffer;
-  key?: Buffer;
-  headers: Record<string, Buffer>;
+  topic: string
+  partition: number
+  offset: number
+  timestamp: number
+  payload: Buffer
+  key?: Buffer
+  headers: Record<string, Buffer>
 }
 ```
 
 ## Performance Benchmarks
 
-*Benchmarks run on macOS with Apple M1 chip processing 50,000 messages (December 2024)*
+_Benchmarks run on macOS with Apple M1 chip processing 50,000 messages (December 2024)_
 
-| Client | Mode | Ops/sec |
-|--------|------|---------|
-| kafkajs | - | 834 |
-| node-rdkafka | evented | 24,923 |
-| kafka-crab-js | serial | 43,214 |
-| node-rdkafka | stream | 49,805 |
+| Client            | Mode      | Ops/sec     |
+| ----------------- | --------- | ----------- |
+| kafkajs           | -         | 834         |
+| node-rdkafka      | evented   | 24,923      |
+| kafka-crab-js     | serial    | 43,214      |
+| node-rdkafka      | stream    | 49,805      |
 | **kafka-crab-js** | **batch** | **205,985** |
 
 Performance characteristics:
+
 - **52x faster than kafkajs** in serial mode, **247x faster in batch mode**
 - **4.8x improvement** with batch processing over serial mode
 - Lock-free data structures minimize memory overhead

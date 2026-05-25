@@ -1,0 +1,60 @@
+x-kafka-image: &kafka-image ${KAFKA_IMAGE:-apache/kafka:4.2.0}
+x-kafka-healthcheck: &kafka-healthcheck
+  test: ['CMD-SHELL', '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:19092 >/dev/null 2>&1']
+  interval: 10s
+  timeout: 10s
+  retries: 12
+  start_period: 30s
+x-kafka-common-env: &kafka-common-env
+  CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+  KAFKA_PROCESS_ROLES: 'broker,controller'
+  KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka1:29093,2@kafka2:29093,3@kafka3:29093'
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT'
+  KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+  KAFKA_INTER_BROKER_LISTENER_NAME: 'INTERNAL'
+  KAFKA_DEFAULT_REPLICATION_FACTOR: '1'
+  KAFKA_MIN_INSYNC_REPLICAS: '1'
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '3'
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '3'
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: '2'
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: '0'
+  KAFKA_GROUP_COORDINATOR_REBALANCE_PROTOCOLS: 'classic,consumer'
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+  KAFKA_HEAP_OPTS: '${KAFKA_HEAP_OPTS:--Xms512m -Xmx512m}'
+
+services:
+  kafka1:
+    image: *kafka-image
+    container_name: kafka-crab-benchmark-kafka1
+    ports:
+      - '${KAFKA_BROKER_1_PORT:-9092}:9092'
+    healthcheck: *kafka-healthcheck
+    environment:
+      <<: *kafka-common-env
+      KAFKA_NODE_ID: '1'
+      KAFKA_LISTENERS: 'EXTERNAL://0.0.0.0:9092,INTERNAL://0.0.0.0:19092,CONTROLLER://0.0.0.0:29093'
+      KAFKA_ADVERTISED_LISTENERS: 'EXTERNAL://127.0.0.1:${KAFKA_BROKER_1_PORT:-9092},INTERNAL://kafka1:19092'
+
+  kafka2:
+    image: *kafka-image
+    container_name: kafka-crab-benchmark-kafka2
+    ports:
+      - '${KAFKA_BROKER_2_PORT:-9093}:9093'
+    healthcheck: *kafka-healthcheck
+    environment:
+      <<: *kafka-common-env
+      KAFKA_NODE_ID: '2'
+      KAFKA_LISTENERS: 'EXTERNAL://0.0.0.0:9093,INTERNAL://0.0.0.0:19092,CONTROLLER://0.0.0.0:29093'
+      KAFKA_ADVERTISED_LISTENERS: 'EXTERNAL://127.0.0.1:${KAFKA_BROKER_2_PORT:-9093},INTERNAL://kafka2:19092'
+
+  kafka3:
+    image: *kafka-image
+    container_name: kafka-crab-benchmark-kafka3
+    ports:
+      - '${KAFKA_BROKER_3_PORT:-9094}:9094'
+    healthcheck: *kafka-healthcheck
+    environment:
+      <<: *kafka-common-env
+      KAFKA_NODE_ID: '3'
+      KAFKA_LISTENERS: 'EXTERNAL://0.0.0.0:9094,INTERNAL://0.0.0.0:19092,CONTROLLER://0.0.0.0:29093'
+      KAFKA_ADVERTISED_LISTENERS: 'EXTERNAL://127.0.0.1:${KAFKA_BROKER_3_PORT:-9094},INTERNAL://kafka3:19092'

@@ -1,0 +1,30 @@
+{
+  "name": "html-to-pdf-crab-js-examples",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "browser": "vite --host 127.0.0.1 --port 5173 --open /wasm/",
+    "browser:build": "vite build",
+    "browser:preview": "vite preview --host 127.0.0.1 --port 4173 --open /wasm/",
+    "check": "vp check",
+    "example": "tsx invoice.ts",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "invoice": "tsx invoice.ts",
+    "lint": "vp lint",
+    "lint:fix": "vp lint --fix",
+    "report": "tsx report.ts",
+    "wasm:browser": "vite --host 127.0.0.1 --port 5173 --open /wasm/"
+  },
+  "dependencies": {
+    "@emnapi/core": "catalog:",
+    "@emnapi/runtime": "catalog:",
+    "@napi-rs/wasm-runtime": "catalog:",
+    "buffer": "^6.0.3",
+    "html-to-pdf-crab-js": "workspace:*"
+  },
+  "engines": {
+    "node": "24"
+  }
+}

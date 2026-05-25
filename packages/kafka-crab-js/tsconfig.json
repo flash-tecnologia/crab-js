@@ -1,7 +1,22 @@
 {
-  "extends": "./tsconfig.base.json",
-  "include": [
-    "js-src/*.ts",
-    "__test__/**/*.*"
-  ]
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["esnext"],
+    "moduleDetection": "force",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "declaration": true,
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true
+  },
+  "include": ["js-src"]
 }

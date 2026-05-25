@@ -1,96 +1,95 @@
-import { NapiCli } from '@napi-rs/cli'
-import * as esbuild from 'esbuild'
-import fs from 'node:fs'
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const getTarget = () => {
-  const idx = process.argv.findIndex(arg => arg === '--target')
-  return idx !== -1 ? process.argv[idx + 1] : undefined
+import { NapiCli } from '@napi-rs/cli'
+import { build as pack } from 'vite-plus/pack'
+
+const cwd = dirname(fileURLToPath(import.meta.url))
+const napi = new NapiCli()
+
+const NAPI_BINDINGS = [
+  {
+    jsBinding: 'js-binding.js',
+    esm: true,
+  },
+  {
+    jsBinding: 'js-binding.cjs',
+    noDtsHeader: true,
+  },
+]
+
+const PACK_CONFIG = {
+  checks: {
+    legacyCjs: false,
+  },
+  cwd,
+  deps: {
+    neverBundle: [/js-binding\.(?:js|cjs)$/],
+  },
+  dts: true,
+  entry: 'js-src/**/*.ts',
+  fixedExtension: false,
+  format: ['esm', 'cjs'],
+  platform: 'node',
+  report: false,
+  sourcemap: true,
+  target: 'node24',
 }
+
+const getArgValue = (name) => {
+  const inlinePrefix = `${name}=`
+  const inlineArg = process.argv.find((arg) => arg.startsWith(inlinePrefix))
+  if (inlineArg) {
+    return inlineArg.slice(inlinePrefix.length)
+  }
+
+  const index = process.argv.findIndex((arg) => arg === name)
+  return index === -1 ? undefined : process.argv[index + 1]
+}
+
+const hasFlag = (...names) => names.some((name) => process.argv.includes(name))
+
+const getCliOptions = () => ({
+  crossCompile: hasFlag('-x', '--cross-compile'),
+  target: getArgValue('--target'),
+})
 
 /**
  * Executes a NAPI build task with the provided options.
  * @param {@type import('@napi-rs/cli').NapiCli['build']} options
  * @returns {Promise<NapiBuildResult>}
  */
-const napiTask = async (options) => {
-  const napi = new NapiCli()
+const runNapiTask = async (options) => {
   const result = await napi.build(options)
   await result.task
 }
 
-async function execNapibuild() {
-  const target = getTarget()
-  console.log('target', target)
-
+const runNapiBuild = async ({ target, crossCompile }) => {
   const commonConfig = {
-    dts: 'js-binding.d.ts',
     constEnum: false,
+    crossCompile,
+    dts: 'js-binding.d.ts',
     platform: true,
     release: true,
     target,
   }
 
-  await napiTask({
-    ...commonConfig,
-    jsBinding: 'js-binding.js',
-    esm: true,
-  })
-
-  await napiTask({
-    ...commonConfig,
-    jsBinding: 'js-binding.cjs',
-    noDtsHeader: true,
-  })
-}
-
-async function execEsbuild() {
-  const packageJson = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
-
-  const commonConfig = {
-    entryPoints: ['./js-src/index.ts'],
-    platform: 'node',
-    bundle: true,
-    sourcemap: true,
-    external: [
-      '../js-binding.js',
-      '../js-binding.d.ts',
-      '../js-binding.cjs',
-    ],
-    outdir: './dist',
+  for (const bindingConfig of NAPI_BINDINGS) {
+    await runNapiTask({
+      ...commonConfig,
+      ...bindingConfig,
+    })
   }
-
-  await esbuild.build({
-    ...commonConfig,
-    format: 'esm',
-  })
-
-  await esbuild.build({
-    ...commonConfig,
-    format: 'cjs',
-    outExtension: { '.js': '.cjs' },
-    plugins: [
-      {
-        name: 'js-binding-path-replacer',
-        setup(build) {
-          // Replace js-binding.js imports with js-binding.cjs
-          build.onResolve({ filter: /\.\.\/js-binding\.js$/ }, _args => {
-            return {
-              path: '../js-binding.cjs',
-              external: true,
-            }
-          })
-        },
-      },
-    ],
-  })
 }
 
 async function main() {
-  await execNapibuild()
-  await execEsbuild()
+  const cliOptions = getCliOptions()
+
+  await runNapiBuild(cliOptions)
+  await pack(PACK_CONFIG)
 }
 
-main().catch(err => {
-  console.error('Build script failed:', err)
+main().catch((error) => {
+  console.error('Build script failed:', error)
   process.exit(1)
 })

@@ -1,13 +1,24 @@
-use std::{sync::Arc, time::Duration, vec};
-use tokio::sync::watch::{self};
+use futures_util::{stream, StreamExt};
+use std::{
+  collections::{HashMap, VecDeque},
+  mem,
+  sync::Arc,
+  time::Duration,
+};
+use tokio::sync::{
+  mpsc,
+  watch::{self},
+};
 
 use napi::{
+  bindgen_prelude::{Buffer, ReadableStream},
   threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode},
-  Either, Error, Result, Status,
+  Either, Env, Error, Result, Status,
 };
 
 use rdkafka::{
   consumer::{stream_consumer::StreamConsumer, CommitMode as RdKfafkaCommitMode, Consumer},
+  message::{BorrowedHeaders, BorrowedMessage, Headers},
   topic_partition_list::TopicPartitionList as RdTopicPartitionList,
   ClientConfig, Message as RdMessage, Offset,
 };
@@ -19,8 +30,8 @@ use crate::kafka::{
     assign_offset_or_use_metadata, convert_to_rdkafka_offset, try_create_topic, try_subscribe,
   },
   kafka_client_config::KafkaClientConfig,
-  kafka_util::{create_message, IntoNapiError},
-  producer::model::Message,
+  kafka_util::{borrowed_headers_to_message_headers, create_message, IntoNapiError},
+  producer::model::{CompactMessageBatch, Message, MessageHeaders},
 };
 
 use super::{
@@ -39,6 +50,20 @@ use tokio::select;
 pub const DEFAULT_SEEK_TIMEOUT: i64 = 1500;
 const MAX_SEEK_TIMEOUT: i64 = 300000; // 5 minutes max
 const DEFAULT_BATCH_TIMEOUT: i64 = 1000;
+const MAX_BATCH_TIMEOUT_MS: i64 = 60_000;
+const MAX_BATCH_SIZE: u32 = 16_384;
+const SERIAL_STREAM_PREFETCH_SIZE: u32 = 64;
+const SERIAL_STREAM_PREFETCH_TIMEOUT_MS: i64 = 1;
+const CONSUMER_DISCONNECTED_REASON: &str = "Consumer disconnected";
+const BUFFER_DICTIONARY_MAX_UNIQUE_VALUES: usize = 64;
+const BUFFER_DICTIONARY_MIN_REPEAT_FACTOR: usize = 4;
+
+type CompactKeyEncoding = (
+  Option<Vec<Option<Buffer>>>,
+  Option<Buffer>,
+  Option<Vec<Buffer>>,
+  Option<Vec<u8>>,
+);
 
 /// Validates and bounds-checks timeout values
 #[inline]
@@ -63,7 +88,602 @@ fn validate_seek_timeout(timeout: Option<i64>) -> i64 {
   validate_timeout(timeout, DEFAULT_SEEK_TIMEOUT, MAX_SEEK_TIMEOUT, 0)
 }
 
+#[inline]
+fn normalize_serial_stream_prefetch_size(size: Option<u32>) -> u32 {
+  normalize_batch_size(size.unwrap_or(SERIAL_STREAM_PREFETCH_SIZE))
+}
+
+#[inline]
+fn normalize_serial_stream_prefetch_timeout(timeout_ms: Option<i64>) -> i64 {
+  validate_timeout(
+    timeout_ms,
+    SERIAL_STREAM_PREFETCH_TIMEOUT_MS,
+    MAX_BATCH_TIMEOUT_MS,
+    1,
+  )
+}
+
 type DisconnectSignal = (watch::Sender<()>, watch::Receiver<()>);
+
+struct BatchCollection {
+  messages: Vec<Message>,
+  disconnected: bool,
+}
+
+struct CompactBatchCollection {
+  batch: CompactMessageBatch,
+  disconnected: bool,
+}
+
+struct SerialStreamState {
+  stream_consumer: Arc<StreamConsumer<KafkaCrabContext>>,
+  disconnect_signal: watch::Receiver<()>,
+  pending_messages: VecDeque<Message>,
+  prefetch_size: u32,
+  prefetch_timeout_ms: i64,
+  closed: bool,
+}
+
+enum HeaderProjection<'a> {
+  None,
+  Single { key: &'a str, value: &'a [u8] },
+  Many(MessageHeaders),
+}
+
+enum HeaderBatchState {
+  None,
+  SharedSingle {
+    key: String,
+    values: Vec<Option<Buffer>>,
+  },
+  Many(Vec<Option<MessageHeaders>>),
+}
+
+struct CompactBatchBuilder {
+  payloads: Vec<Buffer>,
+  keys: Option<Vec<Option<Buffer>>>,
+  topic: Option<String>,
+  topics: Option<Vec<String>>,
+  partitions: Vec<i32>,
+  offsets: Vec<i64>,
+  headers: HeaderBatchState,
+  capacity: usize,
+}
+
+impl CompactBatchBuilder {
+  #[inline]
+  fn new(capacity: usize) -> Self {
+    Self {
+      payloads: Vec::with_capacity(capacity),
+      keys: None,
+      topic: None,
+      topics: None,
+      partitions: Vec::with_capacity(capacity),
+      offsets: Vec::with_capacity(capacity),
+      headers: HeaderBatchState::None,
+      capacity,
+    }
+  }
+
+  #[inline]
+  fn push(&mut self, kafka_message: &BorrowedMessage<'_>, payload: &[u8]) {
+    let previous_count = self.payloads.len();
+
+    self.payloads.push(payload.into());
+    self.push_key(kafka_message.key(), previous_count);
+    self.push_topic(kafka_message.topic(), previous_count);
+    self.partitions.push(kafka_message.partition());
+    self.offsets.push(kafka_message.offset());
+    self.push_headers(kafka_message.headers(), previous_count);
+  }
+
+  #[inline]
+  fn finish(self) -> CompactMessageBatch {
+    let (keys, shared_key, key_dictionary, key_dictionary_indexes) =
+      encode_optional_dictionary_buffer(self.keys);
+    let (shared_header_key, shared_header_value, shared_header_values, headers) = match self.headers
+    {
+      HeaderBatchState::None => (None, None, None, None),
+      HeaderBatchState::SharedSingle { key, values } => {
+        let (values, shared_value) = encode_optional_shared_buffer(Some(values));
+        (Some(key), shared_value, values, None)
+      }
+      HeaderBatchState::Many(headers) => (None, None, None, Some(headers)),
+    };
+
+    CompactMessageBatch {
+      payloads: self.payloads,
+      keys,
+      shared_key,
+      key_dictionary,
+      key_dictionary_indexes,
+      topic: self.topic,
+      topics: self.topics,
+      partitions: self.partitions,
+      offsets: self.offsets,
+      shared_header_key,
+      shared_header_value,
+      shared_header_values,
+      headers,
+    }
+  }
+
+  #[inline]
+  fn push_key(&mut self, key: Option<&[u8]>, previous_count: usize) {
+    match (&mut self.keys, key) {
+      (Some(keys), Some(key)) => keys.push(Some(key.into())),
+      (Some(keys), None) => keys.push(None),
+      (None, Some(key)) => {
+        let mut keys = Vec::with_capacity(self.capacity);
+        keys.resize_with(previous_count, || None);
+        keys.push(Some(key.into()));
+        self.keys = Some(keys);
+      }
+      (None, None) => {}
+    }
+  }
+
+  #[inline]
+  fn push_topic(&mut self, topic: &str, previous_count: usize) {
+    if let Some(topics) = self.topics.as_mut() {
+      topics.push(topic.to_owned());
+      return;
+    }
+
+    match self.topic.as_ref() {
+      Some(shared_topic) if shared_topic != topic => {
+        let mut topics = Vec::with_capacity(self.capacity);
+        topics.resize(previous_count, shared_topic.clone());
+        topics.push(topic.to_owned());
+        self.topics = Some(topics);
+        self.topic = None;
+      }
+      Some(_) => {}
+      None => {
+        self.topic = Some(topic.to_owned());
+      }
+    }
+  }
+
+  #[inline]
+  fn push_headers(&mut self, headers_input: Option<&BorrowedHeaders>, previous_count: usize) {
+    match &mut self.headers {
+      HeaderBatchState::None => match project_headers(headers_input) {
+        HeaderProjection::None => {}
+        HeaderProjection::Single { key, value } => {
+          let mut values = Vec::with_capacity(self.capacity);
+          values.resize_with(previous_count, || None);
+          values.push(Some(value.into()));
+          self.headers = HeaderBatchState::SharedSingle {
+            key: key.to_owned(),
+            values,
+          };
+        }
+        HeaderProjection::Many(message_headers) => {
+          let mut header_batches = Vec::with_capacity(self.capacity);
+          header_batches.resize_with(previous_count, || None);
+          header_batches.push(Some(message_headers));
+          self.headers = HeaderBatchState::Many(header_batches);
+        }
+      },
+      HeaderBatchState::SharedSingle { key, values } => match project_headers(headers_input) {
+        HeaderProjection::None => {
+          values.push(None);
+        }
+        HeaderProjection::Single {
+          key: header_key,
+          value,
+        } if key == header_key => {
+          values.push(Some(value.into()));
+        }
+        HeaderProjection::Single {
+          key: header_key,
+          value,
+        } => {
+          let mut header_batches = shared_single_to_many(mem::take(values), key);
+          header_batches.push(Some(MessageHeaders::one(
+            header_key.to_owned(),
+            value.into(),
+          )));
+          self.headers = HeaderBatchState::Many(header_batches);
+        }
+        HeaderProjection::Many(message_headers) => {
+          let mut header_batches = shared_single_to_many(mem::take(values), key);
+          header_batches.push(Some(message_headers));
+          self.headers = HeaderBatchState::Many(header_batches);
+        }
+      },
+      HeaderBatchState::Many(headers) => match project_headers(headers_input) {
+        HeaderProjection::None => headers.push(None),
+        HeaderProjection::Single { key, value } => {
+          headers.push(Some(MessageHeaders::one(key.to_owned(), value.into())));
+        }
+        HeaderProjection::Many(message_headers) => {
+          headers.push(Some(message_headers));
+        }
+      },
+    }
+  }
+}
+
+#[inline]
+fn project_headers<'a>(headers: Option<&'a BorrowedHeaders>) -> HeaderProjection<'a> {
+  let Some(headers) = headers else {
+    return HeaderProjection::None;
+  };
+
+  if headers.count() == 0 {
+    return HeaderProjection::None;
+  }
+
+  let mut single_header: Option<(&str, &[u8])> = None;
+  for index in 0..headers.count() {
+    let header = headers.get(index);
+    if let Some(value) = header.value {
+      if single_header.is_some() {
+        return borrowed_headers_to_message_headers(headers)
+          .map(HeaderProjection::Many)
+          .unwrap_or(HeaderProjection::None);
+      }
+
+      single_header = Some((header.key, value));
+    }
+  }
+
+  match single_header {
+    Some((key, value)) => HeaderProjection::Single { key, value },
+    None => HeaderProjection::None,
+  }
+}
+
+#[inline]
+fn shared_single_to_many(
+  shared_values: Vec<Option<Buffer>>,
+  shared_key: &str,
+) -> Vec<Option<MessageHeaders>> {
+  let mut headers = Vec::with_capacity(shared_values.len());
+
+  for value in shared_values {
+    headers.push(value.map(|value| MessageHeaders::one(shared_key.to_owned(), value)));
+  }
+
+  headers
+}
+
+#[inline]
+fn encode_optional_shared_buffer(
+  values: Option<Vec<Option<Buffer>>>,
+) -> (Option<Vec<Option<Buffer>>>, Option<Buffer>) {
+  let Some(values) = values else {
+    return (None, None);
+  };
+
+  if values.is_empty() {
+    return (None, None);
+  }
+
+  let is_shared = match values.first() {
+    Some(Some(first_value)) => values.iter().all(|value| {
+      value
+        .as_ref()
+        .is_some_and(|value| value.as_ref() == first_value.as_ref())
+    }),
+    _ => false,
+  };
+
+  if is_shared {
+    let shared_value = values
+      .into_iter()
+      .next()
+      .flatten()
+      .expect("shared compact buffers must contain at least one value");
+    return (None, Some(shared_value));
+  }
+
+  (Some(values), None)
+}
+
+#[inline]
+fn should_dictionary_encode(total: usize, unique: usize) -> bool {
+  unique > 1
+    && unique <= BUFFER_DICTIONARY_MAX_UNIQUE_VALUES
+    && total >= unique * BUFFER_DICTIONARY_MIN_REPEAT_FACTOR
+}
+
+#[inline]
+fn encode_optional_dictionary_buffer(values: Option<Vec<Option<Buffer>>>) -> CompactKeyEncoding {
+  let Some(values) = values else {
+    return (None, None, None, None);
+  };
+
+  if values.is_empty() {
+    return (None, None, None, None);
+  }
+
+  if values.iter().any(Option::is_none) {
+    return (Some(values), None, None, None);
+  }
+
+  let first_value = values[0]
+    .as_ref()
+    .expect("compact key dictionary buffers must contain at least one value");
+
+  if values.iter().all(|value| {
+    value
+      .as_ref()
+      .is_some_and(|value| value.as_ref() == first_value.as_ref())
+  }) {
+    let shared_value = values
+      .into_iter()
+      .next()
+      .flatten()
+      .expect("shared compact key buffers must contain at least one value");
+    return (None, Some(shared_value), None, None);
+  }
+
+  let mut dictionary_lookup: HashMap<Vec<u8>, u8> = HashMap::new();
+  let mut dictionary_values = Vec::new();
+  let mut dictionary_indexes = Vec::with_capacity(values.len());
+
+  for value in values.iter().flatten() {
+    if let Some(index) = dictionary_lookup.get(value.as_ref()) {
+      dictionary_indexes.push(*index);
+      continue;
+    }
+
+    if dictionary_values.len() >= BUFFER_DICTIONARY_MAX_UNIQUE_VALUES {
+      return (Some(values), None, None, None);
+    }
+
+    let index = dictionary_values.len() as u8;
+    dictionary_lookup.insert(value.as_ref().to_vec(), index);
+    dictionary_values.push(value.as_ref().into());
+    dictionary_indexes.push(index);
+  }
+
+  if should_dictionary_encode(dictionary_indexes.len(), dictionary_values.len()) {
+    return (
+      None,
+      None,
+      Some(dictionary_values),
+      Some(dictionary_indexes),
+    );
+  }
+
+  (Some(values), None, None, None)
+}
+
+#[inline]
+fn normalize_batch_size(size: u32) -> u32 {
+  if size == 0 {
+    warn!("size cannot be 0, using 1");
+    return 1;
+  }
+
+  if size > MAX_BATCH_SIZE {
+    warn!(
+      "size cannot be greater than {}, clamping to {}",
+      MAX_BATCH_SIZE, MAX_BATCH_SIZE
+    );
+    return MAX_BATCH_SIZE;
+  }
+
+  size
+}
+
+#[inline]
+fn normalize_batch_timeout(timeout_ms: i64) -> i64 {
+  if timeout_ms < 1 {
+    warn!(
+      "timeout_ms must be at least 1ms, using default: {}ms",
+      DEFAULT_BATCH_TIMEOUT
+    );
+    return DEFAULT_BATCH_TIMEOUT;
+  }
+
+  if timeout_ms > MAX_BATCH_TIMEOUT_MS {
+    warn!(
+      "timeout_ms cannot be greater than {}ms, clamping to {}ms",
+      MAX_BATCH_TIMEOUT_MS, MAX_BATCH_TIMEOUT_MS
+    );
+    return MAX_BATCH_TIMEOUT_MS;
+  }
+
+  timeout_ms
+}
+
+async fn collect_batch_messages(
+  stream_consumer: &Arc<StreamConsumer<KafkaCrabContext>>,
+  disconnect_signal: &mut watch::Receiver<()>,
+  size: u32,
+  timeout_ms: i64,
+) -> Result<BatchCollection> {
+  let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms as u64);
+  let mut messages = Vec::with_capacity(size as usize);
+  let mut disconnected = false;
+  let mut message_stream = stream_consumer.stream();
+  let sleep_until_deadline = tokio::time::sleep_until(deadline);
+  tokio::pin!(sleep_until_deadline);
+
+  // Phase A: wait for the first message or stop on timeout/disconnect.
+  select! {
+    biased;
+    _ = disconnect_signal.changed() => {
+      debug!("Disconnect signal received during batch receive");
+      disconnected = true;
+    }
+    message = message_stream.next() => {
+      match message {
+        Some(Ok(kafka_message)) => {
+          let payload = kafka_message.payload().unwrap_or(&[]);
+          messages.push(create_message(&kafka_message, payload));
+        }
+        Some(Err(error)) => {
+          return Err(error.into_napi_error("Failed to receive message from consumer"));
+        }
+        None => {
+          disconnected = true;
+        }
+      }
+    }
+    _ = &mut sleep_until_deadline => {}
+  }
+
+  if disconnected || messages.is_empty() {
+    return Ok(BatchCollection {
+      messages,
+      disconnected,
+    });
+  }
+
+  // Phase B: fill remaining slots until size/deadline/disconnect.
+  for _ in 1..size {
+    select! {
+      biased;
+      message = message_stream.next() => {
+        match message {
+          Some(Ok(kafka_message)) => {
+            let payload = kafka_message.payload().unwrap_or(&[]);
+            messages.push(create_message(&kafka_message, payload));
+          }
+          Some(Err(error)) => {
+            if messages.is_empty() {
+              return Err(error.into_napi_error("Failed to receive message from consumer"));
+            }
+            break;
+          }
+          None => {
+            disconnected = true;
+            break;
+          }
+        }
+      }
+      _ = &mut sleep_until_deadline => break,
+    }
+  }
+
+  Ok(BatchCollection {
+    messages,
+    disconnected,
+  })
+}
+
+async fn collect_batch_messages_compact(
+  stream_consumer: &Arc<StreamConsumer<KafkaCrabContext>>,
+  disconnect_signal: &mut watch::Receiver<()>,
+  size: u32,
+  timeout_ms: i64,
+) -> Result<CompactBatchCollection> {
+  let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms as u64);
+  let mut batch = CompactBatchBuilder::new(size as usize);
+  let mut disconnected = false;
+  let mut message_stream = stream_consumer.stream();
+  let sleep_until_deadline = tokio::time::sleep_until(deadline);
+  tokio::pin!(sleep_until_deadline);
+
+  select! {
+    biased;
+    _ = disconnect_signal.changed() => {
+      debug!("Disconnect signal received during compact batch receive");
+      disconnected = true;
+    }
+    message = message_stream.next() => {
+      match message {
+        Some(Ok(kafka_message)) => {
+          let payload = kafka_message.payload().unwrap_or(&[]);
+          batch.push(&kafka_message, payload);
+        }
+        Some(Err(error)) => {
+          return Err(error.into_napi_error("Failed to receive message from consumer"));
+        }
+        None => {
+          disconnected = true;
+        }
+      }
+    }
+    _ = &mut sleep_until_deadline => {}
+  }
+
+  if disconnected || batch.payloads.is_empty() {
+    return Ok(CompactBatchCollection {
+      batch: batch.finish(),
+      disconnected,
+    });
+  }
+
+  for _ in 1..size {
+    select! {
+      biased;
+      message = message_stream.next() => {
+        match message {
+          Some(Ok(kafka_message)) => {
+            let payload = kafka_message.payload().unwrap_or(&[]);
+            batch.push(&kafka_message, payload);
+          }
+          Some(Err(error)) => {
+            if batch.payloads.is_empty() {
+              return Err(error.into_napi_error("Failed to receive message from consumer"));
+            }
+            break;
+          }
+          None => {
+            disconnected = true;
+            break;
+          }
+        }
+      }
+      _ = &mut sleep_until_deadline => break,
+    }
+  }
+
+  Ok(CompactBatchCollection {
+    batch: batch.finish(),
+    disconnected,
+  })
+}
+
+async fn next_serial_stream_item(
+  mut state: SerialStreamState,
+) -> Option<(Result<Message>, SerialStreamState)> {
+  loop {
+    if let Some(message) = state.pending_messages.pop_front() {
+      return Some((Ok(message), state));
+    }
+
+    if state.closed {
+      return None;
+    }
+
+    match collect_batch_messages(
+      &state.stream_consumer,
+      &mut state.disconnect_signal,
+      state.prefetch_size,
+      state.prefetch_timeout_ms,
+    )
+    .await
+    {
+      Ok(batch) => {
+        if batch.messages.is_empty() {
+          if batch.disconnected {
+            state.closed = true;
+            return None;
+          }
+
+          continue;
+        }
+
+        state.pending_messages = VecDeque::from(batch.messages);
+        if batch.disconnected {
+          state.closed = true;
+        }
+      }
+      Err(error) => {
+        state.closed = true;
+        return Some((Err(error), state));
+      }
+    }
+  }
+}
 
 #[napi]
 pub struct KafkaConsumer {
@@ -393,76 +1013,183 @@ impl KafkaConsumer {
   /// @returns Array of messages (may be fewer than size)
   #[napi]
   pub async fn recv_batch(&self, size: u32, timeout_ms: i64) -> Result<Vec<Message>> {
-    // Validate input parameters
-    let size = if size == 0 {
-      warn!("size cannot be 0, using 1");
-      1
-    } else {
-      size
-    };
+    let normalized_size = normalize_batch_size(size);
+    let normalized_timeout_ms = normalize_batch_timeout(timeout_ms);
 
-    let timeout_ms = if timeout_ms < 1 {
-      warn!(
-        "timeout_ms must be at least 1ms, using default: {}ms",
-        DEFAULT_BATCH_TIMEOUT
-      );
-      DEFAULT_BATCH_TIMEOUT
-    } else {
-      timeout_ms
-    };
-    let batch_timeout = std::time::Duration::from_millis(timeout_ms as u64);
+    let mut disconnect_signal = self.disconnect_signal.1.clone();
+    let collection = collect_batch_messages(
+      &self.stream_consumer,
+      &mut disconnect_signal,
+      normalized_size,
+      normalized_timeout_ms,
+    )
+    .await?;
 
-    let mut messages = Vec::with_capacity(size as usize);
-    let mut rx = self.disconnect_signal.1.clone();
-    let start_time = std::time::Instant::now();
-
-    // Try to collect messages up to size or timeout
-    for _ in 0..size {
-      // Check if we've exceeded our timeout
-      if start_time.elapsed() >= batch_timeout {
-        break;
-      }
-
-      // Calculate remaining timeout
-      let remaining_timeout = batch_timeout.saturating_sub(start_time.elapsed());
-      if remaining_timeout.is_zero() {
-        break;
-      }
-
-      // Try to receive a message with remaining timeout
-      let recv_result = tokio::time::timeout(remaining_timeout, async {
-        select! {
-          message = self.stream_consumer.recv() => {
-            message.map_err(|e| e.into_napi_error("Failed to receive message from consumer"))
-          }
-          _ = rx.changed() => {
-            debug!("Disconnect signal received during batch receive");
-            Err(Error::new(Status::GenericFailure, "Consumer disconnected"))
-          }
-        }
-      })
-      .await;
-
-      match recv_result {
-        Ok(Ok(kafka_message)) => {
-          let message = create_message(&kafka_message, kafka_message.payload().unwrap_or(&[]));
-          messages.push(message);
-        }
-        Ok(Err(e)) => {
-          // Error receiving message, return what we have so far
-          if messages.is_empty() {
-            return Err(e);
-          }
-          break;
-        }
-        Err(_) => {
-          // Timeout occurred, return what we have so far
-          break;
-        }
-      }
+    if collection.disconnected && collection.messages.is_empty() {
+      return Err(Error::new(
+        Status::GenericFailure,
+        CONSUMER_DISCONNECTED_REASON,
+      ));
     }
 
-    Ok(messages)
+    Ok(collection.messages)
+  }
+
+  /// Receives messages as a native Web `ReadableStream`.
+  /// Uses a small internal batch prefetch to reduce native boundary crossings.
+  #[napi]
+  pub fn recv_stream<'env>(
+    &self,
+    env: Env,
+    prefetch_size: Option<u32>,
+    prefetch_timeout_ms: Option<i64>,
+  ) -> Result<ReadableStream<'env, Message>> {
+    let normalized_prefetch_size = normalize_serial_stream_prefetch_size(prefetch_size);
+    let normalized_prefetch_timeout_ms =
+      normalize_serial_stream_prefetch_timeout(prefetch_timeout_ms);
+    let stream_state = SerialStreamState {
+      stream_consumer: self.stream_consumer.clone(),
+      disconnect_signal: self.disconnect_signal.1.clone(),
+      pending_messages: VecDeque::with_capacity(normalized_prefetch_size as usize),
+      prefetch_size: normalized_prefetch_size,
+      prefetch_timeout_ms: normalized_prefetch_timeout_ms,
+      closed: false,
+    };
+
+    let inner = stream::unfold(stream_state, next_serial_stream_item).boxed();
+    ReadableStream::new(&env, inner)
+  }
+
+  fn recv_batch_stream_internal<'env>(
+    &self,
+    env: Env,
+    size: u32,
+    timeout_ms: i64,
+  ) -> Result<ReadableStream<'env, Vec<Message>>> {
+    let stream_consumer = self.stream_consumer.clone();
+    let mut disconnect_signal = self.disconnect_signal.1.clone();
+    let normalized_size = normalize_batch_size(size);
+    let normalized_timeout_ms = normalize_batch_timeout(timeout_ms);
+    let (sender, receiver) = mpsc::unbounded_channel::<Result<Vec<Message>>>();
+
+    napi::bindgen_prelude::spawn(async move {
+      loop {
+        match collect_batch_messages(
+          &stream_consumer,
+          &mut disconnect_signal,
+          normalized_size,
+          normalized_timeout_ms,
+        )
+        .await
+        {
+          Ok(batch) => {
+            if batch.messages.is_empty() {
+              if batch.disconnected {
+                break;
+              }
+
+              continue;
+            }
+
+            let messages = batch.messages;
+            if sender.send(Ok(messages)).is_err() {
+              break;
+            }
+
+            if batch.disconnected {
+              break;
+            }
+          }
+          Err(error) => {
+            let _ = sender.send(Err(error));
+            break;
+          }
+        }
+      }
+    });
+
+    let inner = stream::unfold(receiver, |mut receiver| async move {
+      receiver.recv().await.map(|item| (item, receiver))
+    })
+    .boxed();
+    ReadableStream::new(&env, inner)
+  }
+
+  fn recv_batch_stream_compact_internal<'env>(
+    &self,
+    env: Env,
+    size: u32,
+    timeout_ms: i64,
+  ) -> Result<ReadableStream<'env, CompactMessageBatch>> {
+    let stream_consumer = self.stream_consumer.clone();
+    let mut disconnect_signal = self.disconnect_signal.1.clone();
+    let normalized_size = normalize_batch_size(size);
+    let normalized_timeout_ms = normalize_batch_timeout(timeout_ms);
+    let (sender, receiver) = mpsc::unbounded_channel::<Result<CompactMessageBatch>>();
+
+    napi::bindgen_prelude::spawn(async move {
+      loop {
+        match collect_batch_messages_compact(
+          &stream_consumer,
+          &mut disconnect_signal,
+          normalized_size,
+          normalized_timeout_ms,
+        )
+        .await
+        {
+          Ok(batch) => {
+            if batch.batch.payloads.is_empty() {
+              if batch.disconnected {
+                break;
+              }
+
+              continue;
+            }
+
+            if sender.send(Ok(batch.batch)).is_err() {
+              break;
+            }
+
+            if batch.disconnected {
+              break;
+            }
+          }
+          Err(error) => {
+            let _ = sender.send(Err(error));
+            break;
+          }
+        }
+      }
+    });
+
+    let inner = stream::unfold(receiver, |mut receiver| async move {
+      receiver.recv().await.map(|item| (item, receiver))
+    })
+    .boxed();
+    ReadableStream::new(&env, inner)
+  }
+
+  /// Receives batches of messages as a native Web `ReadableStream`.
+  #[napi]
+  pub fn recv_batch_stream<'env>(
+    &self,
+    env: Env,
+    size: u32,
+    timeout_ms: i64,
+  ) -> Result<ReadableStream<'env, Vec<Message>>> {
+    self.recv_batch_stream_internal(env, size, timeout_ms)
+  }
+
+  /// Receives metadata batches as a compact native Web `ReadableStream`.
+  /// Intended for JS-side expansion to preserve the public `Message[]` API with less native marshalling overhead.
+  #[napi]
+  pub fn recv_batch_stream_compact<'env>(
+    &self,
+    env: Env,
+    size: u32,
+    timeout_ms: i64,
+  ) -> Result<ReadableStream<'env, CompactMessageBatch>> {
+    self.recv_batch_stream_compact_internal(env, size, timeout_ms)
   }
 
   /// Commits an offset for a specific topic partition.

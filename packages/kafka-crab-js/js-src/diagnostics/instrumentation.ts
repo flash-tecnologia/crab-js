@@ -255,11 +255,7 @@ export function instrumentBatchReceive(
 ): (this: KafkaConsumer, size: number, timeoutMs: number) => Promise<Message[]> {
   const { clientId, serverAddress, serverPort } = config
 
-  return async function instrumentedBatchReceive(
-    this: KafkaConsumer,
-    size: number,
-    timeoutMs: number,
-  ) {
+  return async function instrumentedBatchReceive(this: KafkaConsumer, size: number, timeoutMs: number) {
     // Fast path: if no subscribers, just call original
     const hasReceiveSubscribers = batchReceiveStartChannel.hasSubscribers || batchReceiveEndChannel.hasSubscribers
     const hasProcessSubscribers = batchProcessStartChannel.hasSubscribers || batchProcessEndChannel.hasSubscribers
@@ -401,4 +397,100 @@ export function instrumentBatchReceive(
       }
     }
   }
+}
+
+/**
+ * Instruments a ReadableStream of single messages with consumer diagnostic events.
+ */
+export function instrumentConsumerReadableStream<StreamMessage extends Message>(
+  originalStream: ReadableStream<StreamMessage>,
+  groupId?: string,
+  config: DiagnosticInstrumentationConfig = {},
+): ReadableStream<StreamMessage> {
+  const reader = originalStream.getReader()
+  let done = false
+
+  const instrumentedReceive = instrumentConsumerReceive(
+    async () => {
+      if (done) {
+        return null
+      }
+
+      const chunk = await reader.read()
+      if (chunk.done) {
+        done = true
+        return null
+      }
+
+      return chunk.value ?? null
+    },
+    groupId,
+    config,
+  ).bind({} as KafkaConsumer) as () => Promise<StreamMessage | null>
+
+  return new ReadableStream<StreamMessage>({
+    async pull(controller) {
+      const message = await instrumentedReceive()
+      if (!message) {
+        controller.close()
+        return
+      }
+
+      controller.enqueue(message)
+    },
+    async cancel(reason) {
+      done = true
+      await reader.cancel(reason)
+    },
+  })
+}
+
+/**
+ * Instruments a ReadableStream of message batches with batch diagnostic events.
+ */
+export function instrumentBatchReadableStream<StreamBatch extends Message[]>(
+  originalStream: ReadableStream<StreamBatch>,
+  groupId: string | undefined,
+  size: number,
+  timeoutMs: number,
+  config: DiagnosticInstrumentationConfig = {},
+): ReadableStream<StreamBatch> {
+  const reader = originalStream.getReader()
+  let done = false
+
+  const instrumentedBatchReceive = instrumentBatchReceive(
+    async () => {
+      if (done) {
+        return []
+      }
+
+      const chunk = await reader.read()
+      if (chunk.done) {
+        done = true
+        return []
+      }
+
+      return chunk.value ?? []
+    },
+    groupId,
+    config,
+  ).bind({} as KafkaConsumer) as (size: number, timeoutMs: number) => Promise<StreamBatch>
+
+  return new ReadableStream<StreamBatch>({
+    async pull(controller) {
+      const messages = await instrumentedBatchReceive(size, timeoutMs)
+      if (done) {
+        controller.close()
+        return
+      }
+
+      if (messages.length > 0) {
+        controller.enqueue(messages)
+      }
+    },
+    async cancel(reason) {
+      done = true
+      await reader.cancel(reason)
+    },
+  })
 }
