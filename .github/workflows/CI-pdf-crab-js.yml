@@ -310,6 +310,11 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: artifacts
+      - name: Restore WASI wrappers
+        run: |
+          cp artifacts/bindings-wasm32-wasip1-threads/${APP_NAME}.wasi.cjs packages/pdf-crab-js/
+          cp artifacts/bindings-wasm32-wasip1-threads/${APP_NAME}.wasi*.js packages/pdf-crab-js/
+          cp artifacts/bindings-wasm32-wasip1-threads/wasi-worker*.mjs packages/pdf-crab-js/
       - name: Create npm dirs
         run: pnpm napi create-npm-dirs
         working-directory: packages/pdf-crab-js
