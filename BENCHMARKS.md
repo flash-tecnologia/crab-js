@@ -72,27 +72,27 @@ row is comparable to this document's `KafkaJS (eachMessage)` row, not to `KafkaJ
 
 The default isolated-process benchmark reports throughput, lifecycle memory, and retained RSS for each scenario.
 
-| Rank | Scenario                            | Runs |                 Result | Tolerance | Vs previous |    Peak RSS |   RSS delta | Retained RSS |  Peak heap |   External | ArrayBuffer |
-| ---: | ----------------------------------- | ---: | ---------------------: | --------: | ----------: | ----------: | ----------: | -----------: | ---------: | ---------: | ----------: |
-|    1 | `KafkaJS (eachMessage, concurrent)` |    5 |   `427,265.29 op/sec`  |   `3.71%` |         `-` | `243.9 MiB` | `178.3 MiB` |  `175.5 MiB` | `72.2 MiB` | `14.3 MiB` |   `7.7 MiB` |
-|    2 | `KafkaJS (eachMessage)`             |    5 |   `431,519.93 op/sec`  |   `8.78%` |    `+1.00%` | `251.1 MiB` | `186.3 MiB` |  `180.8 MiB` | `91.6 MiB` | `13.8 MiB` |  `11.2 MiB` |
-|    3 | `KafkaJS (eachBatch)`               |    5 |   `478,411.67 op/sec`  |  `13.22%` |   `+10.87%` | `258.7 MiB` | `193.4 MiB` |  `173.5 MiB` | `83.8 MiB` | `16.2 MiB` |  `13.7 MiB` |
-|    4 | `kafka-crab-js v4 (stream, serial)` |    5 |   `558,968.71 op/sec`  |   `3.41%` |   `+16.84%` | `130.2 MiB` |  `64.7 MiB` |   `63.9 MiB` | `14.6 MiB` |  `2.9 MiB` | `113.0 KiB` |
-|    5 | `@platformatic/kafka`               |    5 |   `653,355.35 op/sec`  |   `3.39%` |   `+16.89%` | `281.2 MiB` | `216.0 MiB` |  `216.0 MiB` | `87.4 MiB` | `16.3 MiB` |  `12.4 MiB` |
-|    6 | `kafka-crab-js v4 (stream, batch)`  |    5 | `1,167,396.71 op/sec`  |   `4.40%` |   `+78.68%` | `171.0 MiB` | `106.0 MiB` |  `105.8 MiB` | `29.5 MiB` |  `8.0 MiB` |   `1.0 MiB` |
+| Rank | Scenario                            | Runs |                Result | Tolerance | Vs previous |    Peak RSS |   RSS delta | Retained RSS |  Peak heap |   External | ArrayBuffer |
+| ---: | ----------------------------------- | ---: | --------------------: | --------: | ----------: | ----------: | ----------: | -----------: | ---------: | ---------: | ----------: |
+|    1 | `KafkaJS (eachMessage, concurrent)` |    5 |   `427,265.29 op/sec` |   `3.71%` |         `-` | `243.9 MiB` | `178.3 MiB` |  `175.5 MiB` | `72.2 MiB` | `14.3 MiB` |   `7.7 MiB` |
+|    2 | `KafkaJS (eachMessage)`             |    5 |   `431,519.93 op/sec` |   `8.78%` |    `+1.00%` | `251.1 MiB` | `186.3 MiB` |  `180.8 MiB` | `91.6 MiB` | `13.8 MiB` |  `11.2 MiB` |
+|    3 | `KafkaJS (eachBatch)`               |    5 |   `478,411.67 op/sec` |  `13.22%` |   `+10.87%` | `258.7 MiB` | `193.4 MiB` |  `173.5 MiB` | `83.8 MiB` | `16.2 MiB` |  `13.7 MiB` |
+|    4 | `kafka-crab-js v4 (stream, serial)` |    5 |   `558,968.71 op/sec` |   `3.41%` |   `+16.84%` | `130.2 MiB` |  `64.7 MiB` |   `63.9 MiB` | `14.6 MiB` |  `2.9 MiB` | `113.0 KiB` |
+|    5 | `@platformatic/kafka`               |    5 |   `653,355.35 op/sec` |   `3.39%` |   `+16.89%` | `281.2 MiB` | `216.0 MiB` |  `216.0 MiB` | `87.4 MiB` | `16.3 MiB` |  `12.4 MiB` |
+|    6 | `kafka-crab-js v4 (stream, batch)`  |    5 | `1,167,396.71 op/sec` |   `4.40%` |   `+78.68%` | `171.0 MiB` | `106.0 MiB` |  `105.8 MiB` | `29.5 MiB` |  `8.0 MiB` |   `1.0 MiB` |
 
 ## Consumer Throughput
 
 `kafka-crab-js v4 (stream, batch)` was the fastest scenario in this run.
 
-| Rank | Scenario                            |                 Result | Relative |
-| ---: | ----------------------------------- | ---------------------: | -------: |
-|    1 | `kafka-crab-js v4 (stream, batch)`  | `1,167,396.71 op/sec`  | `100.0%` |
-|    2 | `@platformatic/kafka`               |   `653,355.35 op/sec`  |  `56.0%` |
-|    3 | `kafka-crab-js v4 (stream, serial)` |   `558,968.71 op/sec`  |  `47.9%` |
-|    4 | `KafkaJS (eachBatch)`               |   `478,411.67 op/sec`  |  `41.0%` |
-|    5 | `KafkaJS (eachMessage)`             |   `431,519.93 op/sec`  |  `37.0%` |
-|    6 | `KafkaJS (eachMessage, concurrent)` |   `427,265.29 op/sec`  |  `36.6%` |
+| Rank | Scenario                            |                Result | Relative |
+| ---: | ----------------------------------- | --------------------: | -------: |
+|    1 | `kafka-crab-js v4 (stream, batch)`  | `1,167,396.71 op/sec` | `100.0%` |
+|    2 | `@platformatic/kafka`               |   `653,355.35 op/sec` |  `56.0%` |
+|    3 | `kafka-crab-js v4 (stream, serial)` |   `558,968.71 op/sec` |  `47.9%` |
+|    4 | `KafkaJS (eachBatch)`               |   `478,411.67 op/sec` |  `41.0%` |
+|    5 | `KafkaJS (eachMessage)`             |   `431,519.93 op/sec` |  `37.0%` |
+|    6 | `KafkaJS (eachMessage, concurrent)` |   `427,265.29 op/sec` |  `36.6%` |
 
 ### Throughput Interpretation
 
