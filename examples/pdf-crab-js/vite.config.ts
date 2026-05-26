@@ -35,7 +35,12 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
-    exclude: ['pdf-crab-js'],
+    exclude: ['pdf-crab-js', 'pdf-crab-js/browser.js', 'pdf-crab-js-wasm32-wasi'],
+  },
+  resolve: {
+    alias: {
+      'pdf-crab-js-wasm32-wasi': resolve(currentDirectory, '../../packages/pdf-crab-js/pdf-crab-js.wasi-browser.js'),
+    },
   },
   server: {
     fs: {

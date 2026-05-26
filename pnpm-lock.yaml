@@ -220,10 +220,6 @@ importers:
         version: link:../../packages/pdf-crab-js
 
   packages/html-to-pdf-crab-js:
-    dependencies:
-      buffer:
-        specifier: ^6.0.3
-        version: 6.0.3
     devDependencies:
       '@emnapi/core':
         specifier: 'catalog:'
@@ -255,10 +251,6 @@ importers:
         version: link:../kafka-crab-js
 
   packages/pdf-crab-js:
-    dependencies:
-      buffer:
-        specifier: ^6.0.3
-        version: 6.0.3
     devDependencies:
       '@emnapi/core':
         specifier: 'catalog:'

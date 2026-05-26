@@ -1,4 +1,4 @@
-import type { CreatePdfFromHtmlInput } from '../../../packages/html-to-pdf-crab-js/index.d.ts'
+import type { CreatePdfFromHtmlInput } from 'html-to-pdf-crab-js/browser.js'
 import { Buffer as BrowserBuffer } from 'buffer'
 import './browser.css'
 
@@ -21,8 +21,7 @@ type CreatePdfFromHtmlWasi = (input: WasmCreatePdfFromHtmlInput) => Promise<Uint
 
 globalThis.Buffer ??= BrowserBuffer
 
-const { createPdfFromHtml: createPdfFromHtmlWasi } =
-  await import('../../../packages/html-to-pdf-crab-js/html-to-pdf-crab-js.wasi-browser.js')
+const { createPdfFromHtml: createPdfFromHtmlWasi } = await import('html-to-pdf-crab-js/browser.js')
 
 function isCreatePdfFromHtmlWasi(value: unknown): value is CreatePdfFromHtmlWasi {
   return typeof value === 'function'

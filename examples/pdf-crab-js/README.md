@@ -18,6 +18,5 @@ pnpm --filter pdf-crab-js-examples browser
 ```
 
 Open `/wasm/` on the dev-server URL printed by Vite. The page previews a structured `CreatePdfInput` object and
-renders it into a PDF iframe. The browser example imports the generated
-`packages/pdf-crab-js/pdf-crab-js.wasi-browser.js` entry, which loads the local `pdf-crab-js.wasm32-wasi.wasm`
-artifact next to it.
+renders it into a PDF iframe. The browser example imports `pdf-crab-js/browser.js`; Vite aliases the generated
+`pdf-crab-js-wasm32-wasi` package entry to the local WASI browser build during development.

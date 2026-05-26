@@ -24,9 +24,8 @@ pnpm --filter html-to-pdf-crab-js-examples browser
 ```
 
 Open `/wasm/` on the dev-server URL printed by Vite. The page previews `invoice.html` and renders that same HTML/CSS
-into a PDF iframe. The browser example imports the generated
-`packages/html-to-pdf-crab-js/html-to-pdf-crab-js.wasi-browser.js` entry, which loads the local
-`html-to-pdf-crab-js.wasm32-wasi.wasm` artifact next to it.
+into a PDF iframe. The browser example imports `html-to-pdf-crab-js/browser.js`; Vite aliases the generated
+`html-to-pdf-crab-js-wasm32-wasi` package entry to the local WASI browser build during development.
 
 Preview the source HTML in a browser:
 

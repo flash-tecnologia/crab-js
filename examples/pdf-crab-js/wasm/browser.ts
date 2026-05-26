@@ -1,4 +1,4 @@
-import type { CreatePdfInput } from '../../../packages/pdf-crab-js/index.d.ts'
+import type { CreatePdfInput } from 'pdf-crab-js/browser.js'
 import { Buffer as BrowserBuffer } from 'buffer'
 import './browser.css'
 
@@ -7,7 +7,7 @@ type ElementConstructor<T extends Element> = new (...args: never[]) => T
 
 globalThis.Buffer ??= BrowserBuffer
 
-const { createPdf: createPdfWasi } = await import('../../../packages/pdf-crab-js/pdf-crab-js.wasi-browser.js')
+const { createPdf: createPdfWasi } = await import('pdf-crab-js/browser.js')
 
 function isCreatePdfWasi(value: unknown): value is CreatePdfWasi {
   return typeof value === 'function'

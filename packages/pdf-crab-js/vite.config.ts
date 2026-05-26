@@ -1,14 +1,17 @@
 import { defineConfig } from 'vite-plus'
 import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vite.shared.mjs'
 
-const pdfLintIgnorePatterns = [
-  ...(sharedLintConfig?.ignorePatterns ?? []),
+const napiGeneratedFiles = [
   'browser.js',
   'index.js',
   'index.cjs',
   'index.d.ts',
-  'npm/**',
+  '*.wasi.cjs',
+  '*.wasi-browser.js',
+  'wasi-worker*.mjs',
 ]
+
+const pdfLintIgnorePatterns = [...(sharedLintConfig?.ignorePatterns ?? []), ...napiGeneratedFiles, 'npm/**']
 
 export default defineConfig({
   fmt: {

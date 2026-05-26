@@ -35,7 +35,15 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
-    exclude: ['html-to-pdf-crab-js'],
+    exclude: ['html-to-pdf-crab-js', 'html-to-pdf-crab-js/browser.js', 'html-to-pdf-crab-js-wasm32-wasi'],
+  },
+  resolve: {
+    alias: {
+      'html-to-pdf-crab-js-wasm32-wasi': resolve(
+        currentDirectory,
+        '../../packages/html-to-pdf-crab-js/html-to-pdf-crab-js.wasi-browser.js',
+      ),
+    },
   },
   server: {
     fs: {

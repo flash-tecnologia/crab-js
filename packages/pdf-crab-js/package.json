@@ -34,6 +34,14 @@
       "import": "./index.js",
       "require": "./index.cjs"
     },
+    "./browser": {
+      "types": "./index.d.ts",
+      "default": "./browser.js"
+    },
+    "./browser.js": {
+      "types": "./index.d.ts",
+      "default": "./browser.js"
+    },
     "./wasm": {
       "types": "./index.d.ts",
       "import": "./browser.js",
@@ -59,9 +67,6 @@
     "prepublishOnly": "napi prepublish -t npm",
     "test": "vp test run js-tests/unit",
     "test:wasm": "NAPI_RS_FORCE_WASI=error node js-tests/wasm-smoke.mjs"
-  },
-  "dependencies": {
-    "buffer": "^6.0.3"
   },
   "devDependencies": {
     "@emnapi/core": "catalog:",
