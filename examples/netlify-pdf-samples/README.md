@@ -1,4 +1,4 @@
-# Crab PDF Studio
+# Crab JS PDF Libraries
 
 This folder is ready for Netlify Drop.
 
@@ -8,6 +8,10 @@ This folder is ready for Netlify Drop.
 
 For a Git-connected Netlify site, use this folder as the site base directory. The included
 `netlify.toml` sets the publish directory to this folder and configures the same headers as `_headers`.
+
+Published sample:
+
+- https://pdf-crab-js.netlify.app/
 
 Source:
 

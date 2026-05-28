@@ -1,14 +1,19 @@
-const PACKAGE_VERSION = '0.1.1'
+const PACKAGE_VERSION = '0.1.2'
 const RUNTIME_URL = 'https://esm.sh/@napi-rs/wasm-runtime@1.1.4?target=es2022'
 const PDF_CRAB_WASM_URL = `https://cdn.jsdelivr.net/npm/pdf-crab-js-wasm32-wasi@${PACKAGE_VERSION}/pdf-crab-js.wasm32-wasi.wasm`
 const HTML_TO_PDF_WASM_URL = `https://cdn.jsdelivr.net/npm/html-to-pdf-crab-js-wasm32-wasi@${PACKAGE_VERSION}/html-to-pdf-crab-js.wasm32-wasi.wasm`
 const HTML_TO_PDF_FONT_URL = './assets/Tuffy.ttf'
+const HASH_BY_MODE = {
+  fast: 'pdf-crab-js',
+  html: 'html-to-pdf-crab-js',
+}
+const MODE_BY_HASH = new Map(Object.entries(HASH_BY_MODE).map(([mode, hash]) => [hash, mode]))
 
 const defaultHtml = `<article class="report">
   <header class="hero">
     <div>
       <p class="eyebrow">Quarterly platform brief</p>
-      <h1>Crab PDF Studio</h1>
+      <h1>Crab JS PDF Libraries</h1>
       <p class="subtitle">A richer HTML document rendered in-browser with html-to-pdf-crab-js.</p>
     </div>
     <aside class="stamp">
@@ -24,7 +29,7 @@ const defaultHtml = `<article class="report">
     </div>
     <div>
       <span>Generated on</span>
-      <strong>2026-05-26</strong>
+      <strong>2026-05-27</strong>
     </div>
     <div>
       <span>Runtime</span>
@@ -109,7 +114,7 @@ const defaultHtml = `<article class="report">
 
   <footer class="report-footer">
     <span>github.com/flash-tecnologia/crab-js</span>
-    <strong>Generated with html-to-pdf-crab-js 0.1.1</strong>
+    <strong>Generated with html-to-pdf-crab-js 0.1.2</strong>
   </footer>
 </article>`
 
@@ -303,16 +308,23 @@ td {
 
 const elements = {
   accentColor: document.getElementById('accentColor'),
+  badgeText: document.getElementById('badgeText'),
   cssInput: document.getElementById('cssInput'),
   customerName: document.getElementById('customerName'),
   docNote: document.getElementById('docNote'),
+  docSubtitle: document.getElementById('docSubtitle'),
   docTitle: document.getElementById('docTitle'),
   downloadLink: document.getElementById('downloadLink'),
-  fastForm: document.getElementById('fastForm'),
+  fastForm: document.querySelector('[data-panel="fast"]'),
+  footerText: document.getElementById('footerText'),
   generateActions: [...document.querySelectorAll('.generate-action')],
-  htmlForm: document.getElementById('htmlForm'),
+  htmlForm: document.querySelector('[data-panel="html"]'),
   htmlInput: document.getElementById('htmlInput'),
   htmlPreviewFrame: document.getElementById('htmlPreviewFrame'),
+  itemOneAmount: document.getElementById('itemOneAmount'),
+  itemOneLabel: document.getElementById('itemOneLabel'),
+  itemTwoAmount: document.getElementById('itemTwoAmount'),
+  itemTwoLabel: document.getElementById('itemTwoLabel'),
   modePanels: [...document.querySelectorAll('[data-panel]')],
   modeTabs: [...document.querySelectorAll('[data-mode]')],
   openButton: document.getElementById('openButton'),
@@ -323,12 +335,10 @@ const elements = {
   pdfPanel: document.querySelector('.pdf-panel'),
   pdfPreview: document.getElementById('pdfPreview'),
   runtimeBadge: document.getElementById('runtimeBadge'),
-  setupAmount: document.getElementById('setupAmount'),
   status: document.getElementById('status'),
-  usageAmount: document.getElementById('usageAmount'),
 }
 
-let currentMode = 'fast'
+let currentMode = getModeFromHash() || 'fast'
 let currentPdfUrl
 let htmlToPdfExportsPromise
 let htmlToPdfFontPromise
@@ -363,23 +373,47 @@ function setRuntimeState() {
   return ready
 }
 
-function switchMode(mode) {
-  currentMode = mode
+function getModeFromHash(hash = window.location.hash) {
+  const anchor = decodeURIComponent(hash.replace(/^#/, '')).toLowerCase()
+  return MODE_BY_HASH.get(anchor)
+}
+
+function syncHash(mode) {
+  const nextHash = `#${HASH_BY_MODE[mode]}`
+
+  if (window.location.hash !== nextHash) {
+    window.history.pushState(null, '', nextHash)
+  }
+}
+
+function switchMode(mode, options = {}) {
+  const nextMode = mode === 'html' ? 'html' : 'fast'
+  currentMode = nextMode
 
   for (const tab of elements.modeTabs) {
-    const active = tab.dataset.mode === mode
+    const active = tab.dataset.mode === nextMode
     tab.classList.toggle('is-active', active)
     tab.setAttribute('aria-selected', String(active))
+
+    if (active) {
+      tab.setAttribute('aria-current', 'page')
+    } else {
+      tab.removeAttribute('aria-current')
+    }
   }
 
   for (const panel of elements.modePanels) {
-    panel.classList.toggle('is-active', panel.dataset.panel === mode)
+    panel.classList.toggle('is-active', panel.dataset.panel === nextMode)
   }
 
-  elements.outputTitle.textContent = mode === 'fast' ? 'Fast PDF output' : 'HTML PDF output'
+  elements.outputTitle.textContent = nextMode === 'fast' ? 'pdf-crab-js output' : 'html-to-pdf-crab-js output'
+
+  if (options.updateHash) {
+    syncHash(nextMode)
+  }
 
   if (setRuntimeState()) {
-    setStatus(mode === 'fast' ? 'Ready to generate a structured PDF.' : 'Ready to render HTML into PDF.')
+    setStatus(nextMode === 'fast' ? 'Ready to generate with pdf-crab-js.' : 'Ready to render with html-to-pdf-crab-js.')
   }
 }
 
@@ -588,12 +622,17 @@ function readText(input, fallback) {
 
 function buildFastDocumentInput() {
   const title = readText(elements.docTitle, 'WASM PDF sample')
+  const subtitle = readText(elements.docSubtitle, 'Generated with WebAssembly')
   const customer = readText(elements.customerName, 'Netlify Preview')
   const note = readText(elements.docNote, 'Generated in the browser with pdf-crab-js.')
+  const badge = readText(elements.badgeText, 'WASM')
+  const footer = readText(elements.footerText, `npm: pdf-crab-js@${PACKAGE_VERSION}`)
+  const itemOneLabel = readText(elements.itemOneLabel, 'WASM setup')
+  const itemTwoLabel = readText(elements.itemTwoLabel, 'PDF generation usage')
   const accent = elements.accentColor.value
-  const setup = readAmount(elements.setupAmount)
-  const usage = readAmount(elements.usageAmount)
-  const total = setup + usage
+  const itemOneAmount = readAmount(elements.itemOneAmount)
+  const itemTwoAmount = readAmount(elements.itemTwoAmount)
+  const total = itemOneAmount + itemTwoAmount
 
   return {
     title,
@@ -613,16 +652,16 @@ function buildFastDocumentInput() {
           { type: 'rect', x: 0, y: 0, width: 210, height: 297, fill: '#ffffff' },
           { type: 'rect', x: 16, y: 244, width: 178, height: 34, fill: accent },
           { type: 'text', text: title, x: 24, y: 264, fontSize: 21, fill: '#ffffff' },
-          { type: 'text', text: 'Generated with WebAssembly', x: 24, y: 253, fontSize: 9, fill: '#eef5ff' },
+          { type: 'text', text: subtitle, x: 24, y: 253, fontSize: 9, fill: '#eef5ff' },
           { type: 'text', text: 'Bill to', x: 18, y: 225, fontSize: 10, fill: '#64748b' },
           { type: 'text', text: customer, x: 18, y: 214, fontSize: 17, fill: '#111827' },
           { type: 'line', x1: 18, y1: 198, x2: 192, y2: 198, stroke: '#cbd5e1', strokeWidth: 1 },
           { type: 'text', text: 'Item', x: 22, y: 184, fontSize: 10, fill: '#64748b' },
           { type: 'text', text: 'Amount', x: 152, y: 184, fontSize: 10, fill: '#64748b' },
-          { type: 'text', text: 'WASM setup', x: 22, y: 170, fontSize: 12, fill: '#111827' },
-          { type: 'text', text: money(setup), x: 152, y: 170, fontSize: 12, fill: '#111827' },
-          { type: 'text', text: 'PDF generation usage', x: 22, y: 156, fontSize: 12, fill: '#111827' },
-          { type: 'text', text: money(usage), x: 152, y: 156, fontSize: 12, fill: '#111827' },
+          { type: 'text', text: itemOneLabel, x: 22, y: 170, fontSize: 12, fill: '#111827' },
+          { type: 'text', text: money(itemOneAmount), x: 152, y: 170, fontSize: 12, fill: '#111827' },
+          { type: 'text', text: itemTwoLabel, x: 22, y: 156, fontSize: 12, fill: '#111827' },
+          { type: 'text', text: money(itemTwoAmount), x: 152, y: 156, fontSize: 12, fill: '#111827' },
           { type: 'rect', x: 118, y: 119, width: 74, height: 22, fill: '#f1f5f9' },
           { type: 'text', text: 'Total', x: 126, y: 132, fontSize: 10, fill: '#64748b' },
           { type: 'text', text: money(total), x: 152, y: 132, fontSize: 15, fill: '#111827' },
@@ -639,7 +678,7 @@ function buildFastDocumentInput() {
             strokeWidth: 1,
             closed: true,
           },
-          { type: 'text', text: 'WASM', x: 40, y: 83, fontSize: 13, fill: '#126044' },
+          { type: 'text', text: badge, x: 39, y: 83, fontSize: 12, fill: '#126044' },
           {
             type: 'textBox',
             text: note,
@@ -652,7 +691,7 @@ function buildFastDocumentInput() {
             lineHeight: 13,
           },
           { type: 'line', x1: 18, y1: 34, x2: 192, y2: 34, stroke: '#cbd5e1', strokeWidth: 1 },
-          { type: 'text', text: 'npm: pdf-crab-js@0.1.1', x: 18, y: 22, fontSize: 8, fill: '#64748b' },
+          { type: 'text', text: footer, x: 18, y: 22, fontSize: 8, fill: '#64748b' },
         ],
         annotations: [
           {
@@ -734,7 +773,7 @@ async function generateFastPdf(event) {
     const elapsedMs = Math.round(performance.now() - startedAt)
 
     setPdfBlob(blob, documentInput.title, 'pdf-crab-js-sample')
-    setStatus(`Fast PDF generated: ${blob.size.toLocaleString()} bytes in ${elapsedMs.toLocaleString()} ms.`)
+    setStatus(`pdf-crab-js generated: ${blob.size.toLocaleString()} bytes in ${elapsedMs.toLocaleString()} ms.`)
   } catch (error) {
     pdfCrabExportsPromise = undefined
     setStatus(error instanceof Error ? error.message : 'Unable to generate the fast PDF.', 'error')
@@ -767,7 +806,7 @@ async function generateHtmlPdf(event) {
     const elapsedMs = Math.round(performance.now() - startedAt)
 
     setPdfBlob(blob, 'html-to-pdf-crab-js demo', 'html-to-pdf-crab-js-sample')
-    setStatus(`HTML PDF generated: ${blob.size.toLocaleString()} bytes in ${elapsedMs.toLocaleString()} ms.`)
+    setStatus(`html-to-pdf-crab-js generated: ${blob.size.toLocaleString()} bytes in ${elapsedMs.toLocaleString()} ms.`)
   } catch (error) {
     htmlToPdfExportsPromise = undefined
     setStatus(error instanceof Error ? error.message : 'Unable to render the HTML PDF.', 'error')
@@ -775,8 +814,19 @@ async function generateHtmlPdf(event) {
 }
 
 for (const tab of elements.modeTabs) {
-  tab.addEventListener('click', () => switchMode(tab.dataset.mode))
+  tab.addEventListener('click', (event) => {
+    event.preventDefault()
+    switchMode(tab.dataset.mode, { updateHash: true })
+  })
 }
+
+window.addEventListener('hashchange', () => {
+  const mode = getModeFromHash()
+
+  if (mode) {
+    switchMode(mode)
+  }
+})
 
 elements.fastForm.addEventListener('submit', generateFastPdf)
 elements.htmlForm.addEventListener('submit', generateHtmlPdf)

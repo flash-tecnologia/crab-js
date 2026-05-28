@@ -6,6 +6,26 @@ This package compares PDF generation paths with the same generated table dataset
 - `Node + html-to-pdf-crab`: local native `html-to-pdf-crab-js` HTML-to-PDF generation.
 - `Node + Gotenberg`: Node.js multipart upload to Gotenberg's Chromium HTML-to-PDF endpoint.
 
+## 10-page Snapshot
+
+Local 10-page benchmark, fastest to slowest by execution time:
+
+| Order | Language                | Mode       | Execution time |       Throughput |
+| ----- | ----------------------- | ---------- | -------------: | ---------------: |
+| 1     | Node + pdf-crab         | local      |       4.116 ms | 2429.253 pages/s |
+| 2     | Node + pdf-crab         | builder    |       4.232 ms | 2362.863 pages/s |
+| 3     | Node + html-to-pdf-crab | local-html |      62.327 ms |  160.443 pages/s |
+| 4     | Node + Gotenberg        | gotenberg  |     128.304 ms |   77.940 pages/s |
+
+Interpretation:
+
+- `pdf-crab-js` is the fastest path when the document can be represented as structured PDF pages
+  and elements.
+- `html-to-pdf-crab-js` is the easy HTML/CSS path. It avoids Chromium/Gotenberg while still doing
+  HTML layout work.
+- Gotenberg is useful when Chromium compatibility is required, but it adds a service boundary and
+  browser conversion overhead.
+
 ## Setup
 
 Start Gotenberg locally when running the Gotenberg scenario:

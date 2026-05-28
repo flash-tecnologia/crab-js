@@ -2,86 +2,150 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>HTML-to-PDF Operational Report</title>
+    <title>HTML-to-PDF Rendering Report</title>
     <link rel="stylesheet" href="./report.css" />
   </head>
   <body>
-    <main>
-      <header>
+    <main class="report">
+      <header class="report-header">
         <div>
-          <p class="eyebrow">Operations</p>
+          <p class="eyebrow">Operations / May 2026</p>
           <h1>HTML-to-PDF Rendering Report</h1>
+          <p class="lede">Production rendering health across invoices, statements, reports, and employee letters.</p>
         </div>
-        <p class="date">May 24, 2026</p>
+        <aside class="scorecard">
+          <span>PDF size p95</span>
+          <strong>142 KB</strong>
+          <small>+4.8% from previous week</small>
+        </aside>
       </header>
 
-      <section class="metrics">
+      <section class="metrics" aria-label="Rendering metrics">
         <article class="metric">
           <span>Documents</span>
           <strong>18,420</strong>
           <small>+12.6%</small>
+          <div class="meter"><i style="width: 82%"></i></div>
         </article>
         <article class="metric">
           <span>Median render</span>
           <strong>84 ms</strong>
           <small>-9.1%</small>
+          <div class="meter"><i style="width: 42%"></i></div>
         </article>
         <article class="metric">
           <span>Error rate</span>
           <strong>0.08%</strong>
           <small>-0.03 pp</small>
+          <div class="meter meter-good"><i style="width: 18%"></i></div>
         </article>
         <article class="metric">
-          <span>PDF size p95</span>
-          <strong>142 KB</strong>
-          <small>+4.8%</small>
+          <span>SLA inside target</span>
+          <strong>99.94%</strong>
+          <small>target 99.9%</small>
+          <div class="meter"><i style="width: 96%"></i></div>
         </article>
       </section>
 
-      <section>
-        <h2>Queues</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>Owner</th>
-              <th>Queue</th>
-              <th>P95</th>
-              <th>Volume</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><span class="status">Healthy</span></td>
-              <td>Platform</td>
-              <td>invoice-rendering</td>
-              <td>126 ms</td>
-              <td>9,340</td>
-            </tr>
-            <tr>
-              <td><span class="status">Healthy</span></td>
-              <td>Benefits</td>
-              <td>statement-export</td>
-              <td>188 ms</td>
-              <td>5,210</td>
-            </tr>
-            <tr>
-              <td><span class="status status-watch">Watch</span></td>
-              <td>Finance</td>
-              <td>bulk-reports</td>
-              <td>412 ms</td>
-              <td>2,870</td>
-            </tr>
-            <tr>
-              <td><span class="status">Healthy</span></td>
-              <td>People</td>
-              <td>letters</td>
-              <td>95 ms</td>
-              <td>1,000</td>
-            </tr>
-          </tbody>
-        </table>
+      <section class="content-grid">
+        <article class="panel panel-wide">
+          <div class="panel-header">
+            <h2>Queue Health</h2>
+            <span>last 24h</span>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Owner</th>
+                <th>Queue</th>
+                <th>P50</th>
+                <th>P95</th>
+                <th>Volume</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="status">Healthy</span></td>
+                <td>Platform</td>
+                <td>invoice-rendering</td>
+                <td>71 ms</td>
+                <td>126 ms</td>
+                <td>9,340</td>
+              </tr>
+              <tr>
+                <td><span class="status">Healthy</span></td>
+                <td>Benefits</td>
+                <td>statement-export</td>
+                <td>89 ms</td>
+                <td>188 ms</td>
+                <td>5,210</td>
+              </tr>
+              <tr>
+                <td><span class="status status-watch">Watch</span></td>
+                <td>Finance</td>
+                <td>bulk-reports</td>
+                <td>210 ms</td>
+                <td>412 ms</td>
+                <td>2,870</td>
+              </tr>
+              <tr>
+                <td><span class="status">Healthy</span></td>
+                <td>People</td>
+                <td>letters</td>
+                <td>52 ms</td>
+                <td>95 ms</td>
+                <td>1,000</td>
+              </tr>
+            </tbody>
+          </table>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Render Pipeline</h2>
+            <span>WASM path</span>
+          </div>
+          <ol class="timeline">
+            <li><strong>Load HTML</strong><span>Resolve markup and CSS assets.</span></li>
+            <li><strong>Attach fonts</strong><span>Use bundled Tuffy font for deterministic output.</span></li>
+            <li><strong>Layout page</strong><span>Apply A4 landscape page and fixed margins.</span></li>
+            <li><strong>Write PDF</strong><span>Return a binary buffer ready to download.</span></li>
+          </ol>
+        </article>
       </section>
+
+      <section class="content-grid content-grid-bottom">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Regional Mix</h2>
+            <span>document share</span>
+          </div>
+          <div class="bar-list">
+            <div><span>Brazil</span><b style="width: 74%"></b><em>7,940</em></div>
+            <div><span>Mexico</span><b style="width: 48%"></b><em>5,180</em></div>
+            <div><span>Colombia</span><b style="width: 32%"></b><em>3,410</em></div>
+            <div><span>Chile</span><b style="width: 18%"></b><em>1,890</em></div>
+          </div>
+        </article>
+
+        <article class="panel accent-panel">
+          <div class="panel-header">
+            <h2>Release Notes</h2>
+            <span>0.1.2</span>
+          </div>
+          <ul class="checklist">
+            <li><strong>Static hosting ready</strong><span>COOP/COEP headers validated on Netlify.</span></li>
+            <li><strong>Font assets bundled</strong><span>Browser example passes explicit font bytes.</span></li>
+            <li><strong>PDF previews refreshed</strong><span>README screenshots show generated output.</span></li>
+          </ul>
+        </article>
+      </section>
+
+      <footer class="report-footer">
+        <span>Generated with html-to-pdf-crab-js</span>
+        <strong>github.com/flash-tecnologia/crab-js</strong>
+      </footer>
     </main>
   </body>
 </html>

@@ -3,15 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Crab PDF Studio</title>
+    <title>Crab JS PDF Libraries</title>
     <link rel="stylesheet" href="./src/css-panel.css" />
   </head>
   <body>
     <main class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">crab-js WASM 0.1.1</p>
-          <h1>Crab PDF Studio</h1>
+          <p class="eyebrow">crab-js WASM 0.1.2</p>
+          <h1>Crab JS PDF Libraries</h1>
           <p class="source-links">
             Source:
             <a href="https://github.com/flash-tecnologia/crab-js" target="_blank" rel="noreferrer"
@@ -36,16 +36,40 @@
         <span id="runtimeBadge" class="runtime-badge">Checking runtime</span>
       </header>
 
-      <nav class="mode-tabs" aria-label="PDF generator mode">
-        <button class="mode-tab is-active" type="button" data-mode="fast" aria-selected="true">Fast PDF</button>
-        <button class="mode-tab" type="button" data-mode="html" aria-selected="false">HTML to PDF</button>
+      <nav class="mode-tabs" aria-label="PDF generator mode" role="tablist">
+        <a
+          id="pdf-crab-js-tab"
+          class="mode-tab is-active"
+          href="#pdf-crab-js"
+          data-mode="fast"
+          role="tab"
+          aria-controls="pdf-crab-js"
+          aria-selected="true"
+          >pdf-crab-js</a
+        >
+        <a
+          id="html-to-pdf-crab-js-tab"
+          class="mode-tab"
+          href="#html-to-pdf-crab-js"
+          data-mode="html"
+          role="tab"
+          aria-controls="html-to-pdf-crab-js"
+          aria-selected="false"
+          >html-to-pdf-crab-js</a
+        >
       </nav>
 
       <p id="status" class="status" role="status">Ready.</p>
 
       <section class="workspace">
         <div class="controls">
-          <form id="fastForm" class="mode-panel is-active" data-panel="fast">
+          <form
+            id="pdf-crab-js"
+            class="mode-panel is-active"
+            data-panel="fast"
+            role="tabpanel"
+            aria-labelledby="pdf-crab-js-tab"
+          >
             <div class="section-title">
               <p class="eyebrow">pdf-crab-js</p>
               <h2>Structured PDF</h2>
@@ -54,6 +78,11 @@
             <label class="field">
               <span>Document title</span>
               <input id="docTitle" maxlength="48" value="WASM PDF sample" />
+            </label>
+
+            <label class="field">
+              <span>Subtitle</span>
+              <input id="docSubtitle" maxlength="70" value="Generated with WebAssembly" />
             </label>
 
             <label class="field">
@@ -66,14 +95,37 @@
               <input id="accentColor" type="color" value="#2f6fed" aria-label="Accent color" />
             </label>
 
+            <div class="line-items">
+              <div class="line-item-row">
+                <label class="field">
+                  <span>Item 1 label</span>
+                  <input id="itemOneLabel" maxlength="42" value="WASM setup" />
+                </label>
+                <label class="field amount-field">
+                  <span>Amount</span>
+                  <input id="itemOneAmount" type="number" min="0" max="9999" step="25" value="450" />
+                </label>
+              </div>
+              <div class="line-item-row">
+                <label class="field">
+                  <span>Item 2 label</span>
+                  <input id="itemTwoLabel" maxlength="42" value="PDF generation usage" />
+                </label>
+                <label class="field amount-field">
+                  <span>Amount</span>
+                  <input id="itemTwoAmount" type="number" min="0" max="9999" step="25" value="725" />
+                </label>
+              </div>
+            </div>
+
             <div class="two-column">
               <label class="field">
-                <span>Setup</span>
-                <input id="setupAmount" type="number" min="0" max="9999" step="25" value="450" />
+                <span>Badge</span>
+                <input id="badgeText" maxlength="12" value="WASM" />
               </label>
               <label class="field">
-                <span>Usage</span>
-                <input id="usageAmount" type="number" min="0" max="9999" step="25" value="725" />
+                <span>Footer</span>
+                <input id="footerText" maxlength="56" value="npm: pdf-crab-js@0.1.2" />
               </label>
             </div>
 
@@ -84,10 +136,16 @@ Generated in the browser with the pdf-crab-js WebAssembly build.</textarea
               >
             </label>
 
-            <button class="primary-action generate-action" type="submit">Generate Fast PDF</button>
+            <button class="primary-action generate-action" type="submit">Generate pdf-crab-js</button>
           </form>
 
-          <form id="htmlForm" class="mode-panel" data-panel="html">
+          <form
+            id="html-to-pdf-crab-js"
+            class="mode-panel"
+            data-panel="html"
+            role="tabpanel"
+            aria-labelledby="html-to-pdf-crab-js-tab"
+          >
             <div class="section-title">
               <p class="eyebrow">html-to-pdf-crab-js</p>
               <h2>Rendered HTML</h2>
@@ -123,7 +181,7 @@ Generated in the browser with the pdf-crab-js WebAssembly build.</textarea
               <iframe id="htmlPreviewFrame" title="HTML preview"></iframe>
             </div>
 
-            <button class="primary-action generate-action" type="submit">Generate HTML PDF</button>
+            <button class="primary-action generate-action" type="submit">Generate html-to-pdf-crab-js</button>
           </form>
         </div>
 
