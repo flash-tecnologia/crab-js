@@ -14,12 +14,12 @@ next to the project that owns them.
 
 ### Published Packages
 
-| Package                                               | Purpose                                                                            | Documentation                                      |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------- |
-| [kafka-crab-js](./packages/kafka-crab-js)             | Native Kafka client with producer, consumer, batch, Node stream, and Web APIs.     | [README](./packages/kafka-crab-js/README.md)       |
-| [pdf-crab-js](./packages/pdf-crab-js)                 | Low-level PDF generation helpers built on pdf-writer, with native and WASM builds. | [README](./packages/pdf-crab-js/README.md)         |
-| [html-to-pdf-crab-js](./packages/html-to-pdf-crab-js) | HTML-to-PDF conversion backed by Fulgur, with native and WASM builds.              | [README](./packages/html-to-pdf-crab-js/README.md) |
-| [kafka-crab-js-otel](./packages/kafka-crab-js-otel)   | Optional OpenTelemetry instrumentation for `kafka-crab-js` diagnostics channels.   | [README](./packages/kafka-crab-js-otel/README.md)  |
+| Package                                               | Purpose                                                                                      | Documentation                                      |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| [kafka-crab-js](./packages/kafka-crab-js)             | Native Kafka client with producer, consumer, batch, Node stream, and Web APIs.               | [README](./packages/kafka-crab-js/README.md)       |
+| [pdf-crab-js](./packages/pdf-crab-js)                 | Fast structured PDF generation built on Rust and pdf-writer, with native and WASM builds.    | [README](./packages/pdf-crab-js/README.md)         |
+| [html-to-pdf-crab-js](./packages/html-to-pdf-crab-js) | Chromium-free HTML-to-PDF conversion backed by a Rust renderer, with native and WASM builds. | [README](./packages/html-to-pdf-crab-js/README.md) |
+| [kafka-crab-js-otel](./packages/kafka-crab-js-otel)   | Optional OpenTelemetry instrumentation for `kafka-crab-js` diagnostics channels.             | [README](./packages/kafka-crab-js-otel/README.md)  |
 
 ### Examples
 
@@ -34,16 +34,16 @@ next to the project that owns them.
 | Benchmark Package                     | Purpose                                                                                           |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | [kafka-benchmark](./benchmarks/kafka) | Isolated-process consumer benchmark with memory, GC, throughput charts, and V8 profiling scripts. |
-| [pdf-benchmark](./benchmarks/pdf)     | PDF generation benchmark comparing local `pdf-crab-js` output with Node.js requests to Gotenberg. |
+| [pdf-benchmark](./benchmarks/pdf)     | PDF generation benchmark comparing `pdf-crab-js`, `html-to-pdf-crab-js`, and Gotenberg.           |
 | [BENCHMARKS.md](./BENCHMARKS.md)      | Latest captured Kafka benchmark snapshot and notes.                                               |
 
 ## Package Boundaries
 
 - `kafka-crab-js` owns Kafka producer/consumer APIs and native librdkafka integration.
 - `kafka-crab-js-otel` owns OpenTelemetry tracing and metrics. OTEL is intentionally outside the core Kafka package.
-- `pdf-crab-js` owns explicit PDF construction from structured page and drawing-element inputs.
-- `html-to-pdf-crab-js` owns HTML/CSS rendering to PDF. It carries the Fulgur dependency separately from
-  `pdf-crab-js`.
+- `pdf-crab-js` owns fast explicit PDF construction from structured page and drawing-element inputs.
+- `html-to-pdf-crab-js` owns easy HTML/CSS rendering to PDF without a Chromium service. It carries the renderer
+  dependency separately from `pdf-crab-js`.
 - Browser WASM usage for PDF packages is demonstrated in each example package and requires COOP/COEP headers for
   `SharedArrayBuffer`.
 

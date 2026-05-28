@@ -2,11 +2,23 @@
 
 Runnable examples for generating PDFs from HTML with `html-to-pdf-crab-js`.
 
-Each example keeps the HTML and CSS in standalone files so you can open the HTML directly in a browser and compare it
-with the generated PDF output.
+Each example keeps the HTML and CSS in standalone files so you can open the HTML directly in a
+browser and compare it with the generated PDF output.
 
-The examples pass `assets/Tuffy.ttf` through the `fonts` input. This is required for deterministic WASM browser
-rendering because the WASI runtime does not have access to system fonts.
+The examples pass `assets/Tuffy.ttf` through the `fonts` input. This is required for deterministic
+WASM browser rendering because the WASI runtime does not have access to system fonts.
+
+## PDF Results
+
+Invoice document from `invoice.ts`:
+
+![html-to-pdf-crab-js invoice PDF result](./screenshots/html-to-pdf-invoice-example.pdf.png)
+
+Operational report from `report.ts`:
+
+![html-to-pdf-crab-js report PDF result](./screenshots/html-to-pdf-report-example.pdf.png)
+
+## Run
 
 Run from the repository root:
 
@@ -23,9 +35,10 @@ Run the browser WASM example:
 pnpm --filter html-to-pdf-crab-js-examples browser
 ```
 
-Open `/wasm/` on the dev-server URL printed by Vite. The page previews `invoice.html` and renders that same HTML/CSS
-into a PDF iframe. The browser example imports `html-to-pdf-crab-js/browser.js`; Vite aliases the generated
-`html-to-pdf-crab-js-wasm32-wasi` package entry to the local WASI browser build during development.
+Open `/wasm/` on the dev-server URL printed by Vite. The page previews `report.html` and renders
+that same HTML/CSS into a PDF iframe. The browser example imports `html-to-pdf-crab-js/browser.js`;
+Vite aliases the generated `html-to-pdf-crab-js-wasm32-wasi` package entry to the local WASI browser
+build during development.
 
 Preview the source HTML in a browser:
 
@@ -40,4 +53,15 @@ You can also run the package-level aliases:
 pnpm --filter html-to-pdf-crab-js example
 pnpm --filter html-to-pdf-crab-js example:report
 pnpm --filter html-to-pdf-crab-js example:browser
+```
+
+## Screenshot Maintenance
+
+Regenerate the PDFs, then refresh the screenshot thumbnails:
+
+```bash
+pnpm --filter html-to-pdf-crab-js-examples invoice
+pnpm --filter html-to-pdf-crab-js-examples report
+qlmanage -t -s 1200 -o examples/html-to-pdf-crab-js/screenshots examples/html-to-pdf-crab-js/output/html-to-pdf-invoice-example.pdf
+qlmanage -t -s 1200 -o examples/html-to-pdf-crab-js/screenshots examples/html-to-pdf-crab-js/output/html-to-pdf-report-example.pdf
 ```

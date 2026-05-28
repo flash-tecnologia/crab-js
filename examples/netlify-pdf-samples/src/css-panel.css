@@ -133,7 +133,11 @@ h2 {
 }
 
 .mode-tab {
+  display: inline-flex;
+  min-width: 160px;
   min-height: 40px;
+  align-items: center;
+  justify-content: center;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -141,6 +145,9 @@ h2 {
   padding: 0 16px;
   font-weight: 850;
   cursor: pointer;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: normal;
 }
 
 .mode-tab.is-active {
@@ -183,6 +190,7 @@ h2 {
   display: none;
   gap: 14px;
   padding: 18px;
+  scroll-margin-top: 18px;
 }
 
 .mode-panel.is-active {
@@ -243,6 +251,21 @@ input[type='color'] {
   gap: 12px;
 }
 
+.line-items {
+  display: grid;
+  gap: 12px;
+}
+
+.line-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, 0.38fr);
+  gap: 12px;
+}
+
+.amount-field input {
+  text-align: right;
+}
+
 .code-input {
   min-height: 190px;
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
@@ -289,6 +312,8 @@ input[type='color'] {
   width: 100%;
   background: #1f5f8b;
   color: #ffffff;
+  text-align: center;
+  white-space: normal;
 }
 
 .primary-action:hover {
@@ -412,8 +437,13 @@ input[type='color'] {
 
 @media (max-width: 520px) {
   .two-column,
+  .line-item-row,
   .mode-tabs {
     grid-template-columns: 1fr;
+  }
+
+  .mode-tab {
+    min-width: 0;
   }
 
   .pdf-actions {

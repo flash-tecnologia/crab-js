@@ -86,7 +86,7 @@ function setStatus(message: string): void {
 
 function setDownloadUrl(url: string): void {
   downloadLink.href = url
-  downloadLink.download = 'html-to-pdf-invoice-browser-example.pdf'
+  downloadLink.download = 'html-to-pdf-report-browser-example.pdf'
   downloadLink.setAttribute('aria-disabled', 'false')
 }
 
@@ -98,7 +98,7 @@ function createPdfBlob(pdf: Uint8Array): Blob {
 }
 
 function htmlForPdf(input: string): string {
-  return input.replace('<link rel="stylesheet" href="./invoice.css" />', '')
+  return input.replace('<link rel="stylesheet" href="./report.css" />', '')
 }
 
 function toBase64(value: Uint8Array): string {
@@ -134,12 +134,12 @@ async function createPdfFromHtml(input: BrowserCreatePdfFromHtmlInput): Promise<
 
 async function renderPdf(): Promise<void> {
   renderButton.disabled = true
-  setStatus('Rendering invoice.html with the WASM package...')
+  setStatus('Rendering report.html with the WASM package...')
 
   try {
     const [html, css, font] = await Promise.all([
-      readText('../invoice.html', 'text/html'),
-      readText('../invoice.css', 'text/css'),
+      readText('../report.html', 'text/html'),
+      readText('../report.css', 'text/css'),
       readBuffer('../assets/Tuffy.ttf'),
     ])
 
@@ -148,11 +148,13 @@ async function renderPdf(): Promise<void> {
       fonts: [font],
       html: htmlForPdf(html),
       page: {
-        margin: { top: 14, right: 14, bottom: 16, left: 14, unit: 'mm' },
+        landscape: true,
+        margin: 10,
         size: 'A4',
       },
       systemFonts: false,
-      title: 'Invoice INV-2026-042 (Browser WASM)',
+      tagged: true,
+      title: 'HTML-to-PDF Rendering Report (Browser WASM)',
     })
 
     if (currentPdfUrl) {
