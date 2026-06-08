@@ -1,3 +1,8 @@
+strictDepBuilds: true
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 43200
+minimumReleaseAge: 20160
+
 packages:
   - packages/*
   - benchmarks/*
