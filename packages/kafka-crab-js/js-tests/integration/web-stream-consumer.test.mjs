@@ -362,7 +362,7 @@ test('Web Stream Consumer Integration Tests', async (t) => {
     const compactConsumer = client.createConsumer(createConsumerConfig(`compact-header-dictionary-raw-${testId}`))
 
     try {
-      const compactStream = compactConsumer.recvBatchStreamCompact(messages.length, 25)
+      const compactStream = compactConsumer.recvBatchStreamCompact(messages.length, 1000)
       await compactConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
       const compactBatch = await readCompactBatch(compactStream)
 
@@ -371,9 +371,10 @@ test('Web Stream Consumer Integration Tests', async (t) => {
       equal(compactBatch.sharedHeaderKey, 'test-header', 'Compact batch should preserve the shared header key')
       const compactHeaderValues = compactBatch.sharedHeaderValues ?? []
       equal(compactHeaderValues.length, messages.length, 'Compact batch should emit header value slots')
-      for (const [index, value] of compactHeaderValues.entries()) {
+      for (const [batchIndex, value] of compactHeaderValues.entries()) {
+        const payloadIndex = JSON.parse(compactBatch.payloads[batchIndex].toString()).index
         ok(
-          value?.equals(headerValues[index % headerValues.length]),
+          value?.equals(headerValues[payloadIndex % headerValues.length]),
           'Compact batch should preserve per-message header values',
         )
       }

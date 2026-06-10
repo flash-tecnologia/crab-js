@@ -180,6 +180,11 @@ pnpm --filter html-to-pdf-crab-js-examples browser
 Open `/wasm/` on the local Vite server. The page previews `report.html` and renders that same
 HTML/CSS into a PDF iframe.
 
+Browser builds use the generated `*.wasi-browser.js` loader. The package build rewrites that loader
+to use async WASM instantiation because browser engines reject synchronous compilation for the
+current WASM artifact size. Restart the Vite dev server after rebuilding the package so the page
+loads the regenerated loader cleanly.
+
 Preview the source HTML in a browser:
 
 ```bash

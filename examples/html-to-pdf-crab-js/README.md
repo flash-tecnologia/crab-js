@@ -40,6 +40,10 @@ that same HTML/CSS into a PDF iframe. The browser example imports `html-to-pdf-c
 Vite aliases the generated `html-to-pdf-crab-js-wasm32-wasi` package entry to the local WASI browser
 build during development.
 
+If you rebuild `html-to-pdf-crab-js` while the Vite dev server is running, restart the dev server
+before checking the page again. The package build regenerates `*.wasi-browser.js` and rewrites it to
+use async WASM instantiation; stale hot-reload state can still point at the previous generated file.
+
 Preview the source HTML in a browser:
 
 ```bash

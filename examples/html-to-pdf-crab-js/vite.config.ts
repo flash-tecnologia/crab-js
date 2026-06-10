@@ -1,15 +1,15 @@
 import { defineConfig } from 'vite-plus'
-import { dirname, resolve } from 'node:path'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sharedFmtConfig, sharedLintConfig } from '../../vite.shared.mjs'
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url))
-const workspaceRoot = resolve(currentDirectory, '../..')
+const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
+const workspaceRoot = path.resolve(currentDirectory, '../..')
 
 export default defineConfig({
   build: {
     rollupOptions: {
-      input: resolve(currentDirectory, 'wasm/index.html'),
+      input: path.resolve(currentDirectory, 'wasm/index.html'),
     },
     target: 'esnext',
   },
@@ -39,7 +39,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      'html-to-pdf-crab-js-wasm32-wasi': resolve(
+      'html-to-pdf-crab-js-wasm32-wasi': path.resolve(
         currentDirectory,
         '../../packages/html-to-pdf-crab-js/html-to-pdf-crab-js.wasi-browser.js',
       ),

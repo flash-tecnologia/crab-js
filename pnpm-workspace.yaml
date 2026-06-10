@@ -9,10 +9,11 @@ allowBuilds:
   protobufjs: true
 
 catalog:
-  '@emnapi/core': 1.10.0
-  '@emnapi/runtime': 1.10.0
-  '@napi-rs/cli': 3.6.2
+  '@emnapi/core': 1.11.0
+  '@emnapi/runtime': 1.11.0
+  '@napi-rs/cli': 3.7.0
   '@napi-rs/wasm-runtime': 1.1.4
+  '@types/node': 25.9.2
   'nanoid': 5.1.11
   '@faker-js/faker': 10.4.0
   '@opentelemetry/api': 1.9.0
@@ -28,7 +29,7 @@ catalog:
   '@opentelemetry/sdk-node': 0.57.2
 
 overrides:
-  emnapi: 1.10.0
+  emnapi: 1.11.0
 
 supportedArchitectures:
   cpu:

@@ -1,16 +1,16 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createPdfFromHtml } from 'html-to-pdf-crab-js'
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url))
-const outputDirectory = join(currentDirectory, 'output')
-const outputPath = join(outputDirectory, 'html-to-pdf-invoice-example.pdf')
+const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
+const outputDirectory = path.join(currentDirectory, 'output')
+const outputPath = path.join(outputDirectory, 'html-to-pdf-invoice-example.pdf')
 
-const html = readFileSync(join(currentDirectory, 'invoice.html'), 'utf8')
-const css = readFileSync(join(currentDirectory, 'invoice.css'), 'utf8')
-const font = readFileSync(join(currentDirectory, 'assets/Tuffy.ttf'))
+const html = readFileSync(path.join(currentDirectory, 'invoice.html'), 'utf8')
+const css = readFileSync(path.join(currentDirectory, 'invoice.css'), 'utf8')
+const font = readFileSync(path.join(currentDirectory, 'assets/Tuffy.ttf'))
 
 const pdf = await createPdfFromHtml({
   basePath: currentDirectory,

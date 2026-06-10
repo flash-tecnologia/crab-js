@@ -1,12 +1,12 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createPdf } from 'pdf-crab-js'
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url))
-const outputDirectory = join(currentDirectory, 'output')
-const outputPath = join(outputDirectory, 'pdf-crab-js-example.pdf')
+const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
+const outputDirectory = path.join(currentDirectory, 'output')
+const outputPath = path.join(outputDirectory, 'pdf-crab-js-example.pdf')
 
 const pdf = createPdf({
   title: 'pdf-crab-js example',
