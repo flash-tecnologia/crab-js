@@ -3,7 +3,7 @@
 authors = ["Inaiat <inaiatgmail.com>"]
 edition = "2021"
 name = "pdf_crab_js"
-version = "0.1.2"
+version = "0.2.0"
 
 [lib]
 crate-type = ["cdylib"]
