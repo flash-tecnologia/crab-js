@@ -26,16 +26,16 @@
     "@opentelemetry/sdk-trace-base": "catalog:",
     "@opentelemetry/sdk-trace-node": "catalog:",
     "@opentelemetry/semantic-conventions": "catalog:",
-    "@types/node": "25.9.1",
+    "@types/node": "catalog:",
     "kafka-crab-js": "workspace:*",
     "kafka-crab-js-otel": "workspace:*",
     "nanoid": "catalog:",
-    "tsx": "^4.22.3",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3",
-    "vite-plus": "0.1.22"
+    "vite-plus": "0.1.24"
   },
   "engines": {
     "node": "24"
   },
-  "packageManager": "pnpm@11.4.0"
+  "packageManager": "pnpm@11.5.1"
 }

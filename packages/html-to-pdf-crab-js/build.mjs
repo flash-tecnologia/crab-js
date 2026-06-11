@@ -23,22 +23,35 @@ const argValue = (name) => {
 const hasFlag = (...names) => names.some((name) => process.argv.includes(name))
 
 const useAsyncBrowserWasmInstantiation = async () => {
-  const path = 'html-to-pdf-crab-js.wasi-browser.js'
-  const content = await readFile(path, 'utf8')
+  const path = new URL('./html-to-pdf-crab-js.wasi-browser.js', import.meta.url)
+  let content
+
+  try {
+    content = await readFile(path, 'utf8')
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      return
+    }
+
+    throw error
+  }
 
   if (!content.includes('__emnapiInstantiateNapiModuleSync')) {
     return
   }
 
-  await writeFile(
-    path,
-    content
-      .replace(
-        'instantiateNapiModuleSync as __emnapiInstantiateNapiModuleSync',
-        'instantiateNapiModule as __emnapiInstantiateNapiModule',
-      )
-      .replace('__emnapiInstantiateNapiModuleSync(__wasmFile, {', 'await __emnapiInstantiateNapiModule(__wasmFile, {'),
-  )
+  const rewritten = content
+    .replaceAll(
+      'instantiateNapiModuleSync as __emnapiInstantiateNapiModuleSync',
+      'instantiateNapiModule as __emnapiInstantiateNapiModule',
+    )
+    .replaceAll('__emnapiInstantiateNapiModuleSync(', 'await __emnapiInstantiateNapiModule(')
+
+  if (rewritten.includes('__emnapiInstantiateNapiModuleSync')) {
+    throw new Error(`Failed to rewrite ${path} to async WASM instantiation`)
+  }
+
+  await writeFile(path, rewritten)
 }
 
 const build = async () => {
@@ -59,9 +72,7 @@ const build = async () => {
     await result.task
   }
 
-  if (commonOptions.target === 'wasm32-wasip1-threads') {
-    await useAsyncBrowserWasmInstantiation()
-  }
+  await useAsyncBrowserWasmInstantiation()
 }
 
 build().catch((error) => {

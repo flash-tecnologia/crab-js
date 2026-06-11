@@ -26,6 +26,17 @@ function cloneWithDescriptors<TValue extends object>(value: TValue): TValue {
   }
 }
 
+function endMessageSpan(message: Message | InstrumentedMessage | null | undefined, error?: Error): void {
+  if (!message) {
+    return
+  }
+
+  const existingEndSpan = (message as InstrumentedMessage).endSpan
+  if (typeof existingEndSpan === 'function') {
+    existingEndSpan(error)
+  }
+}
+
 export class KafkaCrabInstrumentation {
   private _kafkaTracer: Tracer | null = null
   private _kafkaConfig: KafkaOtelInstrumentationConfig
@@ -104,17 +115,6 @@ export class KafkaCrabInstrumentation {
     }
 
     const tracer = this._kafkaTracer
-
-    const endMessageSpan = (message: Message | InstrumentedMessage | null | undefined, error?: Error) => {
-      if (!message) {
-        return
-      }
-
-      const existingEndSpan = (message as InstrumentedMessage).endSpan
-      if (typeof existingEndSpan === 'function') {
-        existingEndSpan(error)
-      }
-    }
 
     const endBatchSpan = (batch: Message[] | InstrumentedMessageBatch | null | undefined, error?: Error) => {
       if (!batch) {

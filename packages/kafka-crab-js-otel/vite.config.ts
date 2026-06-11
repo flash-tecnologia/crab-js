@@ -82,7 +82,7 @@ export default defineConfig({
     },
     define: {
       __PACKAGE_NAME__: JSON.stringify('kafka-crab-js-otel'),
-      __PACKAGE_VERSION__: JSON.stringify('1.1.0'),
+      __PACKAGE_VERSION__: JSON.stringify('1.2.0'),
     },
     deps: {
       neverBundle: externalDependencies,

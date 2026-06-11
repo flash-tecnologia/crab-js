@@ -59,7 +59,10 @@ await test('Batch Size Limits Integration Tests', async (t) => {
       const batch = await consumer.recvBatch(BATCH_SIZE_LIMITS.OUT_OF_RANGE_HIGH, 5000)
       batchCount++
 
-      if (batch.length === 0) break
+      if (batch.length === 0) {
+        await sleep(250)
+        continue
+      }
 
       const testMessages = batch.filter((msg) => isTestMessage(msg, testId))
       receivedMessages.push(...testMessages)
@@ -237,14 +240,19 @@ await test('Batch Size Limits Integration Tests', async (t) => {
       await consumer.subscribe(topic)
 
       const startTime = Date.now()
+      const deadline = startTime + 15000
       const receivedMessages = []
       let batchCount = 0
 
-      while (receivedMessages.length < perfConfig.messageCount && batchCount < 20) {
-        const batch = await consumer.recvBatch(perfConfig.batchSize, 3000)
+      while (receivedMessages.length < perfConfig.messageCount && batchCount < 20 && Date.now() < deadline) {
+        const timeoutMs = Math.max(1, Math.min(3000, deadline - Date.now()))
+        const batch = await consumer.recvBatch(perfConfig.batchSize, timeoutMs)
         batchCount++
 
-        if (batch.length === 0) break
+        if (batch.length === 0) {
+          await sleep(250)
+          continue
+        }
 
         const testMessages = batch.filter((msg) => isTestMessage(msg, testId))
         receivedMessages.push(...testMessages)

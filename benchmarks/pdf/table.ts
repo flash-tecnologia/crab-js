@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer'
 import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { fileURLToPath } from 'node:url'
 
@@ -577,8 +577,8 @@ function maybeWriteOutput(config: BenchmarkConfig, scenario: ScenarioDefinition,
     return
   }
 
-  const outputDirectory = join(dirname(fileURLToPath(import.meta.url)), 'output')
-  const outputPath = join(outputDirectory, `table-${scenario.id}-${config.pages}-pages.pdf`)
+  const outputDirectory = path.join(path.dirname(fileURLToPath(import.meta.url)), 'output')
+  const outputPath = path.join(outputDirectory, `table-${scenario.id}-${config.pages}-pages.pdf`)
 
   mkdirSync(outputDirectory, { recursive: true })
   writeFileSync(outputPath, pdf)
@@ -779,7 +779,7 @@ async function runParent(): Promise<void> {
 
 async function runScenarioProcess(config: BenchmarkConfig, scenario: ScenarioDefinition): Promise<ScenarioResult> {
   const child = spawn(process.execPath, ['--expose-gc', '--import', 'tsx', fileURLToPath(import.meta.url)], {
-    cwd: dirname(fileURLToPath(import.meta.url)),
+    cwd: path.dirname(fileURLToPath(import.meta.url)),
     env: {
       ...process.env,
       PDF_BENCHMARK_CHILD_SCENARIO: scenario.id,
