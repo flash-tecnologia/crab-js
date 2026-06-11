@@ -6,7 +6,7 @@ Crab JS is a monorepo for focused native packages that keep JavaScript APIs smal
 The root README is intentionally a high-level map. Package APIs, examples, benchmarks, and operational guidance live
 next to the project that owns them.
 
-[![kafka-crab-js npm beta](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue)](https://www.npmjs.com/package/kafka-crab-js)
+[![kafka-crab-js npm](https://img.shields.io/npm/v/kafka-crab-js.svg)](https://www.npmjs.com/package/kafka-crab-js)
 [![kafka-crab-js-otel npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 

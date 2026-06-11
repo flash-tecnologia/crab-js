@@ -4,13 +4,13 @@ Kafka Crab JS is a native Kafka client for Node.js and TypeScript. It uses Rust,
 JavaScript heap pressure, expose Kafka's mature native client behavior, and push high-throughput consumer workloads
 through a small TypeScript-friendly API.
 
-[![npm beta version](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue.svg)](https://www.npmjs.com/package/kafka-crab-js)
+[![npm version](https://img.shields.io/npm/v/kafka-crab-js.svg)](https://www.npmjs.com/package/kafka-crab-js)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Version 4
 
-`kafka-crab-js` v4 is the current beta line. It focuses on high-throughput consumers, lower JavaScript heap pressure,
-and a cleaner monorepo release model under [`flash-tecnologia/crab-js`](https://github.com/flash-tecnologia/crab-js).
+`kafka-crab-js` v4 is the current stable release line. It focuses on high-throughput consumers, lower JavaScript heap
+pressure, and a cleaner monorepo release model under [`flash-tecnologia/crab-js`](https://github.com/flash-tecnologia/crab-js).
 
 The main v4 additions are:
 
@@ -24,8 +24,8 @@ The main v4 additions are:
 - Updated TypeScript exports where runtime enum-like values are now string literal types, avoiding missing runtime
   exports in ESM/CommonJS consumers.
 
-For production adoption, treat v4 as a beta release: validate it with your broker settings, payload sizes, partition
-count, commit strategy, and shutdown path before replacing an existing Kafka client.
+For production adoption, validate v4 with your broker settings, payload sizes, partition count, commit strategy, and
+shutdown path before replacing an existing Kafka client.
 
 ## Why Kafka Crab JS?
 

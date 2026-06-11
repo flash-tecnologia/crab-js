@@ -1,4 +1,4 @@
-const PACKAGE_VERSION = '0.1.2'
+const PACKAGE_VERSION = '0.2.0'
 const RUNTIME_URL = 'https://esm.sh/@napi-rs/wasm-runtime@1.1.4?target=es2022'
 const PDF_CRAB_WASM_URL = `https://cdn.jsdelivr.net/npm/pdf-crab-js-wasm32-wasi@${PACKAGE_VERSION}/pdf-crab-js.wasm32-wasi.wasm`
 const HTML_TO_PDF_WASM_URL = `https://cdn.jsdelivr.net/npm/html-to-pdf-crab-js-wasm32-wasi@${PACKAGE_VERSION}/html-to-pdf-crab-js.wasm32-wasi.wasm`
@@ -114,7 +114,7 @@ const defaultHtml = `<article class="report">
 
   <footer class="report-footer">
     <span>github.com/flash-tecnologia/crab-js</span>
-    <strong>Generated with html-to-pdf-crab-js 0.1.2</strong>
+    <strong>Generated with html-to-pdf-crab-js ${PACKAGE_VERSION}</strong>
   </footer>
 </article>`
 

@@ -55,7 +55,7 @@ KAFKA_BROKERS=127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094 vp run benchmark
 
 The default benchmark compares consumer APIs with broadly similar semantics:
 
-- `kafka-crab-js@4.0.0-beta.3`:
+- `kafka-crab-js@4.1.1`:
   - `kafka-crab-js v4 (stream, serial)`: Web Stream serial mode, emitting one `Message` at a time.
   - `kafka-crab-js v4 (stream, batch)`: Web Stream batch mode, emitting `Message[]` chunks.
 - `kafkajs@2.2.4`:
