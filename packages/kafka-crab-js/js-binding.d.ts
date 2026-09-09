@@ -42,7 +42,10 @@ export declare class KafkaConsumer {
    * Subscribes to one or more Kafka topics.
    * Can accept either a single topic name string or an array of topic configurations
    * with advanced options like partition offsets and topic creation settings.
-   * @param topicConfigs - Topic name string or array of TopicPartitionConfig objects
+   * Topics are either all group-subscribed or all manually assigned: mixing both
+   * in one call is rejected. When topic creation fails, the remaining topics are
+   * still created and subscribed; the error is returned afterwards, with the
+   * consumer left subscribed.
    */
   subscribe(topicConfigs: string | Array<TopicPartitionConfig>): Promise<void>
   /**
@@ -134,6 +137,11 @@ export declare class KafkaProducer {
    */
   inFlightCount(): number
   /**
+   * Returns the confirmed delivery results from the most recent send operation.
+   * Useful for recovering delivery metadata when a send operation encounters a partial failure.
+   */
+  getLastDeliveryResults(): Array<RecordMetadata>
+  /**
    * Flushes all pending messages to the Kafka broker and waits for delivery confirmation.
    * When autoFlush is enabled (default), this returns an empty array as messages are flushed automatically.
    * When autoFlush is disabled, this must be called manually to send buffered messages.
@@ -166,12 +174,17 @@ export interface CompactMessageBatch {
   sharedHeaderValue?: Buffer
   sharedHeaderValues?: Array<Buffer | undefined>
   headers?: Array<Record<string, Buffer> | undefined>
+  tombstones?: Array<boolean>
 }
 
 export interface ConsumerConfiguration {
   groupId: string
   enableAutoCommit?: boolean
   configuration?: Record<string, any>
+  /**
+   * Metadata timeout in ms (default 2000, clamped to 1–300000). Zero is not
+   * fail-fast: it falls back to the default. Negative values are rejected.
+   */
   fetchMetadataTimeout?: number
 }
 
@@ -211,12 +224,19 @@ export interface Message {
   topic: string
   partition: number
   offset: number
+  isTombstone?: boolean
 }
 
+/**
+ * A single message to produce. A tombstone is `{ payload: None }` (with or
+ * without `is_tombstone: true`); combining `is_tombstone: true` with a
+ * payload is rejected with `InvalidArg` instead of silently dropping bytes.
+ */
 export interface MessageProducer {
-  payload: Buffer
+  payload?: Buffer
   key?: Buffer
   headers?: Record<string, Buffer>
+  isTombstone?: boolean
 }
 
 export interface OffsetModel {

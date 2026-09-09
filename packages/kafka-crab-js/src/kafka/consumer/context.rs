@@ -98,12 +98,17 @@ impl ConsumerContext for KafkaCrabContext {
   }
 
   fn commit_callback(&self, result: KafkaResult<()>, offsets: &TopicPartitionList) {
+    let error = match result {
+      Ok(_) => None,
+      Err(ref e) => Some(e.to_string()),
+    };
+
     let event = KafkaEvent {
       name: KafkaEventName::CommitCallback,
       payload: KafkaEventPayload {
         action: None,
         tpl: convert_tpl_to_array_of_topic_partition(offsets),
-        error: None,
+        error,
       },
     };
 

@@ -11,6 +11,25 @@ import {
   setupTestEnvironment,
 } from './utils.mjs'
 
+// Manual assignment (`allOffsets`/`partitionOffset`) uses `assign()`, which never emits
+// group rebalance events. Poll the local assignment instead of waiting for PostRebalance.
+async function waitForAssignment(consumer, timeoutMs = 10000) {
+  const attempts = Math.max(1, Math.ceil(timeoutMs / 100))
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    let assigned = 0
+    try {
+      assigned = consumer.assignment().reduce((count, entry) => count + (entry.partitionOffset?.length ?? 0), 0)
+    } catch {
+      assigned = 0
+    }
+    if (assigned > 0) {
+      return
+    }
+    await sleep(100)
+  }
+  throw new Error('Timeout waiting for partition assignment after 10000ms')
+}
+
 await test('Consumer Manual Commit Integration Tests', async (t) => {
   let client
   let producer
@@ -39,40 +58,20 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
     })
     const consumer = client.createConsumer(consumerConfig)
 
-    // Track events to verify commit behavior and wait for PostRebalance
+    // Manual assignment emits no rebalance events; log events and wait for the
+    // local assignment instead.
     const events = []
-    let isRebalanced = false
-    const rebalancePromise = new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        console.log('Timeout waiting for PostRebalance event')
-        resolve()
-      }, 10000) // 10 second timeout
-
-      consumer.onEvents((err, event) => {
-        if (err) {
-          console.error('Event error:', err)
-          return
-        }
-        events.push(event)
-        console.log(`Received event: ${event.name}`)
-
-        // Wait for PostRebalance to ensure partition assignment
-        if (event.name === 'PostRebalance') {
-          isRebalanced = true
-          clearTimeout(timeout)
-          resolve()
-        }
-      })
+    consumer.onEvents((err, event) => {
+      if (err) {
+        console.error('Event error:', err)
+        return
+      }
+      events.push(event)
+      console.log(`Received event: ${event.name}`)
     })
 
     await consumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
-
-    // Wait for PostRebalance event before attempting commits
-    await rebalancePromise
-
-    if (!isRebalanced) {
-      console.warn('PostRebalance event not received, proceeding anyway')
-    }
+    await waitForAssignment(consumer)
 
     // Verify assignment
     try {
@@ -90,7 +89,8 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
 
     while (receivedMessages.length < messages.length && polls < maxPolls) {
       polls++
-      const message = await consumer.recv()
+      const batch = await consumer.recvBatch(1, 1000)
+      const message = batch[0]
 
       if (message && isTestMessage(message, testId)) {
         receivedMessages.push(message)
@@ -106,10 +106,6 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
           console.error('Sync commit failed:', error.message)
           throw error
         }
-      }
-
-      if (!message) {
-        await sleep(500)
       }
     }
 
@@ -143,40 +139,20 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
     })
     const consumer = client.createConsumer(consumerConfig)
 
-    // Track events to verify commit behavior and wait for PostRebalance
+    // Manual assignment emits no rebalance events; log events and wait for the
+    // local assignment instead.
     const events = []
-    let isRebalanced = false
-    const rebalancePromise = new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        console.log('Timeout waiting for PostRebalance event')
-        resolve()
-      }, 10000) // 10 second timeout
-
-      consumer.onEvents((err, event) => {
-        if (err) {
-          console.error('Event error:', err)
-          return
-        }
-        events.push(event)
-        console.log(`Received event: ${event.name}`)
-
-        // Wait for PostRebalance to ensure partition assignment
-        if (event.name === 'PostRebalance') {
-          isRebalanced = true
-          clearTimeout(timeout)
-          resolve()
-        }
-      })
+    consumer.onEvents((err, event) => {
+      if (err) {
+        console.error('Event error:', err)
+        return
+      }
+      events.push(event)
+      console.log(`Received event: ${event.name}`)
     })
 
     await consumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
-
-    // Wait for PostRebalance event before attempting commits
-    await rebalancePromise
-
-    if (!isRebalanced) {
-      console.warn('PostRebalance event not received, proceeding anyway')
-    }
+    await waitForAssignment(consumer)
 
     // Verify assignment
     try {
@@ -194,7 +170,8 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
 
     while (receivedMessages.length < messages.length && polls < maxPolls) {
       polls++
-      const message = await consumer.recv()
+      const batch = await consumer.recvBatch(1, 1000)
+      const message = batch[0]
 
       if (message && isTestMessage(message, testId)) {
         receivedMessages.push(message)
@@ -210,10 +187,6 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
           console.error('Async commit failed:', error.message)
           throw error
         }
-      }
-
-      if (!message) {
-        await sleep(500)
       }
     }
 
@@ -247,42 +220,17 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
       },
     })
     const consumer1 = client.createConsumer(consumer1Config)
-    // Wait for PostRebalance event before attempting commits
-    let isRebalanced = false
-    const rebalancePromise = new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        console.log('Timeout waiting for PostRebalance event')
-        resolve()
-      }, 10000)
-
-      consumer1.onEvents((err, event) => {
-        if (err) {
-          console.error('Event error:', err)
-          return
-        }
-        console.log(`Consumer1 received event: ${event.name}`)
-
-        if (event.name === 'PostRebalance') {
-          isRebalanced = true
-          clearTimeout(timeout)
-          resolve()
-        }
-      })
-    })
-
+    // Manual assignment emits no rebalance events; wait for the local assignment.
     await consumer1.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
-    await rebalancePromise
-
-    if (!isRebalanced) {
-      console.warn('PostRebalance event not received for consumer1, proceeding anyway')
-    }
+    await waitForAssignment(consumer1)
 
     // Consume first half of messages and commit
     const halfCount = Math.floor(messages.length / 2)
     const lastCommittedOffsets = new Map()
 
     for (let i = 0; i < halfCount; i++) {
-      const message = await consumer1.recv()
+      const batch = await consumer1.recvBatch(1, 1000)
+      const message = batch[0]
       if (message && isTestMessage(message, testId)) {
         const partitionKey = `${message.topic}:${message.partition}`
         const committedOffset = message.offset + 1
@@ -316,7 +264,8 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
 
     while (remainingMessages.length < messages.length - halfCount && polls < maxPolls) {
       polls++
-      const message = await consumer2.recv()
+      const batch = await consumer2.recvBatch(1, 1000)
+      const message = batch[0]
 
       if (message && isTestMessage(message, testId)) {
         const partitionKey = `${message.topic}:${message.partition}`
@@ -336,10 +285,6 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
             `Message offset ${message.offset} should be >= last committed offset ${committedOffset} for partition ${message.partition}`,
           )
         }
-      }
-
-      if (!message) {
-        await sleep(500)
       }
     }
 
@@ -365,21 +310,27 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
       },
     })
     const consumer = client.createConsumer(consumerConfig)
-    await consumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
-
-    // Simple manual commit test - just test that the method works
     try {
-      const message = await consumer.recv()
-      if (message && isTestMessage(message, testId)) {
-        await consumer.commit(message.topic, message.partition, message.offset + 1, 'Sync')
-        console.log('Basic manual commit test passed')
-      }
-      ok(true, 'Manual commit functionality works')
-    } catch (error) {
-      console.warn('Manual commit test skipped:', error.message)
-    }
+      await consumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
 
-    await cleanupConsumer(consumer)
+      let message = null
+      const deadline = Date.now() + 20_000
+
+      while (!message && Date.now() < deadline) {
+        const remainingMs = deadline - Date.now()
+        const batch = await consumer.recvBatch(1, Math.min(Math.max(remainingMs, 0), 1000))
+        const received = batch[0]
+        if (received && isTestMessage(received, testId)) {
+          message = received
+          break
+        }
+      }
+
+      ok(message, 'Should have received a test message to commit')
+      await consumer.commit(message.topic, message.partition, message.offset + 1, 'Sync')
+    } finally {
+      await cleanupConsumer(consumer)
+    }
   })
 
   await t.test('Stream Consumer: Manual commit with stream consumer', async () => {
@@ -447,35 +398,9 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
       },
     })
     const consumer = client.createConsumer(consumerConfig)
-    // Wait for PostRebalance event before attempting commits
-    let isRebalanced = false
-    const rebalancePromise = new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        console.log('Timeout waiting for PostRebalance event')
-        resolve()
-      }, 10000)
-
-      consumer.onEvents((err, event) => {
-        if (err) {
-          console.error('Event error:', err)
-          return
-        }
-        console.log(`Batch consumer received event: ${event.name}`)
-
-        if (event.name === 'PostRebalance') {
-          isRebalanced = true
-          clearTimeout(timeout)
-          resolve()
-        }
-      })
-    })
-
+    // Manual assignment emits no rebalance events; wait for the local assignment.
     await consumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
-    await rebalancePromise
-
-    if (!isRebalanced) {
-      console.warn('PostRebalance event not received for batch consumer, proceeding anyway')
-    }
+    await waitForAssignment(consumer)
 
     // Receive messages in batches and commit the highest offset
     const batchSize = 3

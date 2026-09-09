@@ -117,6 +117,7 @@ pub struct Message {
   pub topic: String,
   pub partition: i32,
   pub offset: i64,
+  pub is_tombstone: Option<bool>,
 }
 
 impl Message {
@@ -127,6 +128,7 @@ impl Message {
     topic: String,
     partition: i32,
     offset: i64,
+    is_tombstone: Option<bool>,
   ) -> Self {
     Self {
       payload,
@@ -135,6 +137,7 @@ impl Message {
       topic,
       partition,
       offset,
+      is_tombstone,
     }
   }
 }
@@ -158,6 +161,7 @@ pub struct CompactMessageBatch {
   pub shared_header_values: Option<Vec<Option<Buffer>>>,
   #[napi(ts_type = "Array<Record<string, Buffer> | undefined>")]
   pub headers: Option<Vec<Option<MessageHeaders>>>,
+  pub tombstones: Option<Vec<bool>>,
 }
 
 #[napi(object)]
@@ -169,11 +173,15 @@ pub struct RecordMetadata {
   pub error: Option<KafkaCrabError>,
 }
 
+/// A single message to produce. A tombstone is `{ payload: None }` (with or
+/// without `is_tombstone: true`); combining `is_tombstone: true` with a
+/// payload is rejected with `InvalidArg` instead of silently dropping bytes.
 #[napi(object)]
 pub struct MessageProducer {
-  pub payload: Buffer,
+  pub payload: Option<Buffer>,
   pub key: Option<Buffer>,
   pub headers: Option<HashMap<String, Buffer>>,
+  pub is_tombstone: Option<bool>,
 }
 
 #[napi(object)]

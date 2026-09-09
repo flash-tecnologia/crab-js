@@ -173,11 +173,37 @@ impl<'a> KafkaAdmin<'a> {
       })
       .collect();
 
-    self
+    let results = self
       .admin_client
       .create_topics(&new_topics, &AdminOptions::default())
       .await
       .map_err(anyhow::Error::new)?;
+
+    let mut failed_topics = Vec::new();
+    for result in results {
+      match result {
+        Ok(topic_name) => {
+          debug!("Topic '{}' was created successfully", topic_name);
+        }
+        Err((topic_name, error_code)) => {
+          if error_code == RDKafkaErrorCode::TopicAlreadyExists {
+            debug!("Topic '{}' already exists", topic_name);
+          } else {
+            warn!("Topic '{}' creation failed: {:?}", topic_name, error_code);
+            failed_topics.push((topic_name, error_code));
+          }
+        }
+      }
+    }
+
+    if !failed_topics.is_empty() {
+      let err_msg = failed_topics
+        .iter()
+        .map(|(t, c)| format!("{}: {:?}", t, c))
+        .collect::<Vec<_>>()
+        .join(", ");
+      return Err(anyhow::anyhow!("Failed to create topic(s): {}", err_msg));
+    }
 
     debug!("Topic(s) {:?} was created successfully", topics);
     Ok(())

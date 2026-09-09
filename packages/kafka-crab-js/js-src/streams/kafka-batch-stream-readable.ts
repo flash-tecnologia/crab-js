@@ -29,8 +29,9 @@ export class KafkaBatchStreamReadable extends BaseKafkaStreamReadable {
   public constructor(streamOptions: KafkaBatchStreamReadableOptions) {
     const { batchSize, batchTimeout = DEFAULT_BATCH_TIMEOUT, sourceStream, kafkaConsumer, ...opts } = streamOptions
 
-    // Set highWaterMark to batch size for optimal performance
-    opts.highWaterMark = Math.max(batchSize, opts.highWaterMark || 16)
+    // Respect an explicit highWaterMark and only default when absent.
+    // Silently raising it to batchSize would buffer without backpressure or consent.
+    opts.highWaterMark ??= 16
 
     super({ kafkaConsumer, ...opts })
     this.batchSize = batchSize

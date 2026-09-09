@@ -50,7 +50,7 @@ const kafkaJsLintOverrides = [
     rules: kafkaJsSourceLintRules,
   },
   {
-    files: ['tests/**', '**/__test__/**'],
+    files: ['tests/**', '**/__test__/**', 'js-tests/**'],
     rules: sharedTestLintRules,
   },
 ]

@@ -1,4 +1,5 @@
 export type {
+  CompactMessageBatch,
   ConsumerConfiguration,
   KafkaConfiguration,
   KafkaCrabError,
@@ -24,6 +25,7 @@ export { KafkaStreamReadable } from './streams/kafka-stream-readable.js'
 
 export type {
   KafkaClientConfiguration,
+  SendFailureError,
   StreamConsumerConfiguration,
   WebStreamConsumer,
   WebStreamConsumerConfiguration,

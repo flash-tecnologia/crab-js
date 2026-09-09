@@ -8,7 +8,16 @@ import {
   type KafkaProducer,
   type Message,
   type ProducerConfiguration,
+  type ProducerRecord,
+  type RecordMetadata,
 } from '../js-binding.js'
+
+export interface SendFailureError extends Error {
+  enqueuedCount?: number
+  totalCount?: number
+  confirmedCount?: number
+  confirmedMessages?: RecordMetadata[]
+}
 
 import {
   instrumentBatchReadableStream,
@@ -118,17 +127,35 @@ function flattenBatchStream(batchStream: ReadableStream<Message[]>): ReadableStr
         return
       }
     },
-    cancel(reason) {
+    async cancel(reason) {
       closed = true
       currentBatch = []
       currentIndex = 0
-      // Avoid blocking downstream cancellation on the upstream batch reader.
-      void reader.cancel(reason).catch(() => undefined)
+      // Await upstream teardown so cancel fully propagates before resolving.
+      // This matches expandCompactBatchStream and never rejects downstream cancel.
+      await reader.cancel(reason).catch(() => undefined)
     },
   })
 }
 
-function expandCompactBatch(batch: CompactMessageBatch): Message[] {
+function assertSameLength(name: string, actual: number | undefined, expected: number): void {
+  if (actual !== undefined && actual !== expected) {
+    throw new Error(`Invalid compact batch: ${name} has length ${actual}, expected ${expected}`)
+  }
+}
+
+function assertCompactBatchArrays(batch: CompactMessageBatch, size: number): void {
+  assertSameLength('keys', batch.keys?.length, size)
+  assertSameLength('keyDictionaryIndexes', batch.keyDictionaryIndexes?.length, size)
+  assertSameLength('topics', batch.topics?.length, size)
+  assertSameLength('partitions', batch.partitions.length, size)
+  assertSameLength('offsets', batch.offsets.length, size)
+  assertSameLength('sharedHeaderValues', batch.sharedHeaderValues?.length, size)
+  assertSameLength('headers', batch.headers?.length, size)
+  assertSameLength('tombstones', batch.tombstones?.length, size)
+}
+
+export function expandCompactBatch(batch: CompactMessageBatch): Message[] {
   const {
     payloads,
     keys,
@@ -143,7 +170,10 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
     sharedHeaderValue,
     sharedHeaderValues,
     headers,
+    tombstones,
   } = batch
+
+  assertCompactBatchArrays(batch, payloads.length)
 
   if (
     topic !== undefined &&
@@ -164,6 +194,7 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
       offsets,
       sharedHeaderKey,
       sharedHeaderValue,
+      tombstones,
     )
   }
 
@@ -184,6 +215,7 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
       offsets,
       sharedHeaderKey,
       sharedHeaderValue,
+      tombstones,
     )
   }
 
@@ -201,8 +233,9 @@ function expandCompactBatch(batch: CompactMessageBatch): Message[] {
     const messageTopic = (topic ?? topics?.[index])!
     const partition = partitions[index]!
     const offset = offsets[index]!
+    const isTombstone = tombstones?.[index]
 
-    messages[index] = createCompactMessage(payload, key, messageHeaders, messageTopic, partition, offset)
+    messages[index] = createCompactMessage(payload, key, messageHeaders, messageTopic, partition, offset, isTombstone)
   }
 
   return messages
@@ -217,10 +250,17 @@ function expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
   offsets: number[],
   sharedHeaderKey: string,
   sharedHeaderValue: Buffer,
+  tombstones?: boolean[],
 ): Message[] {
   const messages = new Array<Message>(payloads.length)
 
+  assertSameLength('keyDictionaryIndexes', keyDictionaryIndexes.length, payloads.length)
+  assertSameLength('partitions', partitions.length, payloads.length)
+  assertSameLength('offsets', offsets.length, payloads.length)
+  assertSameLength('tombstones', tombstones?.length, payloads.length)
+
   for (let index = 0; index < payloads.length; index += 1) {
+    const isTombstone = tombstones?.[index]
     messages[index] = {
       payload: payloads[index]!,
       key: keyDictionary[keyDictionaryIndexes[index]!]!,
@@ -230,6 +270,7 @@ function expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
       topic,
       partition: partitions[index]!,
       offset: offsets[index]!,
+      ...(isTombstone ? { isTombstone } : {}),
     }
   }
 
@@ -244,10 +285,16 @@ function expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
   offsets: number[],
   sharedHeaderKey: string,
   sharedHeaderValue: Buffer,
+  tombstones?: boolean[],
 ): Message[] {
   const messages = new Array<Message>(payloads.length)
 
+  assertSameLength('partitions', partitions.length, payloads.length)
+  assertSameLength('offsets', offsets.length, payloads.length)
+  assertSameLength('tombstones', tombstones?.length, payloads.length)
+
   for (let index = 0; index < payloads.length; index += 1) {
+    const isTombstone = tombstones?.[index]
     messages[index] = {
       payload: payloads[index]!,
       key: sharedKey,
@@ -257,6 +304,7 @@ function expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
       topic,
       partition: partitions[index]!,
       offset: offsets[index]!,
+      ...(isTombstone ? { isTombstone } : {}),
     }
   }
 
@@ -270,6 +318,7 @@ function createCompactMessage(
   topic: string,
   partition: number,
   offset: number,
+  isTombstone?: boolean,
 ): Message {
   return {
     payload,
@@ -278,6 +327,7 @@ function createCompactMessage(
     topic,
     partition,
     offset,
+    ...(isTombstone ? { isTombstone } : {}),
   }
 }
 
@@ -375,7 +425,9 @@ export class KafkaClient {
   }
 
   /**
-   * Creates a KafkaProducer instance
+   * Creates a KafkaProducer instance.
+   * Sends and flushes on the returned instance are serialized to keep
+   * partial-failure attribution (`SendFailureError.confirmedMessages`) exact.
    * @param {ProducerConfiguration} [producerConfiguration] - Optional producer configuration
    * @returns {KafkaProducer} A KafkaProducer instance
    */
@@ -383,6 +435,48 @@ export class KafkaClient {
     const producer = producerConfiguration
       ? this.kafkaClientConfig.createProducer(producerConfiguration)
       : this.kafkaClientConfig.createProducer({})
+
+    const originalSend = producer.send.bind(producer)
+    producer.send = async (record: ProducerRecord) => {
+      try {
+        return await originalSend(record)
+      } catch (error: unknown) {
+        if (error && typeof error === 'object') {
+          const sendError = error as SendFailureError
+          const match =
+            typeof sendError.message === 'string'
+              ? /enqueued (?<enqueued>\d+) of (?<total>\d+), confirmed (?<confirmed>\d+)/.exec(sendError.message)
+              : null
+          if (match?.groups) {
+            sendError.enqueuedCount = Number.parseInt(match.groups.enqueued ?? '0', 10)
+            sendError.totalCount = Number.parseInt(match.groups.total ?? '0', 10)
+            sendError.confirmedCount = Number.parseInt(match.groups.confirmed ?? '0', 10)
+            const producerWithResults = producer as unknown as { getLastDeliveryResults?: () => RecordMetadata[] }
+            sendError.confirmedMessages =
+              typeof producerWithResults.getLastDeliveryResults === 'function'
+                ? producerWithResults.getLastDeliveryResults()
+                : []
+          }
+        }
+        throw error
+      }
+    }
+
+    // Serialize sends and flushes per producer instance.
+    // Delivery results are recovered through the shared getLastDeliveryResults() slot.
+    // Concurrent sends could read each other's confirmations on the error path.
+    // A concurrent manual flush could consume them first.
+    // Throughput under concurrency is traded for exact attribution.
+    let tail: Promise<unknown> = Promise.resolve()
+    const enqueue = <Op>(op: () => Promise<Op>): Promise<Op> => {
+      const run = tail.then(op, op)
+      tail = run.catch(() => undefined)
+      return run
+    }
+    const enrichedSend = producer.send.bind(producer)
+    producer.send = (record: ProducerRecord) => enqueue(() => enrichedSend(record))
+    const nativeFlush = producer.flush.bind(producer)
+    producer.flush = () => enqueue(() => nativeFlush())
 
     // Instrument producer for diagnostic channels if enabled
     if (this._diagnosticsEnabled) {
@@ -423,8 +517,11 @@ export class KafkaClient {
     const instrumentedConsumer = this._diagnosticsEnabled
       ? this._instrumentConsumer(kafkaConsumer, consumerConfiguration.groupId)
       : kafkaConsumer
+    if (streamOptions?.objectMode === false) {
+      throw new Error('Stream consumer requires objectMode: true to emit Message objects')
+    }
+    const opts = { ...streamOptions, objectMode: true }
     const webStreamConsumer = instrumentedConsumer as KafkaConsumerWithWebStream
-    const opts = streamOptions ?? { objectMode: true }
 
     if (batchSize && batchSize > 1) {
       const resolvedBatchTimeout = batchTimeout ?? DEFAULT_WEB_STREAM_BATCH_TIMEOUT

@@ -1,0 +1,12 @@
+[package]
+name = "kafka-crab-native-drain-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+tokio = { version = "=1.53.1", features = ["macros", "rt", "sync", "time"] }
+tracing = "0.1"
+
