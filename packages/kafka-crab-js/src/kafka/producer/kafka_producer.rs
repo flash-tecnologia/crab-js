@@ -1,14 +1,3 @@
-use std::{
-  sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc, Mutex,
-  },
-  time::Duration,
-};
-
-use dashmap::{mapref::entry::Entry, DashMap};
-
-use nanoid::nanoid;
 use napi::{Error, Result, Status};
 use rdkafka::message::{DeliveryResult, OwnedHeaders};
 use rdkafka::producer::Partitioner;
@@ -22,6 +11,11 @@ use rdkafka::{
   message::ToBytes,
   producer::{Producer, ProducerContext},
 };
+use std::{
+  sync::{Arc, Mutex},
+  time::Duration,
+};
+use tokio::sync::oneshot;
 use tracing::{debug, info};
 
 use crate::kafka::kafka_util::{convert_config_values_to_strings, hashmap_to_kafka_headers};
@@ -31,12 +25,12 @@ use super::model::{
 };
 
 const DEFAULT_QUEUE_TIMEOUT: i64 = 5000;
-// Message ID generation constants for optimal string allocation
-const PREFIX_ID_LEN: usize = 5; // nanoid!(5) generates 5 characters
-const MAX_U64_DIGITS: usize = 20; // Maximum digits in u64::MAX
-const CAPACITY: usize = PREFIX_ID_LEN + 1 + MAX_U64_DIGITS; // prefix + "_" + counter = 26
 
-#[derive(Clone, Debug)]
+/// Per-message delivery result moved through a `oneshot` channel owned by the
+/// send (auto mode) or the manual pending list (manual mode). A dropped
+/// receiver (timeout, shutdown) turns the late callback into a harmless no-op:
+/// there is no shared map to leak or to steal from.
+#[derive(Debug)]
 struct DeliveryResultData {
   topic: String,
   partition: i32,
@@ -44,34 +38,14 @@ struct DeliveryResultData {
   error: Option<KafkaError>,
 }
 
-#[derive(Clone, Debug)]
-enum MessageDeliveryState {
-  Pending,
-  Delivered(DeliveryResultData),
-}
-
 #[derive(Clone)]
 struct CollectingContext<Part: Partitioner = NoCustomPartitioner> {
-  entries: Arc<DashMap<String, MessageDeliveryState>>,
   partitioner: Option<Part>,
 }
 
 impl CollectingContext {
   fn new() -> CollectingContext {
-    CollectingContext {
-      entries: Arc::new(DashMap::new()),
-      partitioner: None,
-    }
-  }
-
-  fn register_pending_id(&self, id: &str) {
-    self
-      .entries
-      .insert(id.to_string(), MessageDeliveryState::Pending);
-  }
-
-  fn unregister_pending_id(&self, id: &str) {
-    self.entries.remove(id);
+    CollectingContext { partitioner: None }
   }
 }
 
@@ -82,42 +56,32 @@ impl<Part: Partitioner + Send + Sync> ClientContext for CollectingContext<Part> 
 }
 
 impl<Part: Partitioner + Send + Sync> ProducerContext<Part> for CollectingContext<Part> {
-  type DeliveryOpaque = Arc<String>;
+  type DeliveryOpaque = Box<oneshot::Sender<DeliveryResultData>>;
 
   fn delivery(&self, delivery_result: &DeliveryResult, delivery_opaque: Self::DeliveryOpaque) {
-    let id = delivery_opaque.as_str();
-    match self.entries.entry(id.to_string()) {
-      Entry::Occupied(mut entry) => {
-        if matches!(*entry.get(), MessageDeliveryState::Pending) {
-          let (topic, partition, offset, err) = match *delivery_result {
-            Ok(ref message) => (
-              message.topic().to_string(),
-              message.partition(),
-              message.offset(),
-              None,
-            ),
-            Err((ref err, ref message)) => (
-              message.topic().to_string(),
-              message.partition(),
-              message.offset(),
-              Some(err.clone()),
-            ),
-          };
-          *entry.get_mut() = MessageDeliveryState::Delivered(DeliveryResultData {
-            topic,
-            partition,
-            offset,
-            error: err,
-          });
-        }
-      }
-      Entry::Vacant(_) => {
-        debug!(
-          "Discarding late delivery result for expired or untracked message ID: {}",
-          id
-        );
-      }
-    }
+    let (topic, partition, offset, err) = match *delivery_result {
+      Ok(ref message) => (
+        message.topic().to_string(),
+        message.partition(),
+        message.offset(),
+        None,
+      ),
+      Err((ref err, ref message)) => (
+        message.topic().to_string(),
+        message.partition(),
+        message.offset(),
+        Some(err.clone()),
+      ),
+    };
+    // `Err` means the receiver is gone (timeout or shutdown): the result has
+    // no owner anymore and is dropped. This is the late-callback path, and it
+    // needs no map lookup, expiry, or eviction to be safe.
+    let _ = delivery_opaque.send(DeliveryResultData {
+      topic,
+      partition,
+      offset,
+      error: err,
+    });
   }
 
   fn get_custom_partitioner(&self) -> Option<&Part> {
@@ -147,11 +111,13 @@ where
 pub struct KafkaProducer {
   queue_timeout: Duration,
   auto_flush: bool,
-  context: CollectingContext,
   producer: Arc<ThreadedProducer<CollectingContext>>,
-  counter: Arc<AtomicU64>,
-  // Pre-calculated prefix for efficient message ID generation (nanoid(5) + "_")
-  id_prefix: String,
+  /// Receivers stashed by `send()` in manual mode, drained by `flush()`.
+  /// Each receiver has exactly one owner at a time, so concurrent operations
+  /// cannot steal each other's confirmations.
+  manual_pending: Arc<Mutex<Vec<oneshot::Receiver<DeliveryResultData>>>>,
+  /// Last confirmed batch, kept for the `getLastDeliveryResults()` compat API.
+  /// Exact for serial use; concurrent native-direct sends may overwrite it.
   last_delivery_results: Arc<Mutex<Vec<RecordMetadata>>>,
 }
 
@@ -184,19 +150,35 @@ impl KafkaProducer {
 
     let context = CollectingContext::new();
     let producer: ThreadedProducer<CollectingContext> =
-      threaded_producer_with_context(context.clone(), producer_config)?;
-
-    let id_prefix = format!("{}_", nanoid!(PREFIX_ID_LEN));
+      threaded_producer_with_context(context, producer_config)?;
 
     Ok(KafkaProducer {
       queue_timeout,
       auto_flush,
-      context,
       producer: Arc::new(producer),
-      counter: Arc::new(AtomicU64::new(1)),
-      id_prefix,
+      manual_pending: Arc::new(Mutex::new(Vec::new())),
       last_delivery_results: Arc::new(Mutex::new(Vec::new())),
     })
+  }
+
+  /// Pumps the librdkafka queue off the async runtime.
+  async fn flush_queue(&self) -> Result<()> {
+    let producer = self.producer.clone();
+    let queue_timeout = self.queue_timeout;
+    let join = tokio::task::spawn_blocking(move || producer.flush(queue_timeout)).await;
+    let inner = match join {
+      Ok(result) => result,
+      Err(e) => {
+        return Err(Error::new(
+          Status::GenericFailure,
+          format!("Flush task join error: {e}"),
+        ))
+      }
+    };
+    match inner {
+      Ok(()) => Ok(()),
+      Err(e) => Err(Error::new(Status::GenericFailure, e.to_string())),
+    }
   }
 
   /// Returns the number of messages that are currently in-flight (sent but not yet acknowledged).
@@ -205,9 +187,6 @@ impl KafkaProducer {
   pub fn in_flight_count(&self) -> Result<i32> {
     Ok(self.producer.in_flight_count())
   }
-
-  /// Returns the confirmed delivery results from the most recent send operation.
-  /// Useful for recovering delivery metadata when a send operation encounters a partial failure.
   #[napi]
   pub fn get_last_delivery_results(&self) -> Vec<RecordMetadata> {
     self
@@ -224,21 +203,77 @@ impl KafkaProducer {
   #[napi]
   pub async fn flush(&self) -> Result<Vec<RecordMetadata>> {
     if self.auto_flush {
-      let producer = self.producer.clone();
-      let queue_timeout = self.queue_timeout;
-      tokio::task::spawn_blocking(move || producer.flush(queue_timeout))
-        .await
-        .map_err(|e| {
-          Error::new(
-            Status::GenericFailure,
-            format!("Flush task join error: {e}"),
-          )
-        })?
-        .map_err(|e| Error::new(Status::GenericFailure, e))?;
+      self.flush_queue().await?;
       Ok(vec![])
     } else {
-      self.flush_delivery_results().await
+      let receivers = std::mem::take(
+        &mut *self
+          .manual_pending
+          .lock()
+          .unwrap_or_else(|e| e.into_inner()),
+      );
+      self.flush_receivers(receivers).await
     }
+  }
+
+  /// Pumps the queue, then gathers owned confirmations. Used by manual `flush()`.
+  async fn flush_receivers(
+    &self,
+    receivers: Vec<oneshot::Receiver<DeliveryResultData>>,
+  ) -> Result<Vec<RecordMetadata>> {
+    let deadline = tokio::time::Instant::now() + self.queue_timeout;
+    let flush_res = self.flush_queue().await;
+    let (result, last_err) = Self::gather(receivers, deadline).await;
+
+    *self
+      .last_delivery_results
+      .lock()
+      .unwrap_or_else(|e| e.into_inner()) = result.clone();
+
+    if let Err(e) = flush_res {
+      if result.is_empty() {
+        return Err(e);
+      }
+      return Err(Error::new(
+        Status::GenericFailure,
+        format!(
+          "Flush completed with error ({} messages confirmed): {}",
+          result.len(),
+          e
+        ),
+      ));
+    }
+
+    if let Some(e) = last_err {
+      return Err(Error::new(
+        Status::GenericFailure,
+        format!("Message delivery failed: {e}"),
+      ));
+    }
+
+    Ok(result)
+  }
+
+  /// Awaits owned receivers within `deadline`, in order. Unconfirmed results
+  /// are abandoned by dropping their receivers: expiry needs no eviction pass
+  /// because nothing is shared.
+  async fn gather(
+    receivers: Vec<oneshot::Receiver<DeliveryResultData>>,
+    deadline: tokio::time::Instant,
+  ) -> (Vec<RecordMetadata>, Option<KafkaError>) {
+    let mut result = Vec::with_capacity(receivers.len());
+    let mut last_err = None;
+    for rx in receivers {
+      // Anything else (sender dropped, budget expired) abandons the
+      // confirmation: expiry needs no eviction pass because nothing is shared.
+      if let Ok(Ok(data)) = tokio::time::timeout_at(deadline, rx).await {
+        if let Some(err) = data.error.as_ref() {
+          last_err = Some(err.clone());
+        }
+        result.push(to_record_metadata(&data));
+      }
+    }
+    (result, last_err)
   }
 
   /// Sends one or more messages to a Kafka topic.
@@ -248,94 +283,92 @@ impl KafkaProducer {
   #[napi]
   pub async fn send(&self, producer_record: ProducerRecord) -> Result<Vec<RecordMetadata>> {
     let topic = producer_record.topic.as_str();
+    let total = producer_record.messages.len();
+    let deadline = tokio::time::Instant::now() + self.queue_timeout;
 
-    let ids: Vec<String> = (0..producer_record.messages.len())
-      .map(|_| self.generate_message_id())
-      .collect();
-
-    let mut sent_ids = Vec::with_capacity(producer_record.messages.len());
+    let mut receivers = Vec::with_capacity(total);
     let mut send_err = None;
 
-    for (message, record_id) in producer_record.messages.into_iter().zip(ids.iter()) {
-      self.context.register_pending_id(record_id);
-      match self.send_single_message(topic, &message, record_id) {
-        Ok(()) => {
-          sent_ids.push(record_id.clone());
-        }
+    for message in producer_record.messages {
+      let (tx, rx) = oneshot::channel();
+      match self.send_single_message(topic, &message, Box::new(tx)) {
+        Ok(()) => receivers.push(rx),
+        // Both halves are dropped: the message was never enqueued, so no
+        // callback will ever arrive for it.
         Err(e) => {
-          self.context.unregister_pending_id(record_id);
           send_err = Some(e);
           break;
         }
       }
     }
+    let enqueued = receivers.len();
 
     if let Some(err) = send_err {
-      // Registration is prefix-ordered until the break above: everything from
-      // sent_ids.len() on was never enqueued (the failed id was already
-      // unregistered; removing it again is a harmless no-op).
-      for id in ids.iter().skip(sent_ids.len()) {
-        self.context.unregister_pending_id(id);
+      if self.auto_flush && !receivers.is_empty() {
+        let flush_res = self.flush_queue().await;
+        let (confirmed, _) = Self::gather(receivers, deadline).await;
+        let confirmed_count = confirmed.len();
+        *self
+          .last_delivery_results
+          .lock()
+          .unwrap_or_else(|e| e.into_inner()) = confirmed;
+        let underlying_err = flush_res
+          .err()
+          .map(|e| e.reason)
+          .unwrap_or_else(|| err.to_string());
+        return Err(Error::new(
+          Status::GenericFailure,
+          partial_send_error_message(enqueued, total, confirmed_count, &underlying_err),
+        ));
       }
-
-      let (confirmed, flush_err) = if self.auto_flush && !sent_ids.is_empty() {
-        self.flush_delivery_results_with_filter(&sent_ids).await
-      } else {
-        (Vec::new(), None)
-      };
-
-      let confirmed_count = confirmed.len();
-      *self
-        .last_delivery_results
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = confirmed;
-
-      let underlying_err = flush_err
-        .map(|e| e.reason)
-        .unwrap_or_else(|| err.to_string());
-
+      if !self.auto_flush {
+        // Live receivers stay owned by the manual pending list for a later flush.
+        self
+          .manual_pending
+          .lock()
+          .unwrap_or_else(|e| e.into_inner())
+          .append(&mut receivers);
+        *self
+          .last_delivery_results
+          .lock()
+          .unwrap_or_else(|e| e.into_inner()) = Vec::new();
+      }
       return Err(Error::new(
         Status::GenericFailure,
-        partial_send_error_message(sent_ids.len(), ids.len(), confirmed_count, &underlying_err),
+        partial_send_error_message(enqueued, total, 0, &err.to_string()),
       ));
     }
 
     if self.auto_flush {
-      let (confirmed, flush_err) = self.flush_delivery_results_with_filter(&sent_ids).await;
+      let flush_res = self.flush_queue().await;
+      let (confirmed, delivery_err) = Self::gather(receivers, deadline).await;
       *self
         .last_delivery_results
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = confirmed.clone();
-      if let Some(err) = flush_err {
-        return Err(err);
+      flush_res?;
+      if let Some(e) = delivery_err {
+        return Err(Error::new(
+          Status::GenericFailure,
+          format!("Message delivery failed: {e}"),
+        ));
       }
       Ok(confirmed)
     } else {
+      self
+        .manual_pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .append(&mut receivers);
       Ok(vec![])
     }
-  }
-
-  /// Generates a fast, unique message ID using atomic counter and pre-allocated prefix
-  /// This is ~2-3x faster than the previous format!() approach for high-throughput scenarios
-  fn generate_message_id(&self) -> String {
-    let id = self.counter.fetch_add(1, Ordering::Relaxed);
-
-    // Use pre-allocated prefix and efficient string building with constant capacity
-    let mut result = String::with_capacity(CAPACITY);
-    result.push_str(&self.id_prefix);
-
-    // Use write! macro for efficient integer formatting directly into the string
-    use std::fmt::Write;
-    let _ = write!(result, "{id}"); // write! to String never fails
-
-    result
   }
 
   fn send_single_message(
     &self,
     topic: &str,
     message: &MessageProducer,
-    record_id: &str,
+    opaque: Box<oneshot::Sender<DeliveryResultData>>,
   ) -> Result<()> {
     let headers = message
       .headers
@@ -345,8 +378,7 @@ impl KafkaProducer {
     // Preserve Kafka semantics: None => no key (round-robin), Some => hashed partition
     let key = message.key.as_deref().map(ToBytes::to_bytes);
 
-    let opaque = Arc::new(record_id.to_string());
-    let mut record: BaseRecord<'_, [u8], [u8], Arc<String>> =
+    let mut record: BaseRecord<'_, [u8], [u8], Box<oneshot::Sender<DeliveryResultData>>> =
       BaseRecord::with_opaque_to(topic, opaque).headers(headers);
 
     if message.is_tombstone == Some(true) && message.payload.is_some() {
@@ -374,160 +406,6 @@ impl KafkaProducer {
       .map_err(|(e, _)| Error::new(Status::GenericFailure, e.to_string()))?;
 
     Ok(())
-  }
-
-  async fn flush_delivery_results(&self) -> Result<Vec<RecordMetadata>> {
-    let producer = self.producer.clone();
-    let queue_timeout = self.queue_timeout;
-    let target_keys: Vec<String> = self
-      .context
-      .entries
-      .iter()
-      .map(|entry| entry.key().clone())
-      .collect();
-
-    let flush_res = tokio::task::spawn_blocking(move || producer.flush(queue_timeout))
-      .await
-      .map_err(|e| {
-        Error::new(
-          Status::GenericFailure,
-          format!("Flush task join error: {e}"),
-        )
-      })?
-      .map_err(|e| Error::new(Status::GenericFailure, e));
-
-    let mut result = Vec::with_capacity(target_keys.len());
-    let mut last_err = None;
-    for key in &target_keys {
-      if let Some((_, MessageDeliveryState::Delivered(item))) = self.context.entries.remove(key) {
-        if let Some(ref err) = item.error {
-          last_err = Some(err.clone());
-        }
-        result.push(to_record_metadata(&item));
-      }
-    }
-
-    *self
-      .last_delivery_results
-      .lock()
-      .unwrap_or_else(|e| e.into_inner()) = result.clone();
-
-    if let Err(e) = flush_res {
-      // The snapshot had a full flush window and still did not confirm: evict
-      // stuck Pending entries so the map stays bounded across outages.
-      // Late deliveries for evicted ids are discarded (see delivery()).
-      for key in &target_keys {
-        if let Entry::Occupied(entry) = self.context.entries.entry(key.clone()) {
-          if matches!(entry.get(), MessageDeliveryState::Pending) {
-            entry.remove();
-          }
-        }
-      }
-      if result.is_empty() {
-        return Err(e);
-      }
-      return Err(Error::new(
-        Status::GenericFailure,
-        format!(
-          "Flush completed with error ({} messages confirmed): {}",
-          result.len(),
-          e
-        ),
-      ));
-    }
-
-    if let Some(e) = last_err {
-      return Err(Error::new(
-        Status::GenericFailure,
-        format!("Message delivery failed: {e}"),
-      ));
-    }
-
-    Ok(result)
-  }
-
-  async fn flush_delivery_results_with_filter(
-    &self,
-    ids: &[String],
-  ) -> (Vec<RecordMetadata>, Option<Error>) {
-    let producer = self.producer.clone();
-    let queue_timeout = self.queue_timeout;
-    let flush_res = tokio::task::spawn_blocking(move || producer.flush(queue_timeout))
-      .await
-      .map_err(|e| {
-        Error::new(
-          Status::GenericFailure,
-          format!("Flush task join error: {e}"),
-        )
-      })
-      .and_then(|r| r.map_err(|e| Error::new(Status::GenericFailure, e)));
-
-    let mut result = Vec::with_capacity(ids.len());
-    let mut last_err = None;
-    let mut unavailable = 0;
-    for id in ids {
-      match self.context.entries.entry(id.clone()) {
-        Entry::Occupied(entry) => {
-          // Pending entries stay: still in flight, attributed to a later flush.
-          if matches!(entry.get(), MessageDeliveryState::Delivered(_)) {
-            let state = entry.remove();
-            if let MessageDeliveryState::Delivered(item) = state {
-              if let Some(ref err) = item.error {
-                last_err = Some(err.clone());
-              }
-              result.push(to_record_metadata(&item));
-            }
-          }
-        }
-        // Every id was registered before enqueue, so a missing entry means its
-        // result was consumed or expired by another flush.
-        Entry::Vacant(_) => {
-          unavailable += 1;
-        }
-      }
-    }
-
-    let err = match flush_res {
-      Err(e) => {
-        // Same bounded-map guarantee as flush_delivery_results: evict snapshot
-        // entries that never confirmed within the flush window.
-        for id in ids {
-          if let Entry::Occupied(entry) = self.context.entries.entry(id.clone()) {
-            if matches!(entry.get(), MessageDeliveryState::Pending) {
-              entry.remove();
-            }
-          }
-        }
-        Some(e)
-      }
-      Ok(_) => {
-        let mut err = last_err.map(|e| {
-          Error::new(
-            Status::GenericFailure,
-            format!("Message delivery failed: {e}"),
-          )
-        });
-        if unavailable > 0 {
-          let concurrent = Error::new(
-            Status::GenericFailure,
-            format!(
-              "{unavailable} of {} delivery results were consumed or expired by another flush; avoid concurrent flush() with in-flight send()",
-              ids.len()
-            ),
-          );
-          err = Some(match err {
-            Some(e) => Error::new(
-              Status::GenericFailure,
-              format!("{}; {}", e.reason, concurrent.reason),
-            ),
-            None => concurrent,
-          });
-        }
-        err
-      }
-    };
-
-    (result, err)
   }
 }
 

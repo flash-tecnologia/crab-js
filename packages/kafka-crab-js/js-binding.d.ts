@@ -136,10 +136,6 @@ export declare class KafkaProducer {
    * This can be used to implement backpressure or monitor producer health.
    */
   inFlightCount(): number
-  /**
-   * Returns the confirmed delivery results from the most recent send operation.
-   * Useful for recovering delivery metadata when a send operation encounters a partial failure.
-   */
   getLastDeliveryResults(): Array<RecordMetadata>
   /**
    * Flushes all pending messages to the Kafka broker and waits for delivery confirmation.

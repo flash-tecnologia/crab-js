@@ -426,8 +426,10 @@ export class KafkaClient {
 
   /**
    * Creates a KafkaProducer instance.
-   * Sends and flushes on the returned instance are serialized to keep
-   * partial-failure attribution (`SendFailureError.confirmedMessages`) exact.
+   * Each `send()` owns its delivery confirmations natively, so concurrent sends
+   * stay isolated. `confirmedMessages` on a `SendFailureError` is exact unless
+   * concurrent native-direct sends share the instance and overwrite the
+   * compat slot read after the throw; per-send `Ok` metadata is always exact.
    * @param {ProducerConfiguration} [producerConfiguration] - Optional producer configuration
    * @returns {KafkaProducer} A KafkaProducer instance
    */
@@ -462,21 +464,9 @@ export class KafkaClient {
       }
     }
 
-    // Serialize sends and flushes per producer instance.
-    // Delivery results are recovered through the shared getLastDeliveryResults() slot.
-    // Concurrent sends could read each other's confirmations on the error path.
-    // A concurrent manual flush could consume them first.
-    // Throughput under concurrency is traded for exact attribution.
-    let tail: Promise<unknown> = Promise.resolve()
-    const enqueue = <Op>(op: () => Promise<Op>): Promise<Op> => {
-      const run = tail.then(op, op)
-      tail = run.catch(() => undefined)
-      return run
-    }
-    const enrichedSend = producer.send.bind(producer)
-    producer.send = (record: ProducerRecord) => enqueue(() => enrichedSend(record))
-    const nativeFlush = producer.flush.bind(producer)
-    producer.flush = () => enqueue(() => nativeFlush())
+    // No serialization needed: each send owns its confirmations natively.
+    // The shared `getLastDeliveryResults()` slot below only serves the
+    // `SendFailureError.confirmedMessages` compat field.
 
     // Instrument producer for diagnostic channels if enabled
     if (this._diagnosticsEnabled) {

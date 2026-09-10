@@ -25,6 +25,7 @@ interface MemoryBenchmarkResult {
 
 interface OutputOptions {
   title?: string
+  memoryTitle?: string
   useColors: boolean
   showCharts?: boolean
 }
@@ -145,7 +146,7 @@ export function printMemoryResults(results: readonly MemoryBenchmarkResult[], op
 
   printTable(
     {
-      title: 'Consumer benchmark (isolated process + lifecycle memory)',
+      title: options.memoryTitle ?? 'Consumer benchmark (isolated process + lifecycle memory)',
       headers: [
         '#',
         'Scenario',

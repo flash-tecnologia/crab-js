@@ -127,6 +127,46 @@ The most useful knobs are:
 `BENCHMARK_SETUP_MESSAGES` must be at least `BENCHMARK_ITERATIONS`. When it is not set, `setup:consumer` uses
 `BENCHMARK_ITERATIONS` as its default.
 
+## Producer Benchmarks
+
+`producer.ts` compares producer throughput and per-send latency between the workspace
+`kafka-crab-js` and the installed previous release, using the public `createProducer` API on
+both sides:
+
+```bash
+vp run benchmark:producer
+```
+
+Scenarios: `v4-producer` and `previous-producer` (`autoFlush`), plus `v4-producer-manual` and
+`previous-producer-manual` (`autoFlush: false` with an explicit `flush()` per batch). Previous
+scenarios follow the same selection rules as the consumer bench (`BENCHMARK_SHOW_PREVIOUS`,
+`BENCHMARK_ONLY`, `BENCHMARK_LIBS=crab`). Throughput, lifecycle memory, GC, and a per-send
+latency table (mean/p50/p95/p99/max) are reported with the same isolated-process methodology.
+
+Producer-specific knobs (consumer knobs do not apply, except `BENCHMARK_RUNS`,
+`BENCHMARK_SCENARIO_TIMEOUT_MS`, and the memory/GC sampling knobs):
+
+- `BENCHMARK_PRODUCER_TOPIC=benchmarks-producer` controls the topic produced into (created on
+  first run; kept separate from the consumer topic).
+- `BENCHMARK_PRODUCER_ITERATIONS=20000` controls how many produced messages are measured per
+  scenario.
+- `BENCHMARK_PRODUCER_BATCH_SIZE=100` controls messages per `send()`; each send is flushed
+  before the next starts, so batch latency includes the broker round trip.
+- `vp run benchmark:producer:quick` runs 2,000 messages once per autoFlush scenario.
+- `vp run benchmark:producer:isolated` runs the throughput-only comparison.
+- `vp run benchmark:producer:sequential` runs all scenarios in one process (stress mode).
+
+For timeout-storm memory retention (no broker needed; every flush times out against a
+blackhole, so confirmations are late or never arrive):
+
+```bash
+vp run benchmark:producer:storm
+```
+
+It reports retained RSS/external deltas after forced GC per implementation. Knobs:
+`BENCHMARK_STORM_SENDS=300`, `BENCHMARK_STORM_MESSAGE_BYTES=65536`,
+`BENCHMARK_STORM_QUEUE_TIMEOUT_MS=200`, `BENCHMARK_STORM_SETTLE_MS=500`.
+
 ## Profiling
 
 Profiling scripts use Node.js built-in profilers and write artifacts to `.profiles/`. They force `BENCHMARK_MEMORY=0`
