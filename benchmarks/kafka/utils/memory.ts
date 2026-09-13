@@ -27,13 +27,30 @@ export function diffMemoryUsage(left: MemoryUsageSnapshot, right: MemoryUsageSna
 
 export function startMemorySampler(sampleIntervalMs: number) {
   let peak = readMemoryUsage()
+  let processing = false
+  let processingPeak: MemoryUsageSnapshot | null = null
+  let processingSamples = 0
   const timer = setInterval(() => {
-    peak = maxMemoryUsage(peak, readMemoryUsage())
+    const sample = readMemoryUsage()
+    peak = maxMemoryUsage(peak, sample)
+    if (processing) {
+      processingPeak = processingPeak ? maxMemoryUsage(processingPeak, sample) : sample
+      processingSamples++
+    }
   }, sampleIntervalMs)
 
   timer.unref()
 
   return {
+    resumeWindow() {
+      processing = true
+    },
+    pauseWindow() {
+      processing = false
+    },
+    processingResult() {
+      return { peak: processingPeak, samples: processingSamples }
+    },
     stop() {
       clearInterval(timer)
       peak = maxMemoryUsage(peak, readMemoryUsage())
@@ -42,7 +59,7 @@ export function startMemorySampler(sampleIntervalMs: number) {
   }
 }
 
-function maxMemoryUsage(left: MemoryUsageSnapshot, right: MemoryUsageSnapshot): MemoryUsageSnapshot {
+export function maxMemoryUsage(left: MemoryUsageSnapshot, right: MemoryUsageSnapshot): MemoryUsageSnapshot {
   return {
     rss: Math.max(left.rss, right.rss),
     heapUsed: Math.max(left.heapUsed, right.heapUsed),

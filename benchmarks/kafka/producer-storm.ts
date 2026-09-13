@@ -80,7 +80,7 @@ console.log(
 let failures = 0
 for (const [label, create] of [
   ['previous kafka-crab-js', createPreviousProducer],
-  ['kafka-crab-js v4     ', createWorkspaceProducer],
+  ['kafka-crab-js        ', createWorkspaceProducer],
 ] as const) {
   try {
     await storm(label, create)

@@ -6,9 +6,25 @@ Crab JS is a monorepo for focused native packages that keep JavaScript APIs smal
 The root README is intentionally a high-level map. Package APIs, examples, benchmarks, and operational guidance live
 next to the project that owns them.
 
-[![kafka-crab-js npm beta](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue)](https://www.npmjs.com/package/kafka-crab-js)
+[![kafka-crab-js npm](https://img.shields.io/npm/v/kafka-crab-js)](https://www.npmjs.com/package/kafka-crab-js)
 [![kafka-crab-js-otel npm](https://img.shields.io/npm/v/kafka-crab-js-otel)](https://www.npmjs.com/package/kafka-crab-js-otel)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## Kafka for JavaScript, powered by Rust
+
+[`kafka-crab-js`](./packages/kafka-crab-js/README.md) brings native Kafka performance
+to JavaScript and TypeScript: delivery-confirmed publishing, serial and batch Web
+Streams, Node.js pipelines, and direct librdkafka configuration. Prebuilt binaries
+support Node.js 24 on macOS and Linux, with optional OpenTelemetry instrumentation.
+
+The September 12, 2026 development build reached **1.66 million messages/s in batch
+mode**, **1.98× KafkaJS `eachBatch`**, in the local small-message consumer comparison.
+See the [measured versions, memory tradeoffs, and reproduction](./BENCHMARKS.md);
+these numbers describe the development snapshot, not the current npm release.
+
+[Get started](./packages/kafka-crab-js/README.md#quick-start) ·
+[Choose an API](./packages/kafka-crab-js/README.md#choose-your-api) ·
+[Read the API reference](./packages/kafka-crab-js/docs/api.md)
 
 ## Projects
 

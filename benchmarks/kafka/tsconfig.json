@@ -8,10 +8,7 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "paths": {
-      "kafka-crab-js": ["../../packages/kafka-crab-js/js-src/index.ts"]
-    }
+    "resolveJsonModule": true
   },
   "include": ["**/*.ts"]
 }

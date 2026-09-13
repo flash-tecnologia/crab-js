@@ -1,6 +1,17 @@
 export interface RunMeasurement {
   messages: number
   elapsedNs: number
+  consumer?: {
+    window: 'steady' | 'first-message'
+    requestedWarmupMessages: number
+    warmupMessages: number
+    firstDeliveryMs: number
+    firstDeliveryMessages: number
+    receivedMessages: number
+    deliveries: number
+    minDeliveryMessages: number
+    maxDeliveryMessages: number
+  }
 }
 
 export interface BenchmarkResult {
@@ -31,6 +42,37 @@ export function formatTolerance(result: BenchmarkResult): string {
   return result.success ? `+/- ${((result.standardError / result.mean) * 100).toFixed(2)} %` : 'N/A'
 }
 
+export function measurementThroughput(measurement: RunMeasurement): number {
+  return (measurement.messages * 1e9) / Math.max(1, measurement.elapsedNs)
+}
+
+export function throughputPercentile(measurements: readonly RunMeasurement[], percentile: number): number {
+  const values = measurements.map(measurementThroughput).toSorted((left, right) => left - right)
+  if (values.length === 0) {
+    return 0
+  }
+
+  const index = Math.min(values.length - 1, Math.max(0, Math.ceil((percentile / 100) * values.length) - 1))
+  return values[index] ?? 0
+}
+
+export function formatOps(value: number): string {
+  return `${value.toFixed(2)} op/sec`
+}
+
+export function formatSignedPercent(delta: number): string {
+  const sign = delta >= 0 ? '+' : ''
+  return `${sign}${delta.toFixed(2)} %`
+}
+
+export function formatRelativeToBaseline(current: number, baseline: number): string {
+  if (baseline <= 0) {
+    return ''
+  }
+
+  return `${((current / baseline) * 100).toFixed(1)} %`
+}
+
 export function formatDifference(current: BenchmarkResult, previous?: BenchmarkResult): string {
   if (!current.success || !previous?.success) {
     return ''
@@ -41,7 +83,7 @@ export function formatDifference(current: BenchmarkResult, previous?: BenchmarkR
     return ''
   }
 
-  return `+ ${(((throughputValue(current) - previousThroughput) / previousThroughput) * 100).toFixed(2)} %`
+  return formatSignedPercent(((throughputValue(current) - previousThroughput) / previousThroughput) * 100)
 }
 
 export function createBenchmarkResult(measurements: readonly RunMeasurement[]): BenchmarkResult {

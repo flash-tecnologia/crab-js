@@ -7,16 +7,12 @@ import { readBoolean, readCsvValues, readNonNegativeInteger, readPositiveInteger
 import { startGcObserver, type GcSummary } from './utils/gc.js'
 import { diffMemoryUsage, readMemoryUsage, startMemorySampler, type MemoryUsageSnapshot } from './utils/memory.js'
 import { printBenchmarkResults, printMemoryResults } from './utils/output.js'
-import {
-  createBenchmarkResult,
-  formatOpsPerSecond,
-  type BenchmarkResult,
-  type RunMeasurement,
-} from './utils/results.js'
+import { maybeShuffle } from './utils/shuffle.js'
+import { createBenchmarkResult, formatOpsPerSecond, type RunMeasurement } from './utils/results.js'
 import { createBenchmarkMessage, createBenchmarkPartitionKeys } from './utils/messages.js'
 
 type BenchmarkLibrary = 'crab'
-type BenchmarkScenarioId = 'previous-producer' | 'v4-producer' | 'previous-producer-manual' | 'v4-producer-manual'
+type BenchmarkScenarioId = 'previous-producer' | 'crab-producer' | 'previous-producer-manual' | 'crab-producer-manual'
 
 interface ProducerLike {
   send: (record: { topic: string; messages: unknown[] }) => Promise<RecordMetadata[]>
@@ -78,6 +74,7 @@ const forceGcBeforeRun = readBoolean('BENCHMARK_FORCE_GC', true)
 const selectedLibraries = readSelectedLibraries()
 const selectedScenarios = readSelectedScenarios()
 const showPreviousScenarios = readBoolean('BENCHMARK_SHOW_PREVIOUS', false)
+const shuffleScenarios = readBoolean('BENCHMARK_SHUFFLE_SCENARIOS', false)
 const isolatedMode = readBoolean('BENCHMARK_ISOLATED', false)
 const memoryMode = readBoolean('BENCHMARK_MEMORY', true)
 const memoryChildMode = readBoolean('BENCHMARK_MEMORY_CHILD', false)
@@ -302,10 +299,10 @@ const scenarios: BenchmarkScenario[] = [
     run: (hooks) => runProducer('previous-producer', () => createPreviousProducer(true), true, hooks),
   },
   {
-    id: 'v4-producer',
-    label: 'kafka-crab-js v4 (producer, autoFlush)',
+    id: 'crab-producer',
+    label: 'kafka-crab-js (producer, autoFlush)',
     library: 'crab',
-    run: (hooks) => runProducer('v4-producer', () => createWorkspaceProducer(true), true, hooks),
+    run: (hooks) => runProducer('crab-producer', () => createWorkspaceProducer(true), true, hooks),
   },
   {
     id: 'previous-producer-manual',
@@ -314,10 +311,10 @@ const scenarios: BenchmarkScenario[] = [
     run: (hooks) => runProducer('previous-producer-manual', () => createPreviousProducer(false), false, hooks),
   },
   {
-    id: 'v4-producer-manual',
-    label: 'kafka-crab-js v4 (producer, manual flush)',
+    id: 'crab-producer-manual',
+    label: 'kafka-crab-js (producer, manual flush)',
     library: 'crab',
-    run: (hooks) => runProducer('v4-producer-manual', () => createWorkspaceProducer(false), false, hooks),
+    run: (hooks) => runProducer('crab-producer-manual', () => createWorkspaceProducer(false), false, hooks),
   },
 ]
 
@@ -354,6 +351,10 @@ function selectScenarios(): BenchmarkScenario[] {
 
     return selectedScenarios.size === 0 || selectedScenarios.has(scenario.id)
   })
+}
+
+function scenariosInRunOrder(selected: readonly BenchmarkScenario[]): BenchmarkScenario[] {
+  return maybeShuffle(selected, shuffleScenarios)
 }
 
 function percentile(sortedValues: number[], pct: number): number {
@@ -427,6 +428,7 @@ async function main() {
   }
 
   console.log(`Benchmark scenarios: ${scenariosToRun.map((scenario) => scenario.id).join(', ')}`)
+  console.log(`Benchmark shuffle scenarios: ${shuffleScenarios}`)
 
   const measurements = new Map<BenchmarkScenarioId, RunMeasurement[]>()
   for (const scenario of scenariosToRun) {
@@ -435,8 +437,12 @@ async function main() {
 
   for (let runIndex = 1; runIndex <= runs; runIndex++) {
     console.log(`Starting benchmark run ${runIndex}/${runs}`)
+    const runOrder = scenariosInRunOrder(scenariosToRun)
+    if (shuffleScenarios) {
+      console.log(`Run ${runIndex} scenario order: ${runOrder.map((scenario) => scenario.id).join(', ')}`)
+    }
 
-    for (const scenario of scenariosToRun) {
+    for (const scenario of runOrder) {
       console.log(`Running scenario: ${scenario.id} (${runIndex}/${runs})`)
       const measurement = await runScenario(scenario)
       measurements.get(scenario.id)?.push(measurement)
@@ -447,12 +453,18 @@ async function main() {
     }
   }
 
-  const results: Record<string, BenchmarkResult> = {}
-  for (const scenario of scenariosToRun) {
-    results[scenario.label] = createBenchmarkResult(measurements.get(scenario.id) ?? [])
-  }
-
-  printBenchmarkResults(results, { title: 'Producer benchmark (same process)', useColors, showCharts })
+  printBenchmarkResults(
+    scenariosToRun.map((scenario) => {
+      const scenarioMeasurements = measurements.get(scenario.id) ?? []
+      return {
+        id: scenario.id,
+        label: scenario.label,
+        result: createBenchmarkResult(scenarioMeasurements),
+        measurements: scenarioMeasurements,
+      }
+    }),
+    { title: 'Producer benchmark (same process)', useColors, showCharts },
+  )
   printBatchLatencyResults()
 }
 
@@ -596,9 +608,14 @@ async function runIsolatedMemoryBenchmark() {
   }
 
   console.log(`Benchmark scenarios: ${scenariosToRun.map((scenario) => scenario.id).join(', ')}`)
+  console.log(`Benchmark shuffle scenarios: ${shuffleScenarios}`)
 
   const results: MemoryChildResult[] = []
-  for (const scenario of scenariosToRun) {
+  const runOrder = scenariosInRunOrder(scenariosToRun)
+  if (shuffleScenarios) {
+    console.log(`Benchmark scenario order: ${runOrder.map((scenario) => scenario.id).join(', ')}`)
+  }
+  for (const scenario of runOrder) {
     console.log(`Running isolated memory scenario: ${scenario.id}`)
     results.push(await runScenarioInIsolatedProcess(scenario))
   }
@@ -630,19 +647,27 @@ async function runIsolatedThroughputBenchmark() {
   }
 
   console.log(`Benchmark scenarios: ${scenariosToRun.map((scenario) => scenario.id).join(', ')}`)
+  console.log(`Benchmark shuffle scenarios: ${shuffleScenarios}`)
 
   const isolatedResults: MemoryChildResult[] = []
-  for (const scenario of scenariosToRun) {
+  const runOrder = scenariosInRunOrder(scenariosToRun)
+  if (shuffleScenarios) {
+    console.log(`Benchmark scenario order: ${runOrder.map((scenario) => scenario.id).join(', ')}`)
+  }
+  for (const scenario of runOrder) {
     console.log(`Running isolated throughput scenario: ${scenario.id}`)
     isolatedResults.push(await runScenarioInIsolatedProcess(scenario))
   }
 
-  const results: Record<string, BenchmarkResult> = {}
-  for (const result of isolatedResults) {
-    results[result.scenario.label] = createBenchmarkResult(result.measurements)
-  }
-
-  printBenchmarkResults(results, { title: 'Producer benchmark (isolated process)', useColors, showCharts })
+  printBenchmarkResults(
+    isolatedResults.map((result) => ({
+      id: result.scenario.id,
+      label: result.scenario.label,
+      result: createBenchmarkResult(result.measurements),
+      measurements: result.measurements,
+    })),
+    { title: 'Producer benchmark (isolated process)', useColors, showCharts },
+  )
 }
 
 let entrypoint = main
