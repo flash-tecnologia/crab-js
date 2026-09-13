@@ -62,6 +62,18 @@ This is a native Node.js client. Web Streams support refers to Node's Web Stream
 API; browser, WASM, and Windows builds are not provided. Documentation on the main
 branch describes the current source; use a matching release tag for older packages.
 
+### Upgrading to 5.0
+
+Version 5.0 requires Node.js 24. The previous release supported Node.js 22 and
+newer; update service runtimes and container images before upgrading.
+
+Producer and consumer entrypoints remain available. Review the stricter
+[commit and shutdown contracts](docs/api.md#commits-and-processing-order): manual
+Async commits require a live event listener, mixed group subscriptions and manual
+assignments are rejected, and Node.js consumer streams require object mode.
+Failed sends expose per-call delivery details through `SendFailureError`; use
+those details when deciding retries after partial delivery.
+
 ## Quick start
 
 Run a Kafka broker and create an `orders` topic before starting these examples.

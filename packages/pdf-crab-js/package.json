@@ -1,6 +1,6 @@
 {
   "name": "pdf-crab-js",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Fast, typed PDF generation for Node.js and browser/WASM, powered by Rust.",
   "keywords": [
     "N-API",

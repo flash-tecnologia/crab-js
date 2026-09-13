@@ -1,6 +1,6 @@
 # Conformance review
 
-Consolidated on 2026-09-11; release review updated on 2026-09-12.
+Consolidated on 2026-09-11; release review updated on 2026-09-13.
 Scope: `kafka-crab-js`, its tests, CI, and benchmarks.
 The numbered [RFCs](../README.md) record engineering decisions. This review consolidates
 implemented fixes, evidence, and remaining acceptance criteria. Execution results are
@@ -13,8 +13,8 @@ local snapshots, not certification of every behavior supported by the library.
 
 **F06 and F07 are fixed and passed their regressions against real Kafka.** F01–F05
 remain fixed. The candidate passed its build, 55 unit tests, 18 native tests, and
-123 integration tests. Publication preparation still requires selecting the release
-version and validating CI on all six platform targets. Full conformance and a general
+123 integration tests. The release version is now `5.0.0`; the preceding CI fix
+passed all six platform targets on commit `9142681`. Full conformance and a general
 memory ceiling are not claimed; the open criteria are listed below.
 
 Reviews were performed against a working tree with local changes. Commit hashes alone
@@ -98,10 +98,12 @@ optional profile, not a universal RSS ceiling.
 ## CI and maintenance
 
 The workflow runs the native harness and lifecycle, manual-commit, and send-failure
-integrations. Publication also depends on `integration-kafka`. The workflow configuration
-was checked locally; remote execution still depends on GitHub Actions.
+integrations. Publication also depends on `integration-kafka`. The
+[remote workflow passed](https://github.com/flash-tecnologia/crab-js/actions/runs/34785588953)
+on commit `9142681`, before the version bump.
 
-`package.json` still declares `4.1.3`, pending selection of the next version.
+`package.json` and Cargo metadata declare `5.0.0`. This is a major release because
+the supported runtime changes from Node.js 22 and newer to Node.js 24.
 The workflow rejects tags that do not match the manifest version in the `lint` job,
 which publication depends on. Matching and mismatched tags were tested locally.
 Creating a tag does not update the package version. The local packaging dry run
