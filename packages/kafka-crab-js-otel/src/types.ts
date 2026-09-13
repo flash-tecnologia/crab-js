@@ -108,13 +108,13 @@ export interface KafkaOtelInstrumentationConfig extends InstrumentationConfig {
   // Custom hook called for producer operations
   producerHook?: (span: Span, record: ProducerRecord, metadata?: RecordMetadata) => void
 
-  // Whether to capture message payloads as span attributes (security sensitive)
+  // Whether to record message body size as a span attribute (never payload contents)
   captureMessagePayload?: boolean
 
-  // Maximum size of message payload to capture (in bytes)
+  // Maximum payload size for recording the body-size attribute (in bytes)
   maxPayloadSize?: number
 
-  // Whether to capture message headers as span attributes
+  // Whether to record header count and names as span attributes (never values)
   captureMessageHeaders?: boolean
 
   // Whether to augment received messages/batches with OTEL helper fields (default: true)

@@ -13,6 +13,7 @@ import {
   PACKAGE_INFO,
 } from './constants.js'
 import type { Counter, Histogram, KafkaMetricsConfig, Meter } from './types.js'
+import { getCommonDestination } from './utils.js'
 
 const ERROR_MESSAGE_PATTERNS = [
   { type: 'KAFKA_TIMEOUT', terms: ['TIMEOUT'] },
@@ -168,7 +169,12 @@ export class KafkaMetrics {
       (this._config.histogramBuckets?.length !== config.histogramBuckets.length ||
         this._config.histogramBuckets?.some((bucket, index) => bucket !== config.histogramBuckets?.[index]))
 
+    const providerChanged = config.meterProvider !== undefined && config.meterProvider !== this._config.meterProvider
     this._config = { ...this._config, ...config }
+
+    if (this._enabled && providerChanged) {
+      this.disable()
+    }
 
     // Handle enable/disable toggle
     if (this._config.enabled && !this._enabled) {
@@ -231,7 +237,7 @@ export class KafkaMetrics {
       KAFKA_OPERATION_NAMES.SEND,
       KAFKA_OPERATION_TYPES.SEND,
       {
-        partition: metadata?.[0]?.partition,
+        partition: metadata?.length === messageCount ? getCommonDestination(metadata).partition : undefined,
         error: options.error,
         clientId: options.clientId,
       },
@@ -244,7 +250,7 @@ export class KafkaMetrics {
    * Record consumer receive operation duration
    */
   public recordConsumerDuration(
-    topic: string,
+    topic: string | undefined,
     durationSeconds: number,
     options: {
       partition?: number
@@ -287,28 +293,27 @@ export class KafkaMetrics {
       return
     }
 
-    // Group messages by topic for proper attribution
-    const messagesByTopic = new Map<string, Message[]>()
+    // Count by the actual metric labels; a native batch can span multiple partitions.
+    const groups = new Map<string, { topic: string; partition?: number; count: number }>()
     for (const message of validMessages) {
-      const existing = messagesByTopic.get(message.topic) ?? []
-      existing.push(message)
-      messagesByTopic.set(message.topic, existing)
+      const partition = this._config.includePartitionId ? message.partition : undefined
+      const key = JSON.stringify([message.topic, partition])
+      const group = groups.get(key)
+      if (group) {
+        group.count += 1
+      } else {
+        groups.set(key, { topic: message.topic, partition, count: 1 })
+      }
     }
 
-    for (const [topic, topicMessages] of messagesByTopic) {
-      const [firstMessage] = topicMessages
+    for (const group of groups.values()) {
       const attributes = this._buildConsumerAttributes(
-        topic,
+        group.topic,
         KAFKA_OPERATION_NAMES.POLL,
         KAFKA_OPERATION_TYPES.RECEIVE,
-        {
-          partition: firstMessage?.partition,
-          groupId: options.groupId,
-          error: options.error,
-          clientId: options.clientId,
-        },
+        { ...options, partition: group.partition },
       )
-      this._consumedMessages.add(topicMessages.length, attributes)
+      this._consumedMessages.add(group.count, attributes)
     }
   }
 
@@ -359,17 +364,13 @@ export class KafkaMetrics {
       return
     }
 
-    const [firstMessage] = messages
-    if (!firstMessage) {
-      return
-    }
-
+    const destination = getCommonDestination(messages)
     const attributes = this._buildConsumerAttributes(
-      firstMessage.topic,
+      destination.topic,
       KAFKA_OPERATION_NAMES.PROCESS,
       KAFKA_OPERATION_TYPES.PROCESS,
       {
-        partition: firstMessage.partition,
+        partition: destination.partition,
         groupId: options.groupId,
         error: options.error,
         clientId: options.clientId,
@@ -515,7 +516,7 @@ export class KafkaMetrics {
    * https://opentelemetry.io/docs/specs/semconv/messaging/messaging-metrics/
    */
   private _buildConsumerAttributes(
-    topic: string,
+    topic: string | undefined,
     operationName: string,
     operationType: string,
     options: {
@@ -531,7 +532,7 @@ export class KafkaMetrics {
       [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME]: operationName,
       // Conditionally Required attributes
       [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_TYPE]: operationType,
-      [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME]: topic,
+      ...(topic ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME]: topic } : {}),
     }
 
     // Add server info if configured

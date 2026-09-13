@@ -1,342 +1,338 @@
 # kafka-crab-js-otel
 
-OpenTelemetry instrumentation for [kafka-crab-js](https://www.npmjs.com/package/kafka-crab-js) - a high-performance Kafka client for Node.js built with Rust.
+Trace Kafka messages from producer to application processing, with OpenTelemetry
+instrumentation for [kafka-crab-js](../kafka-crab-js/README.md).
 
-> **Note:** This package is required for OpenTelemetry support starting with kafka-crab-js v3.0.0. OTEL instrumentation was moved from the core package to reduce bundle size and make it opt-in.
+The adapter subscribes to Node.js diagnostic channels. Your application chooses
+its OpenTelemetry SDK, sampler and exporters; the Kafka client keeps telemetry
+optional. Use the same integration with direct receives, Web Streams or Node.js
+streams.
 
-## Features
+- Producer, receive and processing spans, with errors and Kafka attributes.
+- Trace propagation that preserves binary application headers.
+- Batch spans linked to producer origins, including batches containing unrelated traces.
+- Operation latency, processing latency and message counters.
+- Topic filtering, custom attributes and explicit processing completion.
 
-- 🔭 **Distributed Tracing** - Automatic span creation for producer and consumer operations
-- 📊 **Metrics Collection** - Kafka-specific metrics following OpenTelemetry semantic conventions
-- 🔗 **Context Propagation** - Automatic trace context injection/extraction in message headers
-- ⚡ **Zero Overhead When Disabled** - Uses Node.js `diagnostics_channel` for near-zero cost when OTEL is not active
-- 🎯 **Configurable** - Fine-grained control over tracing behavior, metrics, and payload capture
+## Install
 
-## Installation
-
-```bash
-npm install kafka-crab-js-otel
-# or
-pnpm add kafka-crab-js-otel
-# or
-yarn add kafka-crab-js-otel
+```sh
+pnpm add kafka-crab-js kafka-crab-js-otel @opentelemetry/api
 ```
 
-### Peer Dependencies
+This package targets Node.js 24. It declares `kafka-crab-js >=3` and
+`@opentelemetry/api >=1.9` as peers. An application must also configure an
+OpenTelemetry SDK to export telemetry. Without a provider, the OpenTelemetry API
+uses its no-op implementation.
 
-This package requires the following peer dependencies:
+The examples below use these SDK packages:
 
-```bash
-npm install kafka-crab-js @opentelemetry/api
+```sh
+pnpm add @opentelemetry/sdk-trace-node @opentelemetry/sdk-trace-base
 ```
 
-For full functionality, you'll also want:
+## Quick start
 
-```bash
-npm install @opentelemetry/sdk-node @opentelemetry/sdk-trace-node @opentelemetry/sdk-metrics
-```
+This example sends and processes one message. Provision the `orders` topic first.
+For a service, keep the receive loop running and apply the same processing and
+shutdown boundaries.
 
-## Quick Start
-
-```javascript
+```js
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
+import { ConsoleSpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { KafkaClient } from 'kafka-crab-js'
-import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
+import { enableOtelInstrumentation, endSpan, withMessageContext } from 'kafka-crab-js-otel'
 
-// 1. Enable OTEL instrumentation (call this BEFORE creating KafkaClient)
-enableOtelInstrumentation({
-  captureMessagePayload: true,
-  captureMessageHeaders: true,
+const provider = new NodeTracerProvider({
+  spanProcessors: [new SimpleSpanProcessor(new ConsoleSpanExporter())],
 })
+provider.register()
 
-// 2. Create KafkaClient with diagnostics enabled
+const adapter = enableOtelInstrumentation()
 const client = new KafkaClient({
   brokers: 'localhost:9092',
-  clientId: 'my-client',
-  diagnostics: true, // Required for OTEL to receive events
+  clientId: 'orders-service',
+  diagnostics: true,
 })
-
-// 3. Use producer/consumer as normal - spans are created automatically
 const producer = client.createProducer()
-await producer.send({
-  topic: 'my-topic',
-  messages: [{ payload: Buffer.from('Hello!') }],
+const consumer = client.createConsumer({
+  groupId: 'orders-service',
+  enableAutoCommit: false,
+  configuration: {
+    'enable.auto.offset.store': false,
+    'auto.offset.reset': 'earliest',
+  },
 })
 
-// 4. For consumers, call endSpan() when message processing is complete
-const consumer = client.createConsumer({ groupId: 'my-group' })
-await consumer.subscribe('my-topic')
-
-const message = await consumer.recv()
-// ... process message ...
-endSpan(message) // End the processing span
-
-// 5. For stream consumers, call endSpan() in event handler and use destroy() for cleanup
-const stream = client.createStreamConsumer({ groupId: 'my-stream-group' })
-await stream.subscribe('my-topic')
-
-stream.on('data', (message) => {
-  try {
-    // ... process message ...
-  } finally {
-    endSpan(message)
+try {
+  await producer.send({
+    topic: 'orders',
+    messages: [{ key: Buffer.from('order-1'), payload: Buffer.from('{"id":1}') }],
+  })
+  await consumer.subscribe('orders')
+  const message = await consumer.recv()
+  if (message) {
+    try {
+      await withMessageContext(message, async () => {
+        // Await business work here. Child spans inherit this message's context.
+        console.log(message.isTombstone ? 'Deleted' : message.payload.toString())
+      })
+      await consumer.commitMessage(message, 'Sync')
+      endSpan(message)
+    } catch (error) {
+      endSpan(message, error instanceof Error ? error : new Error(String(error)))
+      throw error
+    }
   }
-})
-
-// Proper cleanup for streams
-stream.destroy()
+} finally {
+  try {
+    await consumer.disconnect()
+  } finally {
+    adapter.disable()
+    await provider.shutdown()
+  }
+}
 ```
+
+Register the SDK and enable the adapter before Kafka operations begin. Diagnostic
+channels are enabled by default in the current Kafka client; `diagnostics: false`
+turns them off even when the OTEL adapter is enabled.
+
+For production, replace the console exporter with your collector exporter and use
+`BatchSpanProcessor`. Configure sampling in the SDK. See the
+[OpenTelemetry JavaScript tracing guide](https://opentelemetry.io/docs/languages/js/instrumentation/#traces).
+
+## Processing and context ownership
+
+`endSpan(message, error?)` records processing completion. It does **not** commit an
+offset or acknowledge delivery. Use `withMessageContext(message, async () => ...)`
+and await its result when downstream work needs to inherit the processing span.
+The context helpers do not end spans automatically.
+
+| Consumer API                                                 | Application receives                       | Complete processing with   |
+| ------------------------------------------------------------ | ------------------------------------------ | -------------------------- |
+| `consumer.recv()`                                            | `Message` or `null`                        | `endSpan(message, error?)` |
+| `consumer.recvBatch(size, timeoutMs)`                        | `Message[]`                                | `endSpan(batch, error?)`   |
+| `client.createWebStreamConsumer({ groupId })`                | One `Message` per read                     | `endSpan(message, error?)` |
+| `client.createWebStreamConsumer({ groupId, batchSize: 64 })` | One `Message[]` per read                   | `endSpan(batch, error?)`   |
+| `client.createStreamConsumer(...)`                           | Individual `Message` objects in both modes | `endSpan(message, error?)` |
+
+An empty direct batch has no processing span. The native `recvStream()` and
+`recvBatchStream()` methods bypass the public stream wrappers; use the client
+factories above for wrapper instrumentation.
+
+For batches, use `withBatchContext(batch, fn)` for work shared by the batch, and
+`withMessageContext(message, fn)` for work specific to one message. For example,
+given a batch returned by `recvBatch()` or a public Web Stream:
+
+```js
+import { endSpan, withBatchContext, withMessageContext } from 'kafka-crab-js-otel'
+
+async function processBatch(batch, processMessage) {
+  try {
+    await withBatchContext(batch, async () => {
+      for (const message of batch) {
+        await withMessageContext(message, () => processMessage(message))
+      }
+    })
+    endSpan(batch)
+  } catch (error) {
+    endSpan(batch, error instanceof Error ? error : new Error(String(error)))
+    throw error
+  }
+}
+```
+
+Commit only after business work succeeds. For a batch, commit the last completed
+message in **each topic/partition**, without skipping unfinished work. See the
+[core commit contract](../kafka-crab-js/docs/api.md#commits-and-processing-order).
+With Node.js streams, prefer awaited async iteration or a pipeline sink: an
+`async` `'data'` listener does not make the stream wait for processing.
+
+Batch and message completion helpers are idempotent. In batch mode, ending all
+message helpers also completes the batch; processing spans remain open until the
+batch completes. Passing an error marks the batch and its message spans as failed.
+Finish processing and end spans before disabling the adapter or shutting down the
+SDK. Cancellation is not proof that prefetched messages were processed, and does
+not replace explicit span completion.
+
+## Trace propagation
+
+The configured global propagator injects the producer context into outgoing
+headers. Application header buffers retain their bytes. Incoming headers are
+read without being rewritten. Missing or invalid trace context starts an
+independent processing trace instead of inheriting unrelated ambient work.
+
+When all messages share one producer span, the batch continues that trace and
+message spans are children of the batch. With multiple producer origins, the
+batch starts an aggregate trace with links to those origins, while each message
+continues its own producer trace and links back to the batch. Topic filtering is
+applied before choosing those origins. This uses
+[OpenTelemetry messaging span links](https://opentelemetry.io/docs/specs/semconv/messaging/messaging-spans/)
+to represent multiple causes without replacing individual message contexts.
 
 ## Configuration
 
-### `enableOtelInstrumentation(config)`
+```ts
+import { enableOtelInstrumentation, type OtelAdapterConfig } from 'kafka-crab-js-otel'
 
-Enable OTEL instrumentation with the given configuration:
-
-```typescript
-enableOtelInstrumentation({
-  // Tracing options
-  tracerProvider: myTracerProvider,     // Optional: custom tracer provider
-  captureMessagePayload: false,         // Include message payload in spans (default: false)
-  captureMessageHeaders: true,          // Include message headers in spans (default: true)
-  maxPayloadSize: 1024,                 // Max payload bytes to capture (default: 1024)
-  enableBatchInstrumentation: true,     // Instrument batch operations (default: true)
-
-  // Topic filtering
-  ignoreTopics: ['__consumer_offsets'], // Topics to exclude from tracing
-  // Or use a function:
-  ignoreTopics: (topic) => topic.startsWith('_'),
-
-  // Metrics
+const config: OtelAdapterConfig = {
+  ignoreTopics: (topic) => topic.startsWith('__'),
+  captureMessageHeaders: true,
+  captureMessagePayload: false,
+  maxPayloadSize: 1024,
   metrics: {
-    enabled: true,                       // Enable metrics collection (default: false)
-    meterProvider: myMeterProvider,      // Optional: custom meter provider
-    includePartitionId: true,            // Include partition in labels (default: false)
-    serverAddress: 'localhost',          // Broker address for attribution
-    serverPort: 9092,                    // Broker port for attribution
-    histogramBuckets: [0.005, 0.01, ...], // Custom latency buckets
+    enabled: true,
+    includePartitionId: false,
   },
-
-  // Hooks for custom attributes
   messageHook: (span, message) => {
-    span.setAttribute('custom.key', message.key?.toString())
+    span.setAttribute('app.message.kind', message.isTombstone ? 'delete' : 'value')
   },
-  producerHook: (span, record, metadata) => {
-    span.setAttribute('custom.partition', metadata?.partition)
+  producerHook: (span, _record, metadata) => {
+    if (metadata) span.setAttribute('app.first_delivery.partition', metadata.partition)
   },
-})
-```
-
-## API Reference
-
-### Main Functions
-
-| Function                            | Description                                       |
-| ----------------------------------- | ------------------------------------------------- |
-| `enableOtelInstrumentation(config)` | Enable OTEL instrumentation with configuration    |
-| `getOtelAdapter()`                  | Get the singleton OtelAdapter instance            |
-| `resetOtelAdapter()`                | Reset the adapter (for testing)                   |
-| `endSpan(message)`                  | End the processing span for a consumed message    |
-| `withMessageContext(message, fn)`   | Run framework code under the message OTEL context |
-| `withBatchContext(batch, fn)`       | Run framework code under the batch OTEL context   |
-
-### Instrumentation Functions
-
-| Function                      | Description                               |
-| ----------------------------- | ----------------------------------------- |
-| `getKafkaInstrumentation()`   | Get the KafkaCrabInstrumentation instance |
-| `resetKafkaInstrumentation()` | Reset instrumentation (for testing)       |
-
-### Utility Functions
-
-| Function                                      | Description                        |
-| --------------------------------------------- | ---------------------------------- |
-| `getTracer(name?)`                            | Get a tracer instance              |
-| `createProducerSpan(tracer, topic, config)`   | Create a producer span             |
-| `createConsumerSpan(tracer, message, config)` | Create a consumer span             |
-| `createBatchSpan(tracer, messages, config)`   | Create a batch processing span     |
-| `injectTraceContext(headers)`                 | Inject trace context into headers  |
-| `extractTraceContext(headers)`                | Extract trace context from headers |
-| `shouldIgnoreTopic(topic, config)`            | Check if topic should be ignored   |
-
-### Constants
-
-| Export                       | Description                                          |
-| ---------------------------- | ---------------------------------------------------- |
-| `KAFKA_SEMANTIC_CONVENTIONS` | OpenTelemetry semantic convention attribute names    |
-| `KAFKA_OPERATION_TYPES`      | Operation type values (send, receive, process, etc.) |
-| `KAFKA_OPERATION_NAMES`      | Operation name values                                |
-| `KAFKA_SPAN_NAMES`           | Span name templates                                  |
-| `KAFKA_METRICS`              | Metric names                                         |
-| `KAFKA_DEFAULTS`             | Default configuration values                         |
-
-## Metrics
-
-When metrics are enabled, the following metrics are collected:
-
-| Metric                                | Type      | Description                          |
-| ------------------------------------- | --------- | ------------------------------------ |
-| `messaging.client.operation.duration` | Histogram | Producer/consumer operation duration |
-| `messaging.client.sent.messages`      | Counter   | Number of messages sent              |
-| `messaging.client.consumed.messages`  | Counter   | Number of messages consumed          |
-| `messaging.process.duration`          | Histogram | Message processing duration          |
-
-## Spans
-
-The instrumentation creates the following spans:
-
-| Span Name         | Kind     | Description                |
-| ----------------- | -------- | -------------------------- |
-| `send <topic>`    | PRODUCER | Producer send operation    |
-| `poll <topic>`    | CONSUMER | Consumer receive operation |
-| `process <topic>` | CONSUMER | Message processing         |
-| `batch receive`   | CONSUMER | Batch receive operation    |
-| `batch process`   | CONSUMER | Batch processing           |
-
-## Integration with OpenTelemetry SDK
-
-### With Console Exporter (Development)
-
-```javascript
-import { NodeSDK } from '@opentelemetry/sdk-node'
-import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node'
-import { enableOtelInstrumentation } from 'kafka-crab-js-otel'
-
-const sdk = new NodeSDK({
-  traceExporter: new ConsoleSpanExporter(),
-})
-sdk.start()
-
-enableOtelInstrumentation()
-```
-
-### With OTLP Exporter (Production)
-
-```javascript
-import { NodeSDK } from '@opentelemetry/sdk-node'
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc'
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc'
-import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
-import { enableOtelInstrumentation } from 'kafka-crab-js-otel'
-
-const sdk = new NodeSDK({
-  traceExporter: new OTLPTraceExporter({ url: 'http://localhost:4317' }),
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter({ url: 'http://localhost:4317' }),
-  }),
-})
-sdk.start()
-
-enableOtelInstrumentation({
-  metrics: { enabled: true },
-})
-```
-
-## Stream Consumer Best Practices
-
-When using stream consumers with OTEL instrumentation:
-
-```javascript
-import { KafkaClient } from 'kafka-crab-js'
-import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
-
-enableOtelInstrumentation()
-
-const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  clientId: 'my-client',
-  diagnostics: true,
-})
-
-// Batch stream consumer for high-throughput
-const batchStream = client.createStreamConsumer({
-  groupId: 'my-batch-group',
-  batchSize: 10,
-  batchTimeout: 500,
-})
-
-await batchStream.subscribe('my-topic')
-
-batchStream.on('data', (message) => {
-  try {
-    console.log(message.payload.toString())
-  } finally {
-    endSpan(message)
-  }
-})
-
-// Proper cleanup - use destroy() for streams
-async function cleanup() {
-  return new Promise((resolve) => {
-    if (batchStream.destroyed) {
-      resolve()
-      return
-    }
-    batchStream.once('close', resolve)
-    batchStream.destroy()
-  })
 }
-
-// Handle shutdown
-process.on('SIGINT', async () => {
-  await cleanup()
-  process.exit(0)
-})
+enableOtelInstrumentation(config)
 ```
 
-## Performance
+| Option                                 | Default                   | Behavior                                                                                                                           |
+| -------------------------------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `tracerProvider`                       | Global provider           | Provider used to create Kafka spans. Register a global context manager and propagator separately when using a custom provider.     |
+| `ignoreTopics`                         | None                      | Topic name array or predicate returning `true` to exclude a topic from tracing and metrics.                                        |
+| `captureMessageHeaders`                | `true`                    | Records header count and up to 20 header names, never header values.                                                               |
+| `captureMessagePayload`                | `false`                   | Records message body size, never payload contents. For sends, this applies to single-message records.                              |
+| `maxPayloadSize`                       | `1024` bytes              | Body-size attributes are omitted above this threshold; it does not truncate Kafka messages.                                        |
+| `messageHook`                          | None                      | Synchronous hook running under each message's processing context.                                                                  |
+| `producerHook`                         | None                      | Synchronous hook at send start; runs again with the first metadata entry when delivery metadata is returned, before the span ends. |
+| `metrics.enabled`                      | `false`                   | Opts into metric collection.                                                                                                       |
+| `metrics.meterProvider`                | Global provider           | Provider used to create metric instruments.                                                                                        |
+| `metrics.includePartitionId`           | `true`                    | Adds partition labels when known; disable to reduce metric cardinality.                                                            |
+| `metrics.serverAddress` / `serverPort` | None                      | Broker attribution for metrics.                                                                                                    |
+| `metrics.histogramBuckets`             | Standard duration buckets | Positive, strictly increasing boundaries in seconds; SDK support determines how instrument advice is applied.                      |
 
-kafka-crab-js with OTEL instrumentation maintains excellent performance:
+Kafka keys, topic names, consumer groups and broker attributes can appear in
+spans independently of the capture options. Review these fields when keys contain
+sensitive data; hooks can replace key attributes before export. Payload and header
+values are not included by the built-in capture options.
 
-| Mode             | Ops/sec            | Notes                    |
-| ---------------- | ------------------ | ------------------------ |
-| Serial (no OTEL) | 43,214             | Baseline                 |
-| Batch (no OTEL)  | 205,985            | 4.8x improvement         |
-| With OTEL        | Near-zero overhead | Uses diagnostics_channel |
+Batch tracing is enabled whenever the adapter is enabled. `enableBatchInstrumentation`
+and `decorateMessages` belong to the legacy `KafkaCrabInstrumentation` helper API;
+they are not options for `enableOtelInstrumentation()`.
 
-_Benchmarks run on macOS with Apple M1 chip (December 2024)_
+## Metrics and operation boundaries
 
-## Examples
+Install and configure a metrics SDK before enabling collection:
 
-See the [examples/kafka](https://github.com/inaiat/kafka-crab-js/tree/main/examples/kafka) directory for complete examples:
-
-- `otel-tracing-example.mjs` - Tracing with custom spans
-- `otel-metrics-example.mjs` - Metrics collection setup
-- `otel-grafana-validation.mjs` - Full Grafana/Tempo/Prometheus integration
-
-## Migration from v2.x
-
-If you're migrating from kafka-crab-js v2.x where OTEL was built-in:
-
-**Before (v2.x):**
-
-```javascript
-const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  otel: {
-    serviceName: 'my-service',
-    metrics: { enabled: true },
-  },
-})
+```sh
+pnpm add @opentelemetry/sdk-metrics
 ```
 
-**After (v3.x):**
+```js
+import { metrics } from '@opentelemetry/api'
+import { ConsoleMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
+import { enableOtelInstrumentation } from 'kafka-crab-js-otel'
 
-```javascript
-import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
-
-enableOtelInstrumentation({
-  metrics: { enabled: true },
+const meterProvider = new MeterProvider({
+  readers: [
+    new PeriodicExportingMetricReader({
+      exporter: new ConsoleMetricExporter(),
+      exportIntervalMillis: 10000,
+    }),
+  ],
 })
-
-const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  diagnostics: true,
-})
-
-// Don't forget to call endSpan() for consumers!
-const message = await consumer.recv()
-endSpan(message)
+metrics.setGlobalMeterProvider(meterProvider)
+enableOtelInstrumentation({ metrics: { enabled: true } })
+// After Kafka processing and span completion: await meterProvider.shutdown().
 ```
+
+| Metric                                | Type               | Meaning                                                                                         |
+| ------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------- |
+| `messaging.client.operation.duration` | Histogram, seconds | Duration of send and nonempty/failed receive operations.                                        |
+| `messaging.client.sent.messages`      | Counter            | Messages attempted by completed send calls, including failed calls with `error.type`.           |
+| `messaging.client.consumed.messages`  | Counter            | Messages returned by receives, grouped by their actual topic/partition labels.                  |
+| `messaging.process.duration`          | Histogram, seconds | Time from processing-span creation to completion; batch mode records one observation per batch. |
+
+A batch spanning partitions has no single partition label on its operation
+histogram. A batch spanning topics also omits the destination name. A send receives
+one partition label only when all returned delivery metadata identifies that
+partition. These aggregate durations are not duplicated across message counters.
+
+| Span              | Kind     | Boundary                                                                                               |
+| ----------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `send <topic>`    | Producer | The `send()` call, including delivery waiting when auto-flush is enabled.                              |
+| `poll <topic>`    | Consumer | Receive operation; `poll kafka` when there is no single known topic.                                   |
+| `process <topic>` | Consumer | Application processing; batches also create an aggregate span, named `process kafka` for mixed topics. |
+
+A successful send span in manual-flush mode means the call completed; it does not
+prove broker delivery. `flush()` is not separately instrumented. A failed send may
+have partially delivered messages: use the core client's
+[send-failure contract](../kafka-crab-js/docs/api.md#delivery-and-partial-failures), not telemetry counters,
+to decide retries. Commit, rebalance and admin operations do not currently have
+automatic spans in this adapter.
+
+## API reference
+
+| Export                                                                     | Purpose                                                                         |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `enableOtelInstrumentation(config?)`                                       | Configure and enable the singleton adapter; enables it again after `disable()`. |
+| `getOtelAdapter(config?)`                                                  | Get/create the singleton adapter and optionally update its configuration.       |
+| `adapter.disable()`                                                        | Unsubscribe from diagnostic channels after processing finishes.                 |
+| `resetOtelAdapter()`                                                       | Dispose/reset the adapter, primarily for tests.                                 |
+| `endSpan(target, error?)`                                                  | Complete a message or batch processing span.                                    |
+| `getMessageContext(message)` / `getBatchContext(batch)`                    | Resolve the context attached to a public message or batch.                      |
+| `withMessageContext(message, fn)` / `withBatchContext(batch, fn)`          | Execute and return a callback under that context, including promises.           |
+| `createProducerSpan(tracer, record, options?)`                             | Create a manual producer span for a `ProducerRecord`.                           |
+| `createConsumerSpan(tracer, message, options?)`                            | Create a manual consumer span.                                                  |
+| `createBatchSpan(tracer, batchSize, options?)`                             | Create a manual span for a numeric message count.                               |
+| `injectTraceContext(headers?, context?)` / `extractTraceContext(headers?)` | Propagate context through Kafka headers.                                        |
+| `getKafkaInstrumentation()` / `resetKafkaInstrumentation()`                | Legacy helper integration and test reset.                                       |
+
+Manual span factories require explicit completion and do not instrument Kafka
+calls themselves. Exported `KAFKA_SEMANTIC_CONVENTIONS`, `KAFKA_METRICS` and
+`KAFKA_SPAN_NAMES` provide the attribute, metric and span naming constants.
+
+## Upgrading to 2.0
+
+Version 2.0 requires Node.js 24. Version 1.2.1 declared support for Node.js 22 and
+newer; update service runtimes and container images before upgrading.
+
+Producer and consumer APIs remain the same. Batch traces now preserve independent
+producer origins using span links, and incoming message headers are no longer
+rewritten. Dashboards should expect mixed-origin batch spans in a separate trace
+and omit partition labels on operations that span multiple partitions. Header
+capture records names and counts by default, never values.
+
+## Performance and validation
+
+Tracing cost depends on sampling, hooks, per-message spans, the SDK and exporter.
+Measure the telemetry configuration used by your service. The
+[consumer comparisons](../../BENCHMARKS.md) measure the core client with diagnostics
+disabled; those numbers do not measure OTEL overhead.
+
+From the repository root:
+
+```sh
+pnpm --filter kafka-crab-js-otel test
+KAFKA_REQUIRED=true pnpm --filter kafka-crab-js-otel test:integration
+pnpm --filter kafka-crab-js-otel lint
+pnpm --filter kafka-crab-js-otel build
+```
+
+Integration tests use `KAFKA_BROKERS` (default `localhost:9092`). They fail if Kafka
+is unavailable when `KAFKA_REQUIRED=true` is set, as in CI; otherwise they skip.
+They cover binary headers, empty values, tombstones and trace continuity through direct, Web Stream and Node.js Stream consumers in both modes.
+
+The monorepo pins pnpm in the root `packageManager` field. Run `corepack enable`
+once and use Node.js 24; Corepack selects the pinned version for local commands.
+CI installs the same version with `pnpm/action-setup` and uses a frozen lockfile.
+
+The OTEL release workflow checks that `kafka-crab-js-otel@<version>` matches the
+package manifest, builds the native core, runs lint, formatting, unit tests and
+required Kafka integration tests, then packs the OTEL artifact. Publishing depends
+on those checks and uses that same tarball. Instrumentation name and version are
+read from `package.json` during the build.
+
+See [runnable telemetry examples](../../examples/kafka) for collector integration.
 
 ## License
 

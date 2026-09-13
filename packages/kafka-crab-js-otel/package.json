@@ -1,6 +1,6 @@
 {
   "name": "kafka-crab-js-otel",
-  "version": "1.2.1",
+  "version": "2.0.0",
   "description": "OpenTelemetry instrumentation for kafka-crab-js",
   "keywords": [
     "instrumentation",
@@ -38,7 +38,7 @@
     "lint:fix": "vp lint --fix",
     "build": "vp pack",
     "test": "vp test run tests/unit",
-    "test:integration": "vp test tests/integration/*.test.*"
+    "test:integration": "vp test run tests/integration"
   },
   "devDependencies": {
     "kafka-crab-js": "workspace:*"

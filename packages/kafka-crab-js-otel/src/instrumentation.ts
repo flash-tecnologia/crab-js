@@ -147,6 +147,11 @@ export class KafkaCrabInstrumentation {
         Object.defineProperty(cloned, 'span', spanDescriptor)
       }
 
+      const contextDescriptor = Object.getOwnPropertyDescriptor(batch, 'otelContext')
+      if (contextDescriptor) {
+        Object.defineProperty(cloned, 'otelContext', contextDescriptor)
+      }
+
       const endSpanDescriptor = Object.getOwnPropertyDescriptor(batch, 'endSpan')
       if (endSpanDescriptor) {
         Object.defineProperty(cloned, 'endSpan', endSpanDescriptor)
@@ -274,6 +279,11 @@ export class KafkaCrabInstrumentation {
         const spanDescriptor = Object.getOwnPropertyDescriptor(batch, 'span')
         if (spanDescriptor) {
           Object.defineProperty(cloned, 'span', spanDescriptor)
+        }
+
+        const contextDescriptor = Object.getOwnPropertyDescriptor(batch, 'otelContext')
+        if (contextDescriptor) {
+          Object.defineProperty(cloned, 'otelContext', contextDescriptor)
         }
 
         const endSpanDescriptor = Object.getOwnPropertyDescriptor(batch, 'endSpan')

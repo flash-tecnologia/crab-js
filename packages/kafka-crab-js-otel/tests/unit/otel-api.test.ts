@@ -52,8 +52,10 @@ describe('kafka-crab-js-otel Public API Tests', () => {
       spanProcessors: [spanProcessor],
     })
 
-    provider.register()
-    context.setGlobalContextManager(contextManager)
+    trace.disable()
+    context.disable()
+    propagation.disable()
+    provider.register({ contextManager })
     contextManager.enable()
   })
 
@@ -62,6 +64,10 @@ describe('kafka-crab-js-otel Public API Tests', () => {
       contextManager.disable()
       await spanProcessor.forceFlush()
       memoryExporter.reset()
+      await provider.shutdown()
+      trace.disable()
+      context.disable()
+      propagation.disable()
     } catch (error) {
       console.warn('Cleanup error:', (error as Error).message)
     }
@@ -310,6 +316,7 @@ describe('kafka-crab-js-otel Public API Tests', () => {
 
       let childTraceId = ''
 
+      propagation.disable()
       propagation.setGlobalPropagator(throwingPropagator)
       try {
         context.with(trace.setSpan(context.active(), ambientSpan), () => {
@@ -330,7 +337,7 @@ describe('kafka-crab-js-otel Public API Tests', () => {
       )
     })
 
-    test('should fallback to active context when extraction throws and traceparent is present', () => {
+    test('should fallback to root context when extraction throws and traceparent is present', () => {
       const tracer = provider.getTracer('kafka-crab-js-otel-test')
       const ambientSpan = tracer.startSpan('ambient-parent-with-traceparent')
       const traceparent = `00-${ambientSpan.spanContext().traceId}-${ambientSpan.spanContext().spanId}-01`
@@ -345,6 +352,7 @@ describe('kafka-crab-js-otel Public API Tests', () => {
 
       let childTraceId = ''
 
+      propagation.disable()
       propagation.setGlobalPropagator(throwingPropagator)
       try {
         context.with(trace.setSpan(context.active(), ambientSpan), () => {
@@ -358,10 +366,10 @@ describe('kafka-crab-js-otel Public API Tests', () => {
         ambientSpan.end()
       }
 
-      assert.equal(
+      assert.notEqual(
         childTraceId,
         ambientSpan.spanContext().traceId,
-        'child span should use active fallback context when traceparent exists and extraction throws',
+        'child span should use root fallback context when extraction throws',
       )
     })
   })
@@ -523,24 +531,11 @@ describe('kafka-crab-js-otel Public API Tests', () => {
         context: eventContext,
       })
 
-      const decoratedBatch = Object.getOwnPropertySymbols(eventContext)
-        .map((symbolKey) => eventContext[symbolKey])
-        .find(
-          (value) =>
-            Array.isArray(value) &&
-            value.length === messages.length &&
-            value[0] === messages[0] &&
-            value[1] === messages[1],
-        ) as {
+      const decoratedBatch = messages as typeof messages & {
         span?: unknown
         otelContext?: unknown
-      } & {
-        span?: unknown
-        otelContext?: unknown
-      }[]
+      }
 
-      assert(decoratedBatch, 'event context should include instrumented batch array')
-      assert.notEqual(decoratedBatch, messages, 'instrumented batch should be a filtered array instance')
       assert(decoratedBatch.span, 'batch should have span decoration')
       assert(decoratedBatch.otelContext, 'batch should have otelContext decoration')
       assert.equal(Object.prototype.propertyIsEnumerable.call(decoratedBatch, 'span'), false)
