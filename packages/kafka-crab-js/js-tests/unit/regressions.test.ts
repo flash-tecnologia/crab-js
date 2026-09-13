@@ -1249,6 +1249,28 @@ test('M13: Async commit stays rejected after disconnect with multiple listeners'
   }
 })
 
+test('M17: consumer finalization with a pending Async commit does not block JavaScript', async () => {
+  const child = spawn(
+    process.execPath,
+    ['--expose-gc', '--import', 'tsx', 'js-tests/fixtures/consumer-finalizer-probe.mjs'],
+    { cwd: process.cwd(), stdio: ['pipe', 'pipe', 'pipe'] },
+  )
+
+  try {
+    const output = await collectChildOutput(child)
+    const line = output.split('\n').find((entry) => entry.startsWith('CONSUMER_FINALIZER_RESULT '))
+    ok(line, 'The child must report its finalizer measurement')
+    const result = JSON.parse(line.slice('CONSUMER_FINALIZER_RESULT '.length)) as {
+      elapsedMs: number
+      collected: boolean
+    }
+    equal(result.collected, true, 'The consumer must actually be garbage collected')
+    ok(result.elapsedMs < 1000, `Consumer finalization blocked JavaScript for ${Math.round(result.elapsedMs)}ms`)
+  } finally {
+    child.kill()
+  }
+}, 15_000)
+
 test('M09: compact stream preserves message before surfacing EOF error', async () => {
   const broker = await MockKafkaBroker.start()
   const topic = `m09-compact-${crypto.randomUUID()}`

@@ -111,15 +111,15 @@ pub fn create_stream_consumer(
   client_config: &ClientConfig,
   consumer_configuration: &ConsumerConfiguration,
   configuration: Option<HashMap<String, serde_json::Value>>,
-) -> anyhow::Result<StreamConsumer<KafkaCrabContext>> {
+) -> anyhow::Result<LoggingConsumer> {
   let context = KafkaCrabContext::new();
   let group_id = consumer_configuration.group_id.clone();
   let consumer_config = build_consumer_config(client_config, consumer_configuration, configuration);
 
-  let consumer: LoggingConsumer = consumer_config.create_with_context(context)?;
+  let consumer = consumer_config.create_with_context(context)?;
 
   debug!("Consumer created. Group id: {:?}", group_id);
-  Ok(consumer)
+  Ok(LoggingConsumer::new(consumer))
 }
 
 pub fn try_subscribe(consumer: &LoggingConsumer, topics: &[String]) -> anyhow::Result<()> {

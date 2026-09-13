@@ -1,10 +1,35 @@
 # Functional validation
 
-Records from 2026-09-11, consolidated from local reviews. Open items are listed in
+Records from local reviews on 2026-09-11 through 2026-09-13. Open items are listed in
 the [conformance assessment](README.md); performance is covered in [performance.md](performance.md).
+Failures discovered during review are preserved as historical evidence below.
 
-The later sections record F06/F07 fixes and the subsequent 2026-09-12 execution.
-Failures discovered during review are preserved as historical evidence.
+## CI finalization and architecture regression — 2026-09-13
+
+[PR #53's initial CI run](https://github.com/flash-tecnologia/crab-js/actions/runs/34783723496)
+exposed M09/M13 timeouts on ARM64 and a missing Vite+ binding on macOS x64.
+Forced garbage collection reproduced a **45,162 ms** event-loop stall after an
+Async commit to an unavailable coordinator followed by disconnect. A native stack
+sample located the wait in the Node-API finalizer; rust-rdkafka's consumer destructor
+polls until native close completes.
+
+The shared consumer owner now schedules that destructor on the captured Tokio
+runtime's blocking pool, including when the last reference belongs to a stream or
+commit queue. Native resources remain owned until close finishes; this changes
+where cleanup runs, not the drainage policy or a bound on total RSS.
+
+The new `consumer-finalizer-probe.mjs` uses a 6-second session timeout and verifies
+that the JavaScript consumer was actually collected. The same probe measured
+**5,986 ms with the original CI artifact** and **53 ms with the fix**, including its
+50 ms timer. Its unit regression requires completion below 1 second.
+
+On macOS ARM64, local validation passed **56 JavaScript unit tests, 4 Rust unit tests,
+18 native drainage tests, and 30 real-Kafka lifecycle/commit/send-failure tests**,
+plus the build, lint, formatting and Clippy. The Vite+ x64 startup failure was also
+reproduced under Node x64; reinstalling with `pnpm install --cpu=x64 --frozen-lockfile`
+fixed it. The Kafka and PDF binding-test workflows now select optional dependencies
+using the matrix's Node architecture. These local results precede the updated remote
+platform matrix.
 
 ## Consolidated evidence
 

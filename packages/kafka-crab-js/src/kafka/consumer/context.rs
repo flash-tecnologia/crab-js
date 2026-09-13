@@ -3,7 +3,8 @@ use rdkafka::{
   error::KafkaResult,
   ClientContext, TopicPartitionList,
 };
-use tokio::sync::broadcast;
+use std::ops::Deref;
+use tokio::{runtime::Handle, sync::broadcast};
 use tracing::{debug, warn};
 
 use crate::kafka::consumer::consumer_helper::convert_tpl_to_array_of_topic_partition;
@@ -15,7 +16,43 @@ pub type TxRxContext = (
   broadcast::Receiver<KafkaEvent>,
 );
 
-pub type LoggingConsumer = StreamConsumer<KafkaCrabContext>;
+/// Keeps librdkafka's blocking close off JavaScript and Tokio worker threads,
+/// regardless of whether the last owner is a consumer, stream or commit queue.
+pub struct LoggingConsumer {
+  consumer: Option<StreamConsumer<KafkaCrabContext>>,
+  runtime: Handle,
+}
+
+impl LoggingConsumer {
+  pub fn new(consumer: StreamConsumer<KafkaCrabContext>) -> Self {
+    Self {
+      consumer: Some(consumer),
+      runtime: Handle::current(),
+    }
+  }
+}
+
+impl Deref for LoggingConsumer {
+  type Target = StreamConsumer<KafkaCrabContext>;
+
+  fn deref(&self) -> &Self::Target {
+    self
+      .consumer
+      .as_ref()
+      .expect("consumer is present until drop")
+  }
+}
+
+impl Drop for LoggingConsumer {
+  fn drop(&mut self) {
+    if let Some(consumer) = self.consumer.take() {
+      // BaseConsumer::drop polls until close completes, which can wait for
+      // session.timeout.ms when a commit or group operation is pending.
+      // Retain the complete native owner until that close finishes normally.
+      self.runtime.spawn_blocking(move || drop(consumer));
+    }
+  }
+}
 
 #[napi(object)]
 #[derive(Clone, Debug)]

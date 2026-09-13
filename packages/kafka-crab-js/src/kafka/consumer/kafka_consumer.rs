@@ -21,7 +21,7 @@ use napi::{
 };
 
 use rdkafka::{
-  consumer::{stream_consumer::StreamConsumer, CommitMode as RdKfafkaCommitMode, Consumer},
+  consumer::{CommitMode as RdKfafkaCommitMode, Consumer},
   message::{BorrowedHeaders, BorrowedMessage, Headers},
   topic_partition_list::TopicPartitionList as RdTopicPartitionList,
   ClientConfig, Message as RdMessage, Offset,
@@ -42,7 +42,7 @@ use super::{
   byte_budget::{ByteBudget, DEFAULT_STREAM_BUFFER_BYTES},
   commit_queue::AsyncCommitQueue,
   consumer_helper::{convert_tpl_to_array_of_topic_partition, create_stream_consumer},
-  context::{KafkaCrabContext, KafkaEvent},
+  context::{KafkaEvent, LoggingConsumer},
   model::{
     CommitMode, ConsumerConfiguration, OffsetModel, TopicPartition, TopicPartitionConfig,
     DEFAULT_FETCH_METADATA_TIMEOUT,
@@ -238,7 +238,7 @@ struct CompactBatchCollection {
 }
 
 struct SerialStreamState {
-  stream_consumer: Arc<StreamConsumer<KafkaCrabContext>>,
+  stream_consumer: Arc<LoggingConsumer>,
   disconnect_signal: watch::Receiver<()>,
   cancel_signal: watch::Receiver<bool>,
   pending_messages: VecDeque<Message>,
@@ -640,7 +640,7 @@ fn normalize_batch_timeout(timeout_ms: i64) -> i64 {
 }
 
 async fn collect_batch_messages(
-  stream_consumer: &Arc<StreamConsumer<KafkaCrabContext>>,
+  stream_consumer: &Arc<LoggingConsumer>,
   disconnect_signal: &mut watch::Receiver<()>,
   mut cancel_signal: Option<&mut watch::Receiver<bool>>,
   size: u32,
@@ -783,7 +783,7 @@ async fn collect_batch_messages(
 }
 
 async fn collect_batch_messages_compact(
-  stream_consumer: &Arc<StreamConsumer<KafkaCrabContext>>,
+  stream_consumer: &Arc<LoggingConsumer>,
   disconnect_signal: &mut watch::Receiver<()>,
   mut cancel_signal: Option<&mut watch::Receiver<bool>>,
   size: u32,
@@ -998,7 +998,7 @@ async fn next_serial_stream_item(
 pub struct KafkaConsumer {
   client_config: ClientConfig,
   consumer_config: ConsumerConfiguration,
-  stream_consumer: Arc<StreamConsumer<KafkaCrabContext>>,
+  stream_consumer: Arc<LoggingConsumer>,
   fetch_metadata_timeout: Duration,
   disconnect_signal: DisconnectSignal,
   client_id: String,
