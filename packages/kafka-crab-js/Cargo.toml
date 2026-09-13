@@ -34,6 +34,11 @@ tracing-subscriber = { version = "0.3", features = ["json"] }
 serde_json = "1.0"
 futures-util = "0.3"
 
+[dev-dependencies]
+# The Rust test executable has no Node.js host to provide N-API symbols.
+# Enable dynamic symbol loading for tests while keeping production linkage unchanged.
+napi = { version = "3.12.1", default-features = false, features = ["dyn-symbols"] }
+
 [build-dependencies]
 napi-build = { version = "2.4.1" }
 

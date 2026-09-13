@@ -72,6 +72,10 @@ jobs:
         working-directory: packages/kafka-crab-js
         run: cargo clippy
 
+      - name: Rust unit tests
+        working-directory: packages/kafka-crab-js
+        run: cargo test --locked
+
       - name: Native drain regressions
         working-directory: packages/kafka-crab-js
         run: cargo test --locked --manifest-path js-tests/native-drain/Cargo.toml
