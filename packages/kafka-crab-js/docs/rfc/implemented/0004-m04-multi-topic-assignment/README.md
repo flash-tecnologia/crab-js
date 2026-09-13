@@ -23,3 +23,12 @@ implementation is in [kafka_consumer.rs](../../../../src/kafka/consumer/kafka_co
 ## Follow-up
 
 Add real-broker coverage for `allOffsets`, stored offsets, and mixed partition offset models.
+
+The 2026-09-12 release review reproduced F07: with automatic topic creation disabled,
+`allOffsets` for a valid topic and a missing topic resolves successfully with only
+the valid topic assigned. An empty explicit `partitionOffset` entry is also ignored
+when another entry supplies partitions. Both defects are now corrected: empty explicit
+lists reject, and metadata must contain the requested topic, no topic/partition error,
+and at least one partition. Validation completes before `assign()`, preserving the
+previous assignment on failure. Real-Kafka regressions cover both failures and that
+preservation policy; see [the release review and reproduction](../../review/validation.md).

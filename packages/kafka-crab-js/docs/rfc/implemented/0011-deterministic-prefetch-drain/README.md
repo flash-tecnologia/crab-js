@@ -81,6 +81,14 @@ The drainage state machine was implemented in `src/kafka/consumer/kafka_consumer
 - `cargo fmt --check`: **Clean**.
 - `pnpm lint` and `pnpm fmt:check`: **0 warnings, 0 errors across all files**.
 
+**Re-verification (2026-09-10, conformance fixes F01–F04):** the harness now extracts the
+reserve-through-handoff block, after F01 showed the isolated handoff missed a disconnect consumed
+by the byte-budget wait. `cargo test --offline --manifest-path js-tests/native-drain/Cargo.toml`:
+**18/18** (6 steady-state handoff, 6 byte-wait disconnect/resume/cancel × regular/compact,
+3 broadcast policy pins, 3 `ByteBudget` unit tests). `pnpm test`: **54/54** against the rebuilt
+binding. Clippy, `cargo fmt`, lint, and `fmt:check` clean. Real-Kafka integration was not
+re-run here (no broker available); see the conformance review §10 for the remaining gaps.
+
 ## Non-goals
 
 This RFC does not change cancellation semantics, commit behavior, producer delivery tracking,

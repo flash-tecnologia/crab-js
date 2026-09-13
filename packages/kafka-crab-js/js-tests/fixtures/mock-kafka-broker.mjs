@@ -26,6 +26,13 @@ for await (const line of input) {
       key: Buffer.from(message.key ?? 'shared-key'),
       ...(message.payload === undefined ? {} : { payload: Buffer.from(message.payload) }),
       ...(message.isTombstone === undefined ? {} : { isTombstone: message.isTombstone }),
+      ...(message.headers === undefined
+        ? {}
+        : {
+            headers: Object.fromEntries(
+              Object.entries(message.headers).map(([key, value]) => [key, Buffer.from(value)]),
+            ),
+          }),
     }))
     const result = await producer.send({ topic: request.topic, messages })
     console.log(`MOCK_RESPONSE ${JSON.stringify({ id: request.id, result })}`)

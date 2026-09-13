@@ -8,6 +8,9 @@ each validation.
 
 ## Status model
 
+For the consolidated audit, see [conformance](review/README.md),
+[validation](review/validation.md), and [performance](review/performance.md).
+
 - **Implemented**: the current source and automated checks contain the described behavior.
 - **Proposed**: an improvement or validation that remains open; no production change is implied.
 
@@ -28,22 +31,23 @@ does not replace validation against a real Kafka broker under load.
 | [0008](implemented/0008-m08-stream-object-mode/)              | M08         | Node stream object mode                      |
 | [0009](implemented/0009-m09-batch-error-preservation/)        | M09         | Batch message/error ordering                 |
 | [0010](implemented/0010-m10-metadata-timeout-validation/)     | M10         | Metadata timeout validation                  |
+| [0011](implemented/0011-deterministic-prefetch-drain/)        | M01         | Deterministic drainage of prefetched batches |
+| [0012](implemented/0012-oneshot-delivery-tracking/)           | M06         | Per-message `oneshot` delivery tracking      |
+| [0013](implemented/0013-async-commit-error-contract/)         | M07         | Asynchronous commit error contract           |
+| [0014](implemented/0014-metadata-fetch-offload/)              | M07/M10     | Offload blocking metadata operations         |
+| [0016](implemented/0016-byte-based-backpressure/)             | M01         | Bound native stream memory by bytes          |
+
+RFC-0006 describes the earlier `DashMap` design; RFC-0012 superseded that tracking model.
 
 ## Proposed follow-ups
 
 | RFC                                                      | Related item | Subject                                           |
 | -------------------------------------------------------- | ------------ | ------------------------------------------------- |
-| [0011](proposed/0011-oneshot-delivery-tracking/)         | M06          | Evaluate per-message `oneshot` delivery tracking  |
-| [0012](proposed/0012-byte-based-backpressure/)           | M01          | Bound memory by bytes as well as batches          |
-| [0013](proposed/0013-async-commit-error-contract/)       | M07          | Define the asynchronous commit error contract     |
-| [0014](proposed/0014-metadata-fetch-offload/)            | M07/M10      | Offload blocking metadata operations              |
 | [0015](proposed/0015-real-kafka-performance-validation/) | M01/M06      | Validate behavior and performance with real Kafka |
 
-## Open fixes
-
-| RFC                                                | Related item | Subject                                      |
-| -------------------------------------------------- | ------------ | -------------------------------------------- |
-| [FIX-0001](fix/0001-deterministic-prefetch-drain/) | M01          | Deterministic drainage of prefetched batches |
+Byte-based backpressure was originally numbered 0012 while proposed; that number is used by
+oneshot tracking. The implemented byte-budget work is RFC-0016; its remaining
+acceptance criteria are retained there. Each decision now has one canonical RFC.
 
 ## Review conventions
 

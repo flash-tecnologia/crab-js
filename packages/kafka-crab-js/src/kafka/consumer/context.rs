@@ -46,20 +46,24 @@ pub struct KafkaCrabContext {
 
 impl KafkaCrabContext {
   pub fn new() -> Self {
-    // Bounded channel to preserve ordering while avoiding unbounded growth
+    // Bounded broadcast channel preserving order for live receivers without
+    // unbounded growth. `broadcast::channel(100)` rounds up to 128 slots; a
+    // send on a full channel overwrites the oldest retained event (it never
+    // blocks or fails for a full buffer). A lagging receiver observes the loss
+    // as `Lagged(skipped)` on its next read; a late subscriber only sees
+    // events sent after its `resubscribe()`.
     let (tx, rx) = broadcast::channel(100);
     KafkaCrabContext {
       event_channel: (tx, rx),
     }
   }
 
-  fn send_event(&self, event: KafkaEvent) {
-    // Use try_send to avoid blocking; drop with warning if buffer is full
+  pub(super) fn send_event(&self, event: KafkaEvent) {
+    // `send` only fails when no receiver exists yet; overflow is not an error
+    // here (oldest events are overwritten) and is reported to lagging
+    // receivers as `Lagged` when they read.
     if let Err(err) = self.event_channel.0.send(event) {
-      warn!(
-        "Event channel send failed (buffer full or closed): {:?}",
-        err
-      );
+      warn!("Event channel send failed (no receivers): {:?}", err);
     };
   }
 }
@@ -99,7 +103,12 @@ impl ConsumerContext for KafkaCrabContext {
 
   fn commit_callback(&self, result: KafkaResult<()>, offsets: &TopicPartitionList) {
     let error = match result {
-      Ok(_) => None,
+      Ok(_) => offsets.elements().iter().find_map(|partition| {
+        partition
+          .error()
+          .err()
+          .map(|error| format!("{}[{}]: {error}", partition.topic(), partition.partition()))
+      }),
       Err(ref e) => Some(e.to_string()),
     };
 

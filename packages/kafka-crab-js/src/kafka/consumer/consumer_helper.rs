@@ -18,6 +18,11 @@ use super::{
   model::{ConsumerConfiguration, OffsetModel, PartitionOffset, PartitionPosition, TopicPartition},
 };
 
+/// Default `fetch.queue.backoff.ms` applied when the user did not set it.
+/// Bounds librdkafka fetch pauses after the local queue fills (upstream
+/// default is 1000ms, which starves decoupled prefetch streams).
+const DEFAULT_FETCH_QUEUE_BACKOFF_MS: u32 = 20;
+
 pub fn convert_to_rdkafka_offset(offset_model: &OffsetModel) -> Offset {
   match offset_model.position {
     Some(PartitionPosition::Beginning) => Offset::Beginning,
@@ -83,6 +88,19 @@ pub fn build_consumer_config(
   // if neither provided, librdkafka defaults to "true".
   if let Some(auto_commit) = enable_auto_commit {
     consumer_config.set("enable.auto.commit", auto_commit.to_string());
+  }
+
+  // Default fetch-queue backoff: librdkafka postpones fetching for
+  // `fetch.queue.backoff.ms` (upstream default 1000ms) once the local queue
+  // reaches `queued.min.messages`. With decoupled prefetch streams that 1s
+  // pause starves the reader (~900ms observed on small-batch streams while
+  // only ~16ms of native bank covers it). A short backoff keeps fetch hot;
+  // explicit user configuration (map or client) always wins.
+  if consumer_config.get("fetch.queue.backoff.ms").is_none() {
+    consumer_config.set(
+      "fetch.queue.backoff.ms",
+      DEFAULT_FETCH_QUEUE_BACKOFF_MS.to_string(),
+    );
   }
 
   consumer_config.set("group.id", group_id);
@@ -180,6 +198,10 @@ pub fn add_topic_partitions_to_tpl(
   timeout: Duration,
 ) -> anyhow::Result<()> {
   if let Some(partition_offsets) = partition_offset {
+    anyhow::ensure!(
+      !partition_offsets.is_empty(),
+      "Topic '{topic}' requires a non-empty partitionOffset list"
+    );
     for po in partition_offsets {
       let offset = convert_to_rdkafka_offset(&po.offset);
       debug!(
@@ -188,28 +210,41 @@ pub fn add_topic_partitions_to_tpl(
       );
       tpl.add_partition_offset(topic, po.partition, offset)?;
     }
-  } else if let Some(all_offsets) = all_offsets {
-    let offset = convert_to_rdkafka_offset(all_offsets);
+  } else {
+    let offset = all_offsets
+      .map(convert_to_rdkafka_offset)
+      .unwrap_or(Offset::Stored);
     debug!(
       "Setting all partitions for topic {} to offset: {:?}",
       topic, offset
     );
-    let metadata = consumer.fetch_metadata(Some(topic), timeout)?;
-    for meta_topic in metadata.topics() {
-      if meta_topic.name() == topic {
-        for meta_partition in meta_topic.partitions() {
-          tpl.add_partition_offset(topic, meta_partition.id(), offset)?;
-        }
-      }
+    let metadata = consumer
+      .fetch_metadata(Some(topic), timeout)
+      .map_err(|error| anyhow::anyhow!("Failed to fetch metadata for topic '{topic}': {error}"))?;
+    let meta_topic = metadata
+      .topics()
+      .iter()
+      .find(|entry| entry.name() == topic)
+      .ok_or_else(|| anyhow::anyhow!("Metadata omitted requested topic '{topic}'"))?;
+    if let Some(error) = meta_topic.error() {
+      anyhow::bail!(
+        "Invalid metadata for topic '{topic}': {}",
+        KafkaError::MetadataFetch(error.into())
+      );
     }
-  } else {
-    let metadata = consumer.fetch_metadata(Some(topic), timeout)?;
-    for meta_topic in metadata.topics() {
-      if meta_topic.name() == topic {
-        for meta_partition in meta_topic.partitions() {
-          tpl.add_partition_offset(topic, meta_partition.id(), Offset::Stored)?;
-        }
+    anyhow::ensure!(
+      !meta_topic.partitions().is_empty(),
+      "Metadata resolved no partitions for topic '{topic}'"
+    );
+    for partition in meta_topic.partitions() {
+      if let Some(error) = partition.error() {
+        anyhow::bail!(
+          "Invalid metadata for topic '{topic}' partition {}: {}",
+          partition.id(),
+          KafkaError::MetadataFetch(error.into())
+        );
       }
+      tpl.add_partition_offset(topic, partition.id(), offset)?;
     }
   }
   Ok(())

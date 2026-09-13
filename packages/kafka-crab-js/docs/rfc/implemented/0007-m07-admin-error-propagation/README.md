@@ -28,4 +28,4 @@ contains the requested topic. The paths are implemented in
 ## Follow-up
 
 Define behavior when an asynchronous commit has no listener; see
-[RFC-0013](../../proposed/0013-async-commit-error-contract/).
+[RFC-0013](../0013-async-commit-error-contract/).

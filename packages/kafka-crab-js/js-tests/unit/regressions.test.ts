@@ -14,6 +14,7 @@ import {
   type RecordMetadata,
   type SendFailureError,
 } from '../../js-src/index.js'
+import { attachSendFailureDetails, SEND_FAILURE_PAYLOAD_MARKER } from '../../js-src/send-failure.js'
 
 const UNAVAILABLE_BROKER = '127.0.0.1:1'
 const FIXTURE_TIMEOUT_MS = 10_000
@@ -22,6 +23,7 @@ type MockMessage = {
   key?: string
   payload?: string
   isTombstone?: boolean
+  headers?: Record<string, string>
 }
 
 type PendingRequest = {
@@ -589,6 +591,160 @@ test('M01: disconnect drains serial prefetch to a live reader', async () => {
   }
 })
 
+test('M16: batch stream delivers large payloads through a slow reader', async () => {
+  const broker = await MockKafkaBroker.start()
+  const topic = `byte-budget-${crypto.randomUUID()}`
+  const payloadSize = 8 * 1024
+  const count = 4
+  const metadata = await broker.send(
+    topic,
+    Array.from({ length: count }, (_, index) => ({ payload: String.fromCharCode(index + 1).repeat(payloadSize) })),
+  )
+  const seed = metadata.toSorted((left, right) => left.offset - right.offset)[0]
+  ok(seed)
+
+  const consumer = createClient(broker.brokers).createConsumer({
+    groupId: `byte-budget-${crypto.randomUUID()}`,
+    enableAutoCommit: false,
+  })
+
+  try {
+    await consumer.subscribe([
+      { topic, partitionOffset: [{ partition: seed.partition, offset: { offset: seed.offset } }] },
+    ])
+    const reader = consumer.recvBatchStream(1, 2000).getReader()
+    const received: Message[] = []
+    try {
+      for (let index = 0; index < count; index += 1) {
+        const { done, value } = await reader.read()
+        ok(!done && value, `expected batch ${index + 1}`)
+        received.push(...value)
+        await sleep(10)
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined)
+    }
+
+    equal(received.length, count)
+    for (const [index, message] of received.entries()) {
+      equal(message.payload.length, payloadSize)
+      equal(message.payload[0], index + 1)
+    }
+  } finally {
+    await disconnect(consumer)
+    broker.close()
+  }
+})
+test('M16: batch stream delivers header-heavy messages through a slow reader', async () => {
+  const broker = await MockKafkaBroker.start()
+  const topic = `byte-budget-headers-${crypto.randomUUID()}`
+  const headerSize = 4 * 1024
+  const count = 8
+  const metadata = await broker.send(
+    topic,
+    Array.from({ length: count }, (_, index) => ({
+      payload: `h-${index}`,
+      headers: {
+        'x-first': 'a'.repeat(headerSize),
+        'x-second': 'b'.repeat(headerSize),
+      },
+    })),
+  )
+  const seed = metadata.toSorted((left, right) => left.offset - right.offset)[0]
+  ok(seed)
+
+  const consumer = createClient(broker.brokers).createConsumer({
+    groupId: `byte-budget-headers-${crypto.randomUUID()}`,
+    enableAutoCommit: false,
+  })
+
+  try {
+    await consumer.subscribe([
+      { topic, partitionOffset: [{ partition: seed.partition, offset: { offset: seed.offset } }] },
+    ])
+    const reader = consumer.recvBatchStream(2, 2000).getReader()
+    const received: Message[] = []
+    try {
+      for (let index = 0; index < count / 2; index += 1) {
+        const { done, value } = await reader.read()
+        ok(!done && value, `expected batch ${index + 1}`)
+        received.push(...value)
+        await sleep(10)
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined)
+    }
+
+    equal(received.length, count)
+    for (const [index, message] of received.entries()) {
+      equal(message.payload.toString(), `h-${index}`)
+      equal(message.headers?.['x-first']?.length, headerSize)
+      equal(message.headers?.['x-second']?.length, headerSize)
+      equal(message.headers?.['x-first']?.[0], 97)
+      equal(message.headers?.['x-second']?.[0], 98)
+    }
+  } finally {
+    await disconnect(consumer)
+    broker.close()
+  }
+})
+
+test('M16: compact stream delivers shared headers through a slow reader', async () => {
+  const broker = await MockKafkaBroker.start()
+  const topic = `byte-budget-compact-headers-${crypto.randomUUID()}`
+  const headerSize = 4 * 1024
+  const count = 8
+  const metadata = await broker.send(
+    topic,
+    Array.from({ length: count }, (_, index) => ({
+      payload: `c-${index}`,
+      headers: { xh: `${index}-`.padEnd(headerSize, 'v') },
+    })),
+  )
+  const seed = metadata.toSorted((left, right) => left.offset - right.offset)[0]
+  ok(seed)
+
+  const consumer = createClient(broker.brokers).createConsumer({
+    groupId: `byte-budget-compact-headers-${crypto.randomUUID()}`,
+    enableAutoCommit: false,
+  })
+
+  try {
+    await consumer.subscribe([
+      { topic, partitionOffset: [{ partition: seed.partition, offset: { offset: seed.offset } }] },
+    ])
+    const reader = consumer.recvBatchStreamCompact(2, 2000).getReader()
+    const payloads: string[] = []
+    const headerValues: string[] = []
+    try {
+      for (let index = 0; index < count / 2; index += 1) {
+        const { done, value } = await reader.read()
+        ok(!done && value, `expected compact batch ${index + 1}`)
+        equal(value.sharedHeaderKey, 'xh')
+        ok(value.sharedHeaderValues, 'expected per-message shared header values')
+        equal(value.sharedHeaderValues?.length, value.payloads.length)
+        for (const [offset, payload] of value.payloads.entries()) {
+          payloads.push(payload.toString())
+          headerValues.push(value.sharedHeaderValues?.[offset]?.toString() ?? '')
+        }
+        await sleep(10)
+      }
+    } finally {
+      await reader.cancel().catch(() => undefined)
+    }
+
+    equal(payloads.length, count)
+    for (const [index, payload] of payloads.entries()) {
+      equal(payload, `c-${index}`)
+      equal(headerValues[index]?.length, headerSize)
+      ok(headerValues[index]?.startsWith(`${index}-`))
+    }
+  } finally {
+    await disconnect(consumer)
+    broker.close()
+  }
+})
+
 test('M07: subscribe propagates a fatal createTopic failure', async () => {
   const consumer = createClient().createConsumer({
     groupId: 'create-topic-failure',
@@ -665,6 +821,47 @@ test('M06: producer flush does not block timers on the Tokio runtime', async () 
     })
 
     ok(elapsedMs < 200, `A 50ms receive took ${Math.round(elapsedMs)}ms while producer flush was running`)
+  } finally {
+    child.kill()
+  }
+})
+
+test('M14: metadata fetch does not block unrelated receives with one Tokio worker', async () => {
+  const child = spawn(process.execPath, ['--import', 'tsx', 'js-tests/fixtures/metadata-offload-probe.mjs'], {
+    cwd: process.cwd(),
+    env: { ...process.env, TOKIO_WORKER_THREADS: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+
+  try {
+    const result = await new Promise<{
+      receiveElapsedMs: number
+      metadataElapsedMs: number
+      metadataPendingAfterReceive: boolean
+    }>((resolve, reject) => {
+      const deadline = setTimeout(() => reject(new Error('Metadata offload probe timed out')), FIXTURE_TIMEOUT_MS)
+      const inspectLine = (line: string) => {
+        if (!line.startsWith('METADATA_OFFLOAD_RESULT ')) {
+          return
+        }
+
+        clearTimeout(deadline)
+        resolve(JSON.parse(line.slice('METADATA_OFFLOAD_RESULT '.length)))
+      }
+
+      createInterface({ input: child.stdout }).on('line', inspectLine)
+      createInterface({ input: child.stderr }).on('line', inspectLine)
+      child.once('exit', (code) => {
+        if (code !== 0) {
+          clearTimeout(deadline)
+          reject(new Error(`Metadata offload probe exited with code ${String(code)}`))
+        }
+      })
+    })
+
+    equal(result.metadataPendingAfterReceive, true, 'The metadata fetch must still be pending after the receive')
+    ok(result.metadataElapsedMs >= 400, `Metadata fetch settled too early: ${Math.round(result.metadataElapsedMs)}ms`)
+    ok(result.receiveElapsedMs < 200, `A 50ms receive took ${Math.round(result.receiveElapsedMs)}ms`)
   } finally {
     child.kill()
   }
@@ -826,6 +1023,113 @@ test('M06: partial enqueue failure recovers confirmed metadata', async () => {
   equal(caughtError.confirmedCount, 1)
   equal(caughtError.confirmedMessages?.length, 1)
   equal(caughtError.confirmedMessages?.[0]?.topic, topic)
+  equal(caughtError.message.includes(SEND_FAILURE_PAYLOAD_MARKER), false)
+})
+
+test('M06: send-failure metadata is taken from the native payload, not a shared slot', () => {
+  const first = new Error(
+    `Failed to send all messages (enqueued 1 of 2, confirmed 1): queue full${SEND_FAILURE_PAYLOAD_MARKER}${JSON.stringify(
+      {
+        enqueuedCount: 1,
+        totalCount: 2,
+        confirmedCount: 1,
+        confirmedMessages: [{ topic: 'topic-a', partition: 0, offset: 1 }],
+      },
+    )}`,
+  ) as SendFailureError
+  const second = new Error(
+    `Failed to send all messages (enqueued 1 of 2, confirmed 1): queue full${SEND_FAILURE_PAYLOAD_MARKER}${JSON.stringify(
+      {
+        enqueuedCount: 1,
+        totalCount: 2,
+        confirmedCount: 1,
+        confirmedMessages: [{ topic: 'topic-b', partition: 1, offset: 9 }],
+      },
+    )}`,
+  ) as SendFailureError
+
+  attachSendFailureDetails(first)
+  attachSendFailureDetails(second)
+
+  equal(first.confirmedMessages?.[0]?.topic, 'topic-a')
+  equal(second.confirmedMessages?.[0]?.topic, 'topic-b')
+  equal(first.enqueuedCount, 1)
+  equal(first.message.includes(SEND_FAILURE_PAYLOAD_MARKER), false)
+  equal(first.message.startsWith('Failed to send all messages (enqueued 1 of 2, confirmed 1): '), true)
+})
+
+test('M06: public send failure does not read getLastDeliveryResults', async () => {
+  const broker = await MockKafkaBroker.start()
+  const topic = `no-shared-slot-${crypto.randomUUID()}`
+  const producer = createClient(broker.brokers).createProducer({
+    configuration: { 'queue.buffering.max.messages': 1 },
+  })
+  const originalGet = producer.getLastDeliveryResults.bind(producer)
+  let slotReads = 0
+  producer.getLastDeliveryResults = () => {
+    slotReads += 1
+    return originalGet()
+  }
+
+  try {
+    await rejects(
+      producer.send({
+        topic,
+        messages: [{ payload: Buffer.from('r-1') }, { payload: Buffer.from('r-2') }],
+      }),
+    )
+    equal(slotReads, 0)
+  } finally {
+    broker.close()
+  }
+})
+
+test('M06: concurrent partial failures keep per-send confirmed metadata', async () => {
+  const broker = await MockKafkaBroker.start()
+  const producer = createClient(broker.brokers).createProducer({
+    configuration: { 'queue.buffering.max.messages': 1 },
+  })
+  const topicA = `partial-a-${crypto.randomUUID()}`
+  const topicB = `partial-b-${crypto.randomUUID()}`
+  const originalGet = producer.getLastDeliveryResults.bind(producer)
+  let slotReads = 0
+  producer.getLastDeliveryResults = () => {
+    slotReads += 1
+    return originalGet()
+  }
+
+  const sendAndBind = async (topic: string, payloads: string[]) => {
+    try {
+      await producer.send({
+        topic,
+        messages: payloads.map((payload) => ({ payload: Buffer.from(payload) })),
+      })
+      throw new Error(`${topic} should fail with a partial enqueue`)
+    } catch (error) {
+      if (error instanceof Error && error.message.endsWith('should fail with a partial enqueue')) {
+        throw error
+      }
+      const err = error as SendFailureError
+      equal(err.totalCount, 2)
+      for (const metadata of err.confirmedMessages ?? []) {
+        equal(metadata.topic, topic)
+      }
+      return err
+    }
+  }
+
+  try {
+    const [errorA, errorB] = await Promise.all([
+      sendAndBind(topicA, ['a-1', 'a-2']),
+      sendAndBind(topicB, ['b-1', 'b-2']),
+    ])
+
+    ok(errorA.enqueuedCount !== undefined)
+    ok(errorB.enqueuedCount !== undefined)
+    equal(slotReads, 0)
+  } finally {
+    broker.close()
+  }
 })
 
 test('M09: a valid message followed by a consumer error preserves the message and surfaces the error', async () => {
@@ -859,6 +1163,89 @@ test('M09: a valid message followed by a consumer error preserves the message an
   } finally {
     await disconnect(consumer)
     broker.close()
+  }
+})
+
+test('M13: Async commit without onEvents is rejected', async () => {
+  const consumer = createClient().createConsumer({
+    groupId: 'async-commit-no-listener',
+    enableAutoCommit: false,
+  })
+
+  try {
+    await rejects(consumer.commit('topic', 0, 1, 'Async'), /onEvents/)
+  } finally {
+    await disconnect(consumer)
+  }
+})
+
+test('M13: Async commit is allowed after onEvents is registered', async () => {
+  const consumer = createClient().createConsumer({
+    groupId: 'async-commit-with-listener',
+    enableAutoCommit: false,
+  })
+
+  try {
+    consumer.onEvents(() => undefined)
+    try {
+      await consumer.commit('topic', 0, 1, 'Async')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      equal(message.includes('onEvents'), false)
+    }
+  } finally {
+    await disconnect(consumer)
+  }
+})
+test('M13: Async commit is rejected after disconnect stops the event listener', async () => {
+  const consumer = createClient().createConsumer({
+    groupId: 'async-commit-after-disconnect',
+    enableAutoCommit: false,
+  })
+
+  try {
+    consumer.onEvents(() => undefined)
+    await consumer.disconnect()
+    await rejects(consumer.commit('topic', 0, 1, 'Async'), /onEvents/)
+  } finally {
+    await disconnect(consumer)
+  }
+})
+
+test('M13: Async commitMessage is rejected after disconnect stops the event listener', async () => {
+  const consumer = createClient().createConsumer({
+    groupId: 'async-commit-message-after-disconnect',
+    enableAutoCommit: false,
+  })
+
+  try {
+    consumer.onEvents(() => undefined)
+    await consumer.disconnect()
+    await rejects(
+      consumer.commitMessage(
+        { payload: Buffer.from('commit-message-seed'), topic: 'topic', partition: 0, offset: 0 },
+        'Async',
+      ),
+      /onEvents/,
+    )
+  } finally {
+    await disconnect(consumer)
+  }
+})
+
+test('M13: Async commit stays rejected after disconnect with multiple listeners', async () => {
+  const consumer = createClient().createConsumer({
+    groupId: 'async-commit-multiple-listeners',
+    enableAutoCommit: false,
+  })
+
+  try {
+    consumer.onEvents(() => undefined)
+    consumer.onEvents(() => undefined)
+    await consumer.disconnect()
+    await rejects(consumer.commit('topic', 0, 1, 'Async'), /onEvents/)
+  } finally {
+    await disconnect(consumer)
   }
 })
 

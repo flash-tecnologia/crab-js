@@ -41,6 +41,18 @@ jobs:
           node-version: 24
           cache: 'pnpm'
 
+      - name: Verify release tag matches package version
+        if: startsWith(github.ref, 'refs/tags/kafka-crab-js@')
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const { version } = JSON.parse(readFileSync('packages/kafka-crab-js/package.json', 'utf8'))
+          const expected = `refs/tags/kafka-crab-js@${version}`
+          if (process.env.GITHUB_REF !== expected) {
+            throw new Error(`Release tag ${process.env.GITHUB_REF} does not match package version ${version}`)
+          }
+          NODE
+
       - name: Install
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -59,6 +71,10 @@ jobs:
       - name: Clippy
         working-directory: packages/kafka-crab-js
         run: cargo clippy
+
+      - name: Native drain regressions
+        working-directory: packages/kafka-crab-js
+        run: cargo test --locked --manifest-path js-tests/native-drain/Cargo.toml
 
   build:
     strategy:
@@ -280,7 +296,7 @@ jobs:
           args: npm run test
 
   integration-kafka:
-    name: Integration Kafka (manual commit)
+    name: Integration Kafka (lifecycle + manual commit + send failure)
     runs-on: ubuntu-latest
     services:
       kafka:
@@ -323,7 +339,7 @@ jobs:
         run: pnpm build
         working-directory: packages/kafka-crab-js
       - name: Integration tests (Kafka)
-        run: node --test js-tests/integration/consumer-manual-commit.test.mjs
+        run: node --test js-tests/integration/stream-lifecycle-real.test.mjs js-tests/integration/consumer-manual-commit.test.mjs js-tests/integration/producer-send-failure.test.mjs
         working-directory: packages/kafka-crab-js
         env:
           KAFKA_BROKERS: localhost:9092
@@ -336,6 +352,7 @@ jobs:
       - lint
       - test-macOS-windows-binding
       - test-linux-binding
+      - integration-kafka
     steps:
       - uses: actions/checkout@v6
       - name: setup pnpm

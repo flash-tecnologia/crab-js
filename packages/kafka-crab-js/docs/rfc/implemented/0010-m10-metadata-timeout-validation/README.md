@@ -24,4 +24,4 @@ not the resulting duration). Validation is implemented in
 ## Follow-up
 
 Document upper bounds and measure metadata operations with a real broker; see
-[RFC-0014](../../proposed/0014-metadata-fetch-offload/).
+[RFC-0014](../0014-metadata-fetch-offload/).

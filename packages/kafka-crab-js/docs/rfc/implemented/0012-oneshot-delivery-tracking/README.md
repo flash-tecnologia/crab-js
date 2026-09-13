@@ -1,4 +1,4 @@
-# RFC-0011: Evaluate per-message `oneshot` delivery tracking
+# RFC-0012: Per-message `oneshot` delivery tracking
 
 - Status: Implemented (2026-09-10)
 - Related item: M06
@@ -6,11 +6,11 @@
 
 ## Motivation
 
-The current state map provides concurrent access, but each callback and timeout still shares a
-global map entry. A per-message `tokio::sync::oneshot` channel could give one delivery result a
-single owner and make a late callback harmless when its receiver has been dropped.
+The previous state map provided concurrent access, but callbacks and timeouts shared a
+global map entry. A per-message `tokio::sync::oneshot` channel gives one delivery result a
+single owner and makes a late callback harmless when its receiver has been dropped.
 
-## Proposal
+## Decision
 
 Carry a `oneshot::Sender` in librdkafka's `DeliveryOpaque`; keep the receiver with the send or
 flush operation; and define explicit timeout, cancellation, partial-failure, and `autoFlush: false`
@@ -18,10 +18,10 @@ semantics. Do not adopt the design based on the isolated benchmark alone.
 
 ## Evidence
 
-The [isolated benchmark](../../../../benchmarks/delivery-tracking/ANALISE.md) measured 1.34×–3.08×
-the throughput of a single `DashMap` for 256-message batches without expiration, with the
-largest difference at eight producer lanes. It excludes Kafka, NAPI, async receiver waits,
-and real flush behavior.
+The historical isolated prototype excluded Kafka, NAPI, async receiver waits and real flush
+behavior. Its benchmark artifact is no longer present in this repository, so its throughput
+claims are not used as current evidence. See the consolidated
+[performance review](../../review/performance.md) for maintained evidence and limitations.
 
 ## Acceptance criteria
 
@@ -54,10 +54,8 @@ as its race no longer exists.
   release across autoFlush/manual modes, 20k messages × 3 runs each — throughput parity
   (~971 op/sec all four, ±0.1%) and identical batch p50/p95/p99 (~103/106/108 ms),
   flush-dominated as expected.
-- Timeout storm (`benchmark:producer:storm`, 300 × 64 KiB timed-out sends, blackhole):
-  no retained RSS growth in either implementation (previous clears entries on flush
-  error instead of leaking; v4 drops receivers by construction). The dramatic-leak
-  story does not reproduce against release 4.1.3 — the win stays structural (no shared
-  state to reason about, no steal class, −14 dependency crates), not a measured delta.
+- The timeout-storm probe does not prove native cleanup: later review found sequential
+  sends against a refused connection and in-flight messages still present at the final
+  sample. Retained RSS alone is not evidence that all pending deliveries were released.
 - `cargo clippy --all-targets --offline`, `cargo fmt --check`, `pnpm lint`,
   `pnpm fmt:check`: clean.

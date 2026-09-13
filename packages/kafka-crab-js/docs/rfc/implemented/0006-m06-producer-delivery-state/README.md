@@ -28,6 +28,5 @@ The implementation is in [kafka_producer.rs](../../../../src/kafka/producer/kafk
 
 ## Follow-up
 
-The isolated benchmark suggests evaluating `oneshot` for per-message ownership; see
-[RFC-0011](../../proposed/0011-oneshot-delivery-tracking/). Validate all producer contracts
-with real Kafka before changing the current `DashMap` design.
+Superseded for tracking by [RFC-0012](../0012-oneshot-delivery-tracking/). The structured
+partial-send contract and `spawn_blocking` flush remain.

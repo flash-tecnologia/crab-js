@@ -1,0 +1,4805 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-09-11T18:53:52.876Z",
+  "status": "complete",
+  "environment": {
+    "node": "v24.20.0",
+    "execPath": "/Users/inaiat.moraes/.local/share/fnm/node-versions/v24.20.0/installation/bin/node",
+    "platform": "darwin",
+    "arch": "arm64",
+    "osRelease": "25.6.0",
+    "cpus": [
+      {
+        "model": "Apple M4",
+        "speed": 2400
+      },
+      {
+        "model": "Apple M4",
+        "speed": 2400
+      },
+      {
+        "model": "Apple M4",
+        "speed": 2400
+      },
+      {
+        "model": "Apple M4",
+        "speed": 2400
+      },
+      {
+        "model": "Apple M4",
+        "speed": 2400
+      },
+      {
+        "model": "Apple M4",
+        "speed": 2400
+      },
+      {
+        "model": "Apple M4",
+        "speed": 2400
+      },
+      {
+        "model": "Apple M4",
+        "speed": 2400
+      },
+      {
+        "model": "Apple M4",
+        "speed": 2400
+      },
+      {
+        "model": "Apple M4",
+        "speed": 2400
+      }
+    ],
+    "totalMemoryBytes": 17179869184,
+    "nodeOptions": null,
+    "uvThreadpoolSize": null
+  },
+  "sourceBefore": {
+    "root": "/Users/inaiat.moraes/dev/flash/crab-js",
+    "commit": "4c6e92ab091d35c4b03ac9381599c5b73f720bef",
+    "branch": "fix/kafka-crab-js-delivery-guarantees",
+    "status": " M .github/workflows/CI.yml\n M benchmarks/kafka/README.md\n M benchmarks/kafka/consumer.ts\n M benchmarks/kafka/package.json\n M benchmarks/kafka/producer-storm.ts\n M benchmarks/kafka/producer.ts\n M benchmarks/kafka/utils/env.ts\n M benchmarks/kafka/utils/output.ts\n M benchmarks/kafka/utils/results.ts\n M examples/kafka/otel-metrics-example.mjs\n M examples/kafka/otel-tracing-example.mjs\n M examples/kafka/web-stream-async-generator.ts\n M packages/kafka-crab-js/README.md\n M packages/kafka-crab-js/docs/rfc/README.md\n M packages/kafka-crab-js/docs/rfc/fix/README.md\n M packages/kafka-crab-js/docs/rfc/implemented/0006-m06-producer-delivery-state/README.md\n M packages/kafka-crab-js/docs/rfc/implemented/0011-deterministic-prefetch-drain/README.md\n M packages/kafka-crab-js/docs/rfc/proposed/0012-byte-based-backpressure/README.md\n M packages/kafka-crab-js/docs/rfc/proposed/0013-async-commit-error-contract/README.md\n M packages/kafka-crab-js/docs/rfc/proposed/0014-metadata-fetch-offload/README.md\n M packages/kafka-crab-js/docs/rfc/proposed/README.md\n M packages/kafka-crab-js/js-src/kafka-client.ts\n M packages/kafka-crab-js/js-tests/fixtures/mock-kafka-broker.mjs\n M packages/kafka-crab-js/js-tests/integration/consumer-manual-commit.test.mjs\n M packages/kafka-crab-js/js-tests/integration/consumer-stream.test.mjs\n M packages/kafka-crab-js/js-tests/native-drain/README.md\n M packages/kafka-crab-js/js-tests/native-drain/build.rs\n M packages/kafka-crab-js/js-tests/native-drain/src/lib.rs\n M packages/kafka-crab-js/js-tests/unit/regressions.test.ts\n M packages/kafka-crab-js/src/kafka/consumer/consumer_helper.rs\n M packages/kafka-crab-js/src/kafka/consumer/context.rs\n M packages/kafka-crab-js/src/kafka/consumer/kafka_consumer.rs\n M packages/kafka-crab-js/src/kafka/consumer/mod.rs\n M packages/kafka-crab-js/src/kafka/kafka_admin.rs\n M packages/kafka-crab-js/src/kafka/producer/kafka_producer.rs\n D packages/pdf-crab-js/index.js\n M pnpm-lock.yaml\n?? benchmarks/kafka/diagnostics/\n?? benchmarks/kafka/serial-memory.mjs\n?? benchmarks/kafka/tsconfig.runtime.json\n?? benchmarks/kafka/utils/runtime-fingerprint.ts\n?? benchmarks/kafka/utils/serial-timing.ts\n?? benchmarks/kafka/utils/shuffle.ts\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-10-rfc-conformance-review.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-consumer-serial-instrumentation.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-operational-safety.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-rfc-evidence.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-serial-abba.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-serial-depth-experiment.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-serial-investigation.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-serial-memory.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-serial-timing.md\n?? packages/kafka-crab-js/docs/rfc/fix/evidence/\n?? packages/kafka-crab-js/docs/rfc/implemented/0013-async-commit-error-contract/\n?? packages/kafka-crab-js/docs/rfc/implemented/0014-metadata-fetch-offload/\n?? packages/kafka-crab-js/docs/rfc/implemented/0016-byte-based-backpressure/\n?? packages/kafka-crab-js/js-src/send-failure.ts\n?? packages/kafka-crab-js/js-tests/diagnostics/\n?? packages/kafka-crab-js/js-tests/fixtures/byte-pressure-evidence.mjs\n?? packages/kafka-crab-js/js-tests/fixtures/metadata-offload-probe.mjs\n?? packages/kafka-crab-js/js-tests/integration/producer-send-failure.test.mjs\n?? packages/kafka-crab-js/src/kafka/consumer/byte_budget.rs\n?? packages/pdf-crab-js/js-binding.cjs\n",
+    "fingerprints": [
+      {
+        "path": "benchmarks/kafka/consumer.ts",
+        "sha256": "454a75bd6e71fd4ab8c2ea73a42bf65bb8172cfe2edf3d4e511a1b4ec5ec2a45"
+      },
+      {
+        "path": "benchmarks/kafka/diagnostics/serial-abba.mjs",
+        "sha256": "2d92f52e94bcde18e040b20a9a2bdbf113d1c16ae64b0b7370fd396ea9aa02b3"
+      },
+      {
+        "path": "benchmarks/kafka/diagnostics/serial-timing.mjs",
+        "sha256": "ebd848891681887f3d839ae0cafb4b1098d2ffbd26dba2103717b728d3eeccb3"
+      },
+      {
+        "path": "benchmarks/kafka/package.json",
+        "sha256": "c590b18ee45bbb0bf14daefc7e622f280957a74f763b59a1f6e6ad9ec6b99598"
+      },
+      {
+        "path": "benchmarks/kafka/producer-storm.ts",
+        "sha256": "5c2bf7a8adb28495814ac620ae1878699ce9771fa9c71b897519e6f64c903078"
+      },
+      {
+        "path": "benchmarks/kafka/producer.ts",
+        "sha256": "cf539267da791e635e61cf940a27337b2e2da98615b0b402dea5c1d02a54b905"
+      },
+      {
+        "path": "benchmarks/kafka/serial-memory.mjs",
+        "sha256": "7bdd47d63c95c2ec0e3da3f6a648c3c34420b243cf8e511aa5c6bb7c323dc0f6"
+      },
+      {
+        "path": "benchmarks/kafka/tsconfig.json",
+        "sha256": "7b24f6a135b7fd4a599a5b8dd74bc65474b1a48556325bcac3f693ca6487160e"
+      },
+      {
+        "path": "benchmarks/kafka/tsconfig.runtime.json",
+        "sha256": "69d3b6bceac1dcc6beab743941b0786737f20e9a620f3999163971dcdf9833f0"
+      },
+      {
+        "path": "benchmarks/kafka/utils/definitions.ts",
+        "sha256": "fcb37cc378dcf65d8424af4cf6414ec8f953ed30d6c75cf290893c3e2f75a750"
+      },
+      {
+        "path": "benchmarks/kafka/utils/env.ts",
+        "sha256": "271ccaa5a6dff302a8471c21b2748f9c23eca95e869e4c3557f1af1cc8d75ea6"
+      },
+      {
+        "path": "benchmarks/kafka/utils/gc.ts",
+        "sha256": "19f2d7a3a3c6970c3752f87fc51c225908a1bda17ce5592980406d5e150cc766"
+      },
+      {
+        "path": "benchmarks/kafka/utils/memory.ts",
+        "sha256": "97a7385c692e2faca951a61347a5650c8297cb8e8d972f5f5330f2606001c8a8"
+      },
+      {
+        "path": "benchmarks/kafka/utils/messages.ts",
+        "sha256": "7e31276404794645cddf25346aebd95f914cf39fd58d431acd8a3c71829af559"
+      },
+      {
+        "path": "benchmarks/kafka/utils/output.ts",
+        "sha256": "722284f4c2afb86904c2fc827c9eb86c80f17b64ec23f4b3f336c8a82f50a21d"
+      },
+      {
+        "path": "benchmarks/kafka/utils/results.ts",
+        "sha256": "b568de4cb26bc6ff4ad0e556226c650503c92342d83c45ae72fdb7df82f52c79"
+      },
+      {
+        "path": "benchmarks/kafka/utils/runtime-fingerprint.ts",
+        "sha256": "59b10e74c81f5dee9123a123b385f64cb29206083acbdb54dd38821aa38fcb56"
+      },
+      {
+        "path": "benchmarks/kafka/utils/serial-timing.ts",
+        "sha256": "c88f100679dbdd966a97cbec746ebebca3f979233c2df9059c4306c40c84a4c5"
+      },
+      {
+        "path": "benchmarks/kafka/utils/setup.ts",
+        "sha256": "6200d4d10688d2061440b55e446d0d0aa0d0c4a147c3ef74b239f603b259f678"
+      },
+      {
+        "path": "benchmarks/kafka/utils/shuffle.ts",
+        "sha256": "e890a9c16aa3ced2c0dc0b97931361da3437237e0827d1487ebed17e895c4b4e"
+      },
+      {
+        "path": "benchmarks/kafka/vite.config.ts",
+        "sha256": "e565b378dd41517c6aa9c1f00e8895afdb2234ff7131ca08d1dc39be83949eb3"
+      },
+      {
+        "path": "packages/kafka-crab-js/Cargo.lock",
+        "sha256": "1da79b0e494edbe018a66700ec30615b0d1c8ee1995ec4e749624f9e50b9b66c"
+      },
+      {
+        "path": "packages/kafka-crab-js/Cargo.toml",
+        "sha256": "bda6749317e1a9f7ad15d18e628076e06c436ececfcf4e1ea6911ffb6b359ae7"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/diagnostics/channels.ts",
+        "sha256": "b0a439626e14644b653686c1d9f984ba0cc0c8fdd6a1d61428fbc4140efa2bfe"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/diagnostics/index.ts",
+        "sha256": "767c2a2c2f73ae8dc8f8cdb9c56bd456bd20045f13a347d8201a6d8f50c1e998"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/diagnostics/instrumentation.ts",
+        "sha256": "d002e59b2fdb037a7c9538a57445c259ba287ac67debde07dc66bcbec72ebb2c"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/index.ts",
+        "sha256": "2d66934f5541ea4969d2637c3af1930919055683a944c7460d9a3ef4a347cf5e"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/kafka-client.ts",
+        "sha256": "8da9cea9721ccbcd41cfe6a4c39483448f3281f96b48689d2178cd9d446cced6"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/send-failure.ts",
+        "sha256": "217b9dd3979b601e66cfe4262aaf98fcc9ec7cb4e78357e3d123c597cbd71194"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/streams/base-kafka-stream-readable.ts",
+        "sha256": "cdb8678d4704e40185402d5e3961132c1cff4b37a342a33b699021d7a39bc9a7"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/streams/kafka-batch-stream-readable.ts",
+        "sha256": "6b36823934fc4d90af47f79b8a7326223b8e3e17699811b40e398b4ca9ea64b1"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/streams/kafka-stream-readable.ts",
+        "sha256": "b426c937ef043ad38575785e92e6924088337a3769bdb81868a354f569ee3c4c"
+      },
+      {
+        "path": "packages/kafka-crab-js/package.json",
+        "sha256": "02745ef745c6a2f920bc485ab685d3c603aabe47557be4e9bde81dce6523b8f1"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/byte_budget.rs",
+        "sha256": "e2809460857967772772b2e235b422625821a1b8e47dfe64f30803a1c43e59a5"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/consumer_helper.rs",
+        "sha256": "dfc0ef1fd856ef09ce51541f5edca5363d63e4ad84028f07db8251011d3e8710"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/context.rs",
+        "sha256": "20f720bfc5745c52751abcda27e9612f8f9b45d84ed74c40e9f2e89acdbbca37"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/kafka_consumer.rs",
+        "sha256": "28e62b6cb4e0c3bed4a1d57b3ec2589c38a3f5b06f98a7d9eddbaa282c57b1a3"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/mod.rs",
+        "sha256": "d12198cd9bce26c298b7c21052a1c08096caf80f309d576f095b4d80faf39641"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/model.rs",
+        "sha256": "91a612f3b57abf6e02cf3b47c52704e4aec02555634a7c8110f607ce737f2c46"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/kafka_admin.rs",
+        "sha256": "c2fe335a8338f62c0ef76efa4ff1e8e9912c89f2c405f83c3d1102ccd3854ab3"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/kafka_client_config.rs",
+        "sha256": "c80bc95a259e012376c7a507f565b16164355dc1f0c34662e5232aef3ffe59d2"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/kafka_util.rs",
+        "sha256": "bb5f4c908e56b39fb93015db54544dfd1356f000f620a1fa7e5ef21341620042"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/mod.rs",
+        "sha256": "feefdb75468ac880ec740dba31764673947eae80777abe94baf2f5a6ee9cc35e"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/producer/kafka_producer.rs",
+        "sha256": "c66b4beac977cb397b9bf25f6303045ece3a533f5a772e12735dffb367f43804"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/producer/mod.rs",
+        "sha256": "e69726e5da50623ede02682d992cbdcdf3f0c20571851ee59855ff45123db9c7"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/producer/model.rs",
+        "sha256": "ade1e22b6c19acff05d99816c09969ca8d280324a203b13a619e9c5b2cd71ae4"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/lib.rs",
+        "sha256": "7bf6ac5cc570c5aca306fd12e98ef2302d2201661033feb013fdf0bcfdc80f64"
+      },
+      {
+        "path": "pnpm-lock.yaml",
+        "sha256": "5d4ef7dc2f70b172929413a996f7ebac5fa93373a1f18ca9803a6b737fba77cb"
+      }
+    ],
+    "sha256": "d019e1f809efd71611503f154e23ef61bf1f513f5048558e7a889824be3d2bbb"
+  },
+  "iterations": 20000,
+  "runsPerBlock": 30,
+  "modes": ["off", "cpu"],
+  "order": ["previous-serial", "crab-serial", "crab-serial", "previous-serial"],
+  "blocks": [
+    {
+      "mode": "off",
+      "index": 0,
+      "scenario": "previous-serial",
+      "startedAt": "2026-09-11T18:53:55.111Z",
+      "hostBefore": {
+        "freeMemoryBytes": 238256128,
+        "loadAverage": [2.36376953125, 2.60400390625, 3.1611328125]
+      },
+      "result": {
+        "scenario": {
+          "id": "previous-serial",
+          "label": "previous kafka-crab-js (Web Stream, serial)",
+          "library": "crab"
+        },
+        "measurements": [
+          {
+            "messages": 20000,
+            "elapsedNs": 41095041
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29522750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29531541
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27121916
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28620375
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30393625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29327417
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27995542
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29913125
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 44215583
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 38338917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 32784834
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 38398916
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 36742083
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 67723875
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 47973709
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 35785667
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 33304833
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30364625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30269500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29801667
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30156750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28814917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 32376834
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28684416
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28409708
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29418833
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28154292
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28506667
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29338500
+          }
+        ],
+        "memory": {
+          "peak": {
+            "rss": 171458560,
+            "heapUsed": 15462768,
+            "external": 4436398,
+            "arrayBuffers": 1438250
+          },
+          "peakDelta": {
+            "rss": 75251712,
+            "heapUsed": 7148360,
+            "external": 500554,
+            "arrayBuffers": 64088
+          },
+          "retainedDelta": {
+            "rss": 64339968,
+            "heapUsed": 757920,
+            "external": 187237,
+            "arrayBuffers": -181643
+          }
+        },
+        "gc": {
+          "activeDurationMs": 1003.1384969999997,
+          "totalCount": 158,
+          "totalDurationMs": 31.035662293434143,
+          "maxDurationMs": 0.5404170751571655,
+          "minorCount": 158,
+          "majorCount": 0,
+          "incrementalCount": 0,
+          "weakCallbackCount": 0,
+          "forcedCount": 0,
+          "otherCount": 0
+        },
+        "runtime": {
+          "node": "v24.20.0",
+          "execPath": "/Users/inaiat.moraes/.local/share/fnm/node-versions/v24.20.0/installation/bin/node",
+          "execArgv": ["--expose-gc", "--import", "tsx"],
+          "tsxConfig": {
+            "path": "/Users/inaiat.moraes/dev/flash/crab-js/benchmarks/kafka/tsconfig.runtime.json",
+            "bytes": 79,
+            "sha256": "69d3b6bceac1dcc6beab743941b0786737f20e9a620f3999163971dcdf9833f0"
+          },
+          "platform": "darwin",
+          "arch": "arm64",
+          "package": {
+            "requested": "kafka-crab-js-previous",
+            "name": "kafka-crab-js",
+            "version": "4.1.3",
+            "root": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js",
+            "entry": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.js"
+          },
+          "javascript": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/channels.cjs",
+              "bytes": 3820,
+              "sha256": "cd5cf85534f85e4c1f06d7b5bf88e2570f6989fe3d79b2411c053584fdf9adfb"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/channels.js",
+              "bytes": 3281,
+              "sha256": "bf3dbd099ce598a9a85c4227383808503aae6b78c01f6bc7a03225de2de06f4b"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/index.cjs",
+              "bytes": 1840,
+              "sha256": "e7bedf8823b0b12996e2f69f9768ade37fc57b8169f3c314ebf97beba8c4f0c6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/index.js",
+              "bytes": 988,
+              "sha256": "20accf88f6ac80cdab7f36c1a89e4cbdff1086108849a9d3ccb3cb1234433745"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/instrumentation.cjs",
+              "bytes": 10824,
+              "sha256": "c3e8f8eb8449a8307a82716c3bc09f951b80ef817fc1c7c3a4999daa4135bc52"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/instrumentation.js",
+              "bytes": 9875,
+              "sha256": "42b64b55e8171ac21c1b44bcac399400c2a0360d1a7b48ca6c1e2d201c3081af"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.cjs",
+              "bytes": 3072,
+              "sha256": "6cc91b3aa7935a14c73f791ac1c81f04bcee6e0c51509f3f3a1af18d82653c01"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.js",
+              "bytes": 1554,
+              "sha256": "6b3bc7bf246989792bc8fab0ec9ef9fbcd320d2a82d60220aa376d44f6d0ca37"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/kafka-client.cjs",
+              "bytes": 11753,
+              "sha256": "cbed60c7460012d3275048d318edb1cd02708e8bfb0228c8d9cb2b1881221db4"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/kafka-client.js",
+              "bytes": 11385,
+              "sha256": "41920d08d74fe861902bed38ee326248222586bdfcd15b73c66ab399c071b9ca"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/base-kafka-stream-readable.cjs",
+              "bytes": 3343,
+              "sha256": "f307ff2c63f6829d226ebc351eb93815706b0f797aa5a87c63da9c4eeb0ab681"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/base-kafka-stream-readable.js",
+              "bytes": 3232,
+              "sha256": "c83e18b9a0a3f8cd59cc538d6b029b6b585a92932a2158a2ff15b0f1088eae72"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-batch-stream-readable.cjs",
+              "bytes": 3002,
+              "sha256": "1a7bd4b8d181c47fd24c32dfa570769255673b5bc662770a4f4f3d72c4db4d69"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-batch-stream-readable.js",
+              "bytes": 2840,
+              "sha256": "5554d8d997892162e713f97c890b491e86f57fda3929c5f88a02800f8a4ca37d"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-stream-readable.cjs",
+              "bytes": 1810,
+              "sha256": "8810a74f65016c1ada18179dd8e06964dc6e94f803fc5774ceddda53e54c1794"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-stream-readable.js",
+              "bytes": 1653,
+              "sha256": "503e42b218524fc676194e24be9fec9513ff71eafadb7f1972b90e2f24e1fcc0"
+            }
+          ],
+          "nativeBindings": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js-darwin-arm64@4.1.3/node_modules/kafka-crab-js-darwin-arm64/kafka-crab-js.darwin-arm64.node",
+              "bytes": 7696752,
+              "sha256": "6cf38ecb025c7c2615297bd91a264a76cceefa53c79d1a24b4357c06f6fe7351"
+            }
+          ],
+          "configuration": {
+            "brokers": ["localhost:9092"],
+            "topic": "benchmarks",
+            "iterations": 20000,
+            "runs": 30,
+            "serialTimingMode": "off",
+            "serialPrefetchSize": 64,
+            "serialPrefetchTimeoutMs": 5,
+            "fetchMinBytes": 1,
+            "fetchWaitMs": 10,
+            "fetchMaxBytes": 2048,
+            "partitionMaxBytes": 2048,
+            "batchSize": 1,
+            "batchTimeoutMs": 2,
+            "forceGcBeforeRun": true,
+            "memorySampleIntervalMs": 100,
+            "memorySettleMs": 100
+          }
+        }
+      },
+      "finishedAt": "2026-09-11T18:54:02.838Z",
+      "throughput": 598153.823346701
+    },
+    {
+      "mode": "off",
+      "index": 1,
+      "scenario": "crab-serial",
+      "startedAt": "2026-09-11T18:54:02.838Z",
+      "hostBefore": {
+        "freeMemoryBytes": 222511104,
+        "loadAverage": [2.3876953125, 2.60009765625, 3.1533203125]
+      },
+      "result": {
+        "scenario": {
+          "id": "crab-serial",
+          "label": "kafka-crab-js (stream, serial)",
+          "library": "crab"
+        },
+        "measurements": [
+          {
+            "messages": 20000,
+            "elapsedNs": 36636250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 21828917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22938625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22856458
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23394250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24004459
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22930041
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24730167
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22590750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24163000
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22413958
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23932333
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22556291
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24587250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22294208
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22813084
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22992958
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24073250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22266042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24082417
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22812416
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24015625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22369750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23941583
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22037458
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24731042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 26467042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22679917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22444250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24278125
+          }
+        ],
+        "memory": {
+          "peak": {
+            "rss": 162594816,
+            "heapUsed": 11061744,
+            "external": 3254815,
+            "arrayBuffers": 209423
+          },
+          "peakDelta": {
+            "rss": 92323840,
+            "heapUsed": 3232720,
+            "external": 483446,
+            "arrayBuffers": 65328
+          },
+          "retainedDelta": {
+            "rss": 88817664,
+            "heapUsed": 883520,
+            "external": 303136,
+            "arrayBuffers": -208
+          }
+        },
+        "gc": {
+          "activeDurationMs": 713.825625,
+          "totalCount": 190,
+          "totalDurationMs": 23.58800971508026,
+          "maxDurationMs": 0.4302499294281006,
+          "minorCount": 190,
+          "majorCount": 0,
+          "incrementalCount": 0,
+          "weakCallbackCount": 0,
+          "forcedCount": 0,
+          "otherCount": 0
+        },
+        "runtime": {
+          "node": "v24.20.0",
+          "execPath": "/Users/inaiat.moraes/.local/share/fnm/node-versions/v24.20.0/installation/bin/node",
+          "execArgv": ["--expose-gc", "--import", "tsx"],
+          "tsxConfig": {
+            "path": "/Users/inaiat.moraes/dev/flash/crab-js/benchmarks/kafka/tsconfig.runtime.json",
+            "bytes": 79,
+            "sha256": "69d3b6bceac1dcc6beab743941b0786737f20e9a620f3999163971dcdf9833f0"
+          },
+          "platform": "darwin",
+          "arch": "arm64",
+          "package": {
+            "requested": "kafka-crab-js",
+            "name": "kafka-crab-js",
+            "version": "4.1.3",
+            "root": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js",
+            "entry": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.js"
+          },
+          "javascript": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/channels.cjs",
+              "bytes": 3820,
+              "sha256": "cd5cf85534f85e4c1f06d7b5bf88e2570f6989fe3d79b2411c053584fdf9adfb"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/channels.js",
+              "bytes": 3281,
+              "sha256": "bf3dbd099ce598a9a85c4227383808503aae6b78c01f6bc7a03225de2de06f4b"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/index.cjs",
+              "bytes": 1840,
+              "sha256": "e7bedf8823b0b12996e2f69f9768ade37fc57b8169f3c314ebf97beba8c4f0c6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/index.js",
+              "bytes": 988,
+              "sha256": "20accf88f6ac80cdab7f36c1a89e4cbdff1086108849a9d3ccb3cb1234433745"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/instrumentation.cjs",
+              "bytes": 10824,
+              "sha256": "c3e8f8eb8449a8307a82716c3bc09f951b80ef817fc1c7c3a4999daa4135bc52"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/instrumentation.js",
+              "bytes": 9875,
+              "sha256": "42b64b55e8171ac21c1b44bcac399400c2a0360d1a7b48ca6c1e2d201c3081af"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.cjs",
+              "bytes": 3072,
+              "sha256": "6cc91b3aa7935a14c73f791ac1c81f04bcee6e0c51509f3f3a1af18d82653c01"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.js",
+              "bytes": 1554,
+              "sha256": "6b3bc7bf246989792bc8fab0ec9ef9fbcd320d2a82d60220aa376d44f6d0ca37"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/kafka-client.cjs",
+              "bytes": 14161,
+              "sha256": "ec4bc0aa42c5b966f841689ca26aba24cd322a0d719d7d0769ce7bac6b2a1d30"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/kafka-client.js",
+              "bytes": 13745,
+              "sha256": "6a3aa8c952b183fc4f0febcdb127d830639e5d21393a485cd3aad13cc58b8724"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/send-failure.cjs",
+              "bytes": 1331,
+              "sha256": "30360517a92ecc9322c2d9c50523f32fdcdc6fd2358d713ddc50dcaa6f1c24f6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/send-failure.js",
+              "bytes": 1195,
+              "sha256": "2839accb694017c6f83a1b58a89ee0693f321b291751f664a334b980b5051d81"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/base-kafka-stream-readable.cjs",
+              "bytes": 3492,
+              "sha256": "dd0104858398dc9c3327b08bd1d1d60ae91d3789219fb167d5f9dae9cd6ef434"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/base-kafka-stream-readable.js",
+              "bytes": 3381,
+              "sha256": "142abaffa74b6f3ea7e355098509fa3022ab8baf26e48b3f06fb42a5d1b69990"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-batch-stream-readable.cjs",
+              "bytes": 2961,
+              "sha256": "e85b3058cd6e381a311cb30586be3f33f4cb99edb1ca7d64bc2a56a5eb795983"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-batch-stream-readable.js",
+              "bytes": 2799,
+              "sha256": "35aa6ad8352ad501c1b771084097cba262393d3ac22bff0f5475d9b6c32c91ac"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-stream-readable.cjs",
+              "bytes": 1810,
+              "sha256": "8810a74f65016c1ada18179dd8e06964dc6e94f803fc5774ceddda53e54c1794"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-stream-readable.js",
+              "bytes": 1653,
+              "sha256": "503e42b218524fc676194e24be9fec9513ff71eafadb7f1972b90e2f24e1fcc0"
+            }
+          ],
+          "nativeBindings": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/kafka-crab-js.darwin-arm64.node",
+              "bytes": 7812656,
+              "sha256": "59f86de79d9943b73efc295b221b24fef22bd64871486602ec9aa37ea98a0f22"
+            }
+          ],
+          "configuration": {
+            "brokers": ["localhost:9092"],
+            "topic": "benchmarks",
+            "iterations": 20000,
+            "runs": 30,
+            "serialTimingMode": "off",
+            "serialPrefetchSize": 64,
+            "serialPrefetchTimeoutMs": 5,
+            "fetchMinBytes": 1,
+            "fetchWaitMs": 10,
+            "fetchMaxBytes": 2048,
+            "partitionMaxBytes": 2048,
+            "batchSize": 1,
+            "batchTimeoutMs": 2,
+            "forceGcBeforeRun": true,
+            "memorySampleIntervalMs": 100,
+            "memorySettleMs": 100
+          }
+        }
+      },
+      "finishedAt": "2026-09-11T18:54:09.987Z",
+      "throughput": 840498.6826611997
+    },
+    {
+      "mode": "off",
+      "index": 2,
+      "scenario": "crab-serial",
+      "startedAt": "2026-09-11T18:54:09.987Z",
+      "hostBefore": {
+        "freeMemoryBytes": 221806592,
+        "loadAverage": [2.3564453125, 2.58984375, 3.146484375]
+      },
+      "result": {
+        "scenario": {
+          "id": "crab-serial",
+          "label": "kafka-crab-js (stream, serial)",
+          "library": "crab"
+        },
+        "measurements": [
+          {
+            "messages": 20000,
+            "elapsedNs": 41333209
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24396791
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 32531334
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 37634084
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 33100500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 36575083
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22834250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 25987042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23894917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24223250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22388000
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 21960667
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23299583
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22358250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22793709
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24375958
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24361375
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22522792
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22884208
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22708042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24985000
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22199250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22732000
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 21846917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24166125
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 26246375
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23468583
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22347917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22859792
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23083833
+          }
+        ],
+        "memory": {
+          "peak": {
+            "rss": 163479552,
+            "heapUsed": 13251032,
+            "external": 3288589,
+            "arrayBuffers": 209631
+          },
+          "peakDelta": {
+            "rss": 93175808,
+            "heapUsed": 5445928,
+            "external": 582764,
+            "arrayBuffers": 65544
+          },
+          "retainedDelta": {
+            "rss": 93028352,
+            "heapUsed": 906080,
+            "external": 368680,
+            "arrayBuffers": -200
+          }
+        },
+        "gc": {
+          "activeDurationMs": 766.052293000002,
+          "totalCount": 189,
+          "totalDurationMs": 27.64649522304535,
+          "maxDurationMs": 0.4215829372406006,
+          "minorCount": 189,
+          "majorCount": 0,
+          "incrementalCount": 0,
+          "weakCallbackCount": 0,
+          "forcedCount": 0,
+          "otherCount": 0
+        },
+        "runtime": {
+          "node": "v24.20.0",
+          "execPath": "/Users/inaiat.moraes/.local/share/fnm/node-versions/v24.20.0/installation/bin/node",
+          "execArgv": ["--expose-gc", "--import", "tsx"],
+          "tsxConfig": {
+            "path": "/Users/inaiat.moraes/dev/flash/crab-js/benchmarks/kafka/tsconfig.runtime.json",
+            "bytes": 79,
+            "sha256": "69d3b6bceac1dcc6beab743941b0786737f20e9a620f3999163971dcdf9833f0"
+          },
+          "platform": "darwin",
+          "arch": "arm64",
+          "package": {
+            "requested": "kafka-crab-js",
+            "name": "kafka-crab-js",
+            "version": "4.1.3",
+            "root": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js",
+            "entry": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.js"
+          },
+          "javascript": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/channels.cjs",
+              "bytes": 3820,
+              "sha256": "cd5cf85534f85e4c1f06d7b5bf88e2570f6989fe3d79b2411c053584fdf9adfb"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/channels.js",
+              "bytes": 3281,
+              "sha256": "bf3dbd099ce598a9a85c4227383808503aae6b78c01f6bc7a03225de2de06f4b"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/index.cjs",
+              "bytes": 1840,
+              "sha256": "e7bedf8823b0b12996e2f69f9768ade37fc57b8169f3c314ebf97beba8c4f0c6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/index.js",
+              "bytes": 988,
+              "sha256": "20accf88f6ac80cdab7f36c1a89e4cbdff1086108849a9d3ccb3cb1234433745"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/instrumentation.cjs",
+              "bytes": 10824,
+              "sha256": "c3e8f8eb8449a8307a82716c3bc09f951b80ef817fc1c7c3a4999daa4135bc52"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/instrumentation.js",
+              "bytes": 9875,
+              "sha256": "42b64b55e8171ac21c1b44bcac399400c2a0360d1a7b48ca6c1e2d201c3081af"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.cjs",
+              "bytes": 3072,
+              "sha256": "6cc91b3aa7935a14c73f791ac1c81f04bcee6e0c51509f3f3a1af18d82653c01"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.js",
+              "bytes": 1554,
+              "sha256": "6b3bc7bf246989792bc8fab0ec9ef9fbcd320d2a82d60220aa376d44f6d0ca37"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/kafka-client.cjs",
+              "bytes": 14161,
+              "sha256": "ec4bc0aa42c5b966f841689ca26aba24cd322a0d719d7d0769ce7bac6b2a1d30"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/kafka-client.js",
+              "bytes": 13745,
+              "sha256": "6a3aa8c952b183fc4f0febcdb127d830639e5d21393a485cd3aad13cc58b8724"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/send-failure.cjs",
+              "bytes": 1331,
+              "sha256": "30360517a92ecc9322c2d9c50523f32fdcdc6fd2358d713ddc50dcaa6f1c24f6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/send-failure.js",
+              "bytes": 1195,
+              "sha256": "2839accb694017c6f83a1b58a89ee0693f321b291751f664a334b980b5051d81"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/base-kafka-stream-readable.cjs",
+              "bytes": 3492,
+              "sha256": "dd0104858398dc9c3327b08bd1d1d60ae91d3789219fb167d5f9dae9cd6ef434"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/base-kafka-stream-readable.js",
+              "bytes": 3381,
+              "sha256": "142abaffa74b6f3ea7e355098509fa3022ab8baf26e48b3f06fb42a5d1b69990"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-batch-stream-readable.cjs",
+              "bytes": 2961,
+              "sha256": "e85b3058cd6e381a311cb30586be3f33f4cb99edb1ca7d64bc2a56a5eb795983"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-batch-stream-readable.js",
+              "bytes": 2799,
+              "sha256": "35aa6ad8352ad501c1b771084097cba262393d3ac22bff0f5475d9b6c32c91ac"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-stream-readable.cjs",
+              "bytes": 1810,
+              "sha256": "8810a74f65016c1ada18179dd8e06964dc6e94f803fc5774ceddda53e54c1794"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-stream-readable.js",
+              "bytes": 1653,
+              "sha256": "503e42b218524fc676194e24be9fec9513ff71eafadb7f1972b90e2f24e1fcc0"
+            }
+          ],
+          "nativeBindings": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/kafka-crab-js.darwin-arm64.node",
+              "bytes": 7812656,
+              "sha256": "59f86de79d9943b73efc295b221b24fef22bd64871486602ec9aa37ea98a0f22"
+            }
+          ],
+          "configuration": {
+            "brokers": ["localhost:9092"],
+            "topic": "benchmarks",
+            "iterations": 20000,
+            "runs": 30,
+            "serialTimingMode": "off",
+            "serialPrefetchSize": 64,
+            "serialPrefetchTimeoutMs": 5,
+            "fetchMinBytes": 1,
+            "fetchWaitMs": 10,
+            "fetchMaxBytes": 2048,
+            "partitionMaxBytes": 2048,
+            "batchSize": 1,
+            "batchTimeoutMs": 2,
+            "forceGcBeforeRun": true,
+            "memorySampleIntervalMs": 100,
+            "memorySettleMs": 100
+          }
+        }
+      },
+      "finishedAt": "2026-09-11T18:54:17.238Z",
+      "throughput": 783188.7633882269
+    },
+    {
+      "mode": "off",
+      "index": 3,
+      "scenario": "previous-serial",
+      "startedAt": "2026-09-11T18:54:17.238Z",
+      "hostBefore": {
+        "freeMemoryBytes": 197115904,
+        "loadAverage": [2.8681640625, 2.68603515625, 3.173828125]
+      },
+      "result": {
+        "scenario": {
+          "id": "previous-serial",
+          "label": "previous kafka-crab-js (Web Stream, serial)",
+          "library": "crab"
+        },
+        "measurements": [
+          {
+            "messages": 20000,
+            "elapsedNs": 34318833
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 35453750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29462333
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 32014750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28785917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27765292
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30849959
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30454458
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29570042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 31223417
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27705750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27849166
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27597459
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28511167
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28912500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30929875
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27638834
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27556917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 32194750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 44290042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28369542
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27564042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 38257250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 37236208
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 46606125
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 46593250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27214917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28123917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28594875
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27717750
+          }
+        ],
+        "memory": {
+          "peak": {
+            "rss": 140050432,
+            "heapUsed": 14905048,
+            "external": 3377740,
+            "arrayBuffers": 209631
+          },
+          "peakDelta": {
+            "rss": 70123520,
+            "heapUsed": 7100096,
+            "external": 671915,
+            "arrayBuffers": 65544
+          },
+          "retainedDelta": {
+            "rss": 69959680,
+            "heapUsed": 874240,
+            "external": 368680,
+            "arrayBuffers": -200
+          }
+        },
+        "gc": {
+          "activeDurationMs": 949.4247100000016,
+          "totalCount": 167,
+          "totalDurationMs": 30.09362816810608,
+          "maxDurationMs": 0.6122090816497803,
+          "minorCount": 167,
+          "majorCount": 0,
+          "incrementalCount": 0,
+          "weakCallbackCount": 0,
+          "forcedCount": 0,
+          "otherCount": 0
+        },
+        "runtime": {
+          "node": "v24.20.0",
+          "execPath": "/Users/inaiat.moraes/.local/share/fnm/node-versions/v24.20.0/installation/bin/node",
+          "execArgv": ["--expose-gc", "--import", "tsx"],
+          "tsxConfig": {
+            "path": "/Users/inaiat.moraes/dev/flash/crab-js/benchmarks/kafka/tsconfig.runtime.json",
+            "bytes": 79,
+            "sha256": "69d3b6bceac1dcc6beab743941b0786737f20e9a620f3999163971dcdf9833f0"
+          },
+          "platform": "darwin",
+          "arch": "arm64",
+          "package": {
+            "requested": "kafka-crab-js-previous",
+            "name": "kafka-crab-js",
+            "version": "4.1.3",
+            "root": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js",
+            "entry": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.js"
+          },
+          "javascript": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/channels.cjs",
+              "bytes": 3820,
+              "sha256": "cd5cf85534f85e4c1f06d7b5bf88e2570f6989fe3d79b2411c053584fdf9adfb"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/channels.js",
+              "bytes": 3281,
+              "sha256": "bf3dbd099ce598a9a85c4227383808503aae6b78c01f6bc7a03225de2de06f4b"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/index.cjs",
+              "bytes": 1840,
+              "sha256": "e7bedf8823b0b12996e2f69f9768ade37fc57b8169f3c314ebf97beba8c4f0c6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/index.js",
+              "bytes": 988,
+              "sha256": "20accf88f6ac80cdab7f36c1a89e4cbdff1086108849a9d3ccb3cb1234433745"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/instrumentation.cjs",
+              "bytes": 10824,
+              "sha256": "c3e8f8eb8449a8307a82716c3bc09f951b80ef817fc1c7c3a4999daa4135bc52"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/instrumentation.js",
+              "bytes": 9875,
+              "sha256": "42b64b55e8171ac21c1b44bcac399400c2a0360d1a7b48ca6c1e2d201c3081af"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.cjs",
+              "bytes": 3072,
+              "sha256": "6cc91b3aa7935a14c73f791ac1c81f04bcee6e0c51509f3f3a1af18d82653c01"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.js",
+              "bytes": 1554,
+              "sha256": "6b3bc7bf246989792bc8fab0ec9ef9fbcd320d2a82d60220aa376d44f6d0ca37"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/kafka-client.cjs",
+              "bytes": 11753,
+              "sha256": "cbed60c7460012d3275048d318edb1cd02708e8bfb0228c8d9cb2b1881221db4"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/kafka-client.js",
+              "bytes": 11385,
+              "sha256": "41920d08d74fe861902bed38ee326248222586bdfcd15b73c66ab399c071b9ca"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/base-kafka-stream-readable.cjs",
+              "bytes": 3343,
+              "sha256": "f307ff2c63f6829d226ebc351eb93815706b0f797aa5a87c63da9c4eeb0ab681"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/base-kafka-stream-readable.js",
+              "bytes": 3232,
+              "sha256": "c83e18b9a0a3f8cd59cc538d6b029b6b585a92932a2158a2ff15b0f1088eae72"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-batch-stream-readable.cjs",
+              "bytes": 3002,
+              "sha256": "1a7bd4b8d181c47fd24c32dfa570769255673b5bc662770a4f4f3d72c4db4d69"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-batch-stream-readable.js",
+              "bytes": 2840,
+              "sha256": "5554d8d997892162e713f97c890b491e86f57fda3929c5f88a02800f8a4ca37d"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-stream-readable.cjs",
+              "bytes": 1810,
+              "sha256": "8810a74f65016c1ada18179dd8e06964dc6e94f803fc5774ceddda53e54c1794"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-stream-readable.js",
+              "bytes": 1653,
+              "sha256": "503e42b218524fc676194e24be9fec9513ff71eafadb7f1972b90e2f24e1fcc0"
+            }
+          ],
+          "nativeBindings": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js-darwin-arm64@4.1.3/node_modules/kafka-crab-js-darwin-arm64/kafka-crab-js.darwin-arm64.node",
+              "bytes": 7696752,
+              "sha256": "6cf38ecb025c7c2615297bd91a264a76cceefa53c79d1a24b4357c06f6fe7351"
+            }
+          ],
+          "configuration": {
+            "brokers": ["localhost:9092"],
+            "topic": "benchmarks",
+            "iterations": 20000,
+            "runs": 30,
+            "serialTimingMode": "off",
+            "serialPrefetchSize": 64,
+            "serialPrefetchTimeoutMs": 5,
+            "fetchMinBytes": 1,
+            "fetchWaitMs": 10,
+            "fetchMaxBytes": 2048,
+            "partitionMaxBytes": 2048,
+            "batchSize": 1,
+            "batchTimeoutMs": 2,
+            "forceGcBeforeRun": true,
+            "memorySampleIntervalMs": 100,
+            "memorySettleMs": 100
+          }
+        }
+      },
+      "finishedAt": "2026-09-11T18:54:24.702Z",
+      "throughput": 632002.6639080818
+    },
+    {
+      "mode": "cpu",
+      "index": 0,
+      "scenario": "previous-serial",
+      "startedAt": "2026-09-11T18:54:24.702Z",
+      "hostBefore": {
+        "freeMemoryBytes": 198066176,
+        "loadAverage": [3.59912109375, 2.84033203125, 3.22509765625]
+      },
+      "result": {
+        "scenario": {
+          "id": "previous-serial",
+          "label": "previous kafka-crab-js (Web Stream, serial)",
+          "library": "crab"
+        },
+        "measurements": [
+          {
+            "messages": 20000,
+            "elapsedNs": 48285209
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27507417
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28296083
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28423209
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27143291
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30348625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28825417
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29297625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27234167
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30221000
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28076500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29109750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 31485291
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 36417875
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28254625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30800334
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 42895541
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 33917750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28467458
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29416625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29751042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27023042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27661375
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29514958
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 31351875
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27937042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29659042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28226208
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 26551708
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27252792
+          }
+        ],
+        "memory": {
+          "peak": {
+            "rss": 142098432,
+            "heapUsed": 15012088,
+            "external": 3379579,
+            "arrayBuffers": 209663
+          },
+          "peakDelta": {
+            "rss": 71909376,
+            "heapUsed": 7207240,
+            "external": 673754,
+            "arrayBuffers": 65576
+          },
+          "retainedDelta": {
+            "rss": 68861952,
+            "heapUsed": 902808,
+            "external": 368712,
+            "arrayBuffers": -168
+          }
+        },
+        "gc": {
+          "activeDurationMs": 910.1473730000012,
+          "totalCount": 166,
+          "totalDurationMs": 28.365416407585144,
+          "maxDurationMs": 0.4486250877380371,
+          "minorCount": 166,
+          "majorCount": 0,
+          "incrementalCount": 0,
+          "weakCallbackCount": 0,
+          "forcedCount": 0,
+          "otherCount": 0
+        },
+        "serialTiming": [
+          {
+            "mode": "cpu",
+            "wallMs": 48.19583299999999,
+            "processCpuMs": 112.681,
+            "mainThreadCpuMs": 36.939
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.506708000000003,
+            "processCpuMs": 74.581,
+            "mainThreadCpuMs": 25.196
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.270291000000043,
+            "processCpuMs": 86.983,
+            "mainThreadCpuMs": 25.68
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.405166999999892,
+            "processCpuMs": 85.347,
+            "mainThreadCpuMs": 26.87
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.123874999999998,
+            "processCpuMs": 77.245,
+            "mainThreadCpuMs": 24.097
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 30.33454199999983,
+            "processCpuMs": 89.116,
+            "mainThreadCpuMs": 27.856
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.81079200000022,
+            "processCpuMs": 88.358,
+            "mainThreadCpuMs": 26.371
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.280250000000024,
+            "processCpuMs": 83.39,
+            "mainThreadCpuMs": 27.051
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.212792000000036,
+            "processCpuMs": 80.827,
+            "mainThreadCpuMs": 25.182
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 30.206499999999778,
+            "processCpuMs": 91.11,
+            "mainThreadCpuMs": 28.196
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.065791999999874,
+            "processCpuMs": 81.992,
+            "mainThreadCpuMs": 26.153
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.100332999999864,
+            "processCpuMs": 86.018,
+            "mainThreadCpuMs": 26.732
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 31.478042000000187,
+            "processCpuMs": 83.889,
+            "mainThreadCpuMs": 26.901
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 36.40583300000026,
+            "processCpuMs": 94.95,
+            "mainThreadCpuMs": 31.561
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.242875000000367,
+            "processCpuMs": 83.876,
+            "mainThreadCpuMs": 25.729
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 30.796334000000115,
+            "processCpuMs": 86.637,
+            "mainThreadCpuMs": 27.42
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 42.87629099999958,
+            "processCpuMs": 95.626,
+            "mainThreadCpuMs": 30.463
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 33.90437500000007,
+            "processCpuMs": 94.793,
+            "mainThreadCpuMs": 28.622
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.46416599999975,
+            "processCpuMs": 81.229,
+            "mainThreadCpuMs": 25.651
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.40941699999985,
+            "processCpuMs": 79.033,
+            "mainThreadCpuMs": 25.291
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.741084000000228,
+            "processCpuMs": 79.893,
+            "mainThreadCpuMs": 26.923
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.01091699999961,
+            "processCpuMs": 81.695,
+            "mainThreadCpuMs": 25.306
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.647667000000183,
+            "processCpuMs": 83.719,
+            "mainThreadCpuMs": 25.374
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.507915999999568,
+            "processCpuMs": 85.396,
+            "mainThreadCpuMs": 26.876
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 31.34400000000005,
+            "processCpuMs": 94.266,
+            "mainThreadCpuMs": 28.973
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.932749999999942,
+            "processCpuMs": 78.352,
+            "mainThreadCpuMs": 25.547
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.650249999999687,
+            "processCpuMs": 83.975,
+            "mainThreadCpuMs": 25.38
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.22320799999943,
+            "processCpuMs": 84.363,
+            "mainThreadCpuMs": 26.591
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 26.537249999999403,
+            "processCpuMs": 77.698,
+            "mainThreadCpuMs": 24.054
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.23858299999938,
+            "processCpuMs": 82.338,
+            "mainThreadCpuMs": 25.459
+          }
+        ],
+        "runtime": {
+          "node": "v24.20.0",
+          "execPath": "/Users/inaiat.moraes/.local/share/fnm/node-versions/v24.20.0/installation/bin/node",
+          "execArgv": ["--expose-gc", "--import", "tsx"],
+          "tsxConfig": {
+            "path": "/Users/inaiat.moraes/dev/flash/crab-js/benchmarks/kafka/tsconfig.runtime.json",
+            "bytes": 79,
+            "sha256": "69d3b6bceac1dcc6beab743941b0786737f20e9a620f3999163971dcdf9833f0"
+          },
+          "platform": "darwin",
+          "arch": "arm64",
+          "package": {
+            "requested": "kafka-crab-js-previous",
+            "name": "kafka-crab-js",
+            "version": "4.1.3",
+            "root": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js",
+            "entry": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.js"
+          },
+          "javascript": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/channels.cjs",
+              "bytes": 3820,
+              "sha256": "cd5cf85534f85e4c1f06d7b5bf88e2570f6989fe3d79b2411c053584fdf9adfb"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/channels.js",
+              "bytes": 3281,
+              "sha256": "bf3dbd099ce598a9a85c4227383808503aae6b78c01f6bc7a03225de2de06f4b"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/index.cjs",
+              "bytes": 1840,
+              "sha256": "e7bedf8823b0b12996e2f69f9768ade37fc57b8169f3c314ebf97beba8c4f0c6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/index.js",
+              "bytes": 988,
+              "sha256": "20accf88f6ac80cdab7f36c1a89e4cbdff1086108849a9d3ccb3cb1234433745"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/instrumentation.cjs",
+              "bytes": 10824,
+              "sha256": "c3e8f8eb8449a8307a82716c3bc09f951b80ef817fc1c7c3a4999daa4135bc52"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/instrumentation.js",
+              "bytes": 9875,
+              "sha256": "42b64b55e8171ac21c1b44bcac399400c2a0360d1a7b48ca6c1e2d201c3081af"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.cjs",
+              "bytes": 3072,
+              "sha256": "6cc91b3aa7935a14c73f791ac1c81f04bcee6e0c51509f3f3a1af18d82653c01"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.js",
+              "bytes": 1554,
+              "sha256": "6b3bc7bf246989792bc8fab0ec9ef9fbcd320d2a82d60220aa376d44f6d0ca37"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/kafka-client.cjs",
+              "bytes": 11753,
+              "sha256": "cbed60c7460012d3275048d318edb1cd02708e8bfb0228c8d9cb2b1881221db4"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/kafka-client.js",
+              "bytes": 11385,
+              "sha256": "41920d08d74fe861902bed38ee326248222586bdfcd15b73c66ab399c071b9ca"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/base-kafka-stream-readable.cjs",
+              "bytes": 3343,
+              "sha256": "f307ff2c63f6829d226ebc351eb93815706b0f797aa5a87c63da9c4eeb0ab681"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/base-kafka-stream-readable.js",
+              "bytes": 3232,
+              "sha256": "c83e18b9a0a3f8cd59cc538d6b029b6b585a92932a2158a2ff15b0f1088eae72"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-batch-stream-readable.cjs",
+              "bytes": 3002,
+              "sha256": "1a7bd4b8d181c47fd24c32dfa570769255673b5bc662770a4f4f3d72c4db4d69"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-batch-stream-readable.js",
+              "bytes": 2840,
+              "sha256": "5554d8d997892162e713f97c890b491e86f57fda3929c5f88a02800f8a4ca37d"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-stream-readable.cjs",
+              "bytes": 1810,
+              "sha256": "8810a74f65016c1ada18179dd8e06964dc6e94f803fc5774ceddda53e54c1794"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-stream-readable.js",
+              "bytes": 1653,
+              "sha256": "503e42b218524fc676194e24be9fec9513ff71eafadb7f1972b90e2f24e1fcc0"
+            }
+          ],
+          "nativeBindings": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js-darwin-arm64@4.1.3/node_modules/kafka-crab-js-darwin-arm64/kafka-crab-js.darwin-arm64.node",
+              "bytes": 7696752,
+              "sha256": "6cf38ecb025c7c2615297bd91a264a76cceefa53c79d1a24b4357c06f6fe7351"
+            }
+          ],
+          "configuration": {
+            "brokers": ["localhost:9092"],
+            "topic": "benchmarks",
+            "iterations": 20000,
+            "runs": 30,
+            "serialTimingMode": "cpu",
+            "serialPrefetchSize": 64,
+            "serialPrefetchTimeoutMs": 5,
+            "fetchMinBytes": 1,
+            "fetchWaitMs": 10,
+            "fetchMaxBytes": 2048,
+            "partitionMaxBytes": 2048,
+            "batchSize": 1,
+            "batchTimeoutMs": 2,
+            "forceGcBeforeRun": true,
+            "memorySampleIntervalMs": 100,
+            "memorySettleMs": 100
+          }
+        }
+      },
+      "finishedAt": "2026-09-11T18:54:32.150Z",
+      "throughput": 659809.8668134635
+    },
+    {
+      "mode": "cpu",
+      "index": 1,
+      "scenario": "crab-serial",
+      "startedAt": "2026-09-11T18:54:32.151Z",
+      "hostBefore": {
+        "freeMemoryBytes": 232767488,
+        "loadAverage": [3.58642578125, 2.86181640625, 3.22802734375]
+      },
+      "result": {
+        "scenario": {
+          "id": "crab-serial",
+          "label": "kafka-crab-js (stream, serial)",
+          "library": "crab"
+        },
+        "measurements": [
+          {
+            "messages": 20000,
+            "elapsedNs": 45431750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23110375
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22857042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 21924917
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 21667375
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23420416
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29326833
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29102542
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 26903583
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23304542
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 34935459
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 39472958
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 33291959
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 41379125
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22157333
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22179958
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22950875
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23059667
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 21197375
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22820333
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24191958
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22445833
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22017583
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 21707291
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23079833
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22131417
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22987709
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23738500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23112292
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22776250
+          }
+        ],
+        "memory": {
+          "peak": {
+            "rss": 163659776,
+            "heapUsed": 10578392,
+            "external": 3228784,
+            "arrayBuffers": 209455
+          },
+          "peakDelta": {
+            "rss": 93683712,
+            "heapUsed": 2750576,
+            "external": 457415,
+            "arrayBuffers": 65360
+          },
+          "retainedDelta": {
+            "rss": 89620480,
+            "heapUsed": 910016,
+            "external": 303168,
+            "arrayBuffers": -176
+          }
+        },
+        "gc": {
+          "activeDurationMs": 779.3025859999995,
+          "totalCount": 190,
+          "totalDurationMs": 27.059505939483643,
+          "maxDurationMs": 0.5507919788360596,
+          "minorCount": 190,
+          "majorCount": 0,
+          "incrementalCount": 0,
+          "weakCallbackCount": 0,
+          "forcedCount": 0,
+          "otherCount": 0
+        },
+        "serialTiming": [
+          {
+            "mode": "cpu",
+            "wallMs": 45.375958,
+            "processCpuMs": 101.837,
+            "mainThreadCpuMs": 35.237
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.057166999999993,
+            "processCpuMs": 47.749,
+            "mainThreadCpuMs": 22.62
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.83224999999993,
+            "processCpuMs": 51.084,
+            "mainThreadCpuMs": 22.616
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 21.903374999999983,
+            "processCpuMs": 46.085,
+            "mainThreadCpuMs": 21.72
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 21.641166999999996,
+            "processCpuMs": 45.224,
+            "mainThreadCpuMs": 21.439
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.392000000000053,
+            "processCpuMs": 52.81,
+            "mainThreadCpuMs": 22.956
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.29758300000003,
+            "processCpuMs": 64.11,
+            "mainThreadCpuMs": 27.619
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.10008300000004,
+            "processCpuMs": 80.034,
+            "mainThreadCpuMs": 28.4
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 26.875291999999945,
+            "processCpuMs": 63.43,
+            "mainThreadCpuMs": 26.623
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.282416000000012,
+            "processCpuMs": 52.565,
+            "mainThreadCpuMs": 22.948
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 34.94183299999986,
+            "processCpuMs": 81.677,
+            "mainThreadCpuMs": 32.515
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 39.45024999999987,
+            "processCpuMs": 85.56,
+            "mainThreadCpuMs": 34.981
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 33.26483300000018,
+            "processCpuMs": 86.258,
+            "mainThreadCpuMs": 30.912
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 41.36274999999978,
+            "processCpuMs": 93.188,
+            "mainThreadCpuMs": 37.426
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.140750000000025,
+            "processCpuMs": 51.031,
+            "mainThreadCpuMs": 22.002
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.161499999999705,
+            "processCpuMs": 49.46,
+            "mainThreadCpuMs": 21.859
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.940207999999984,
+            "processCpuMs": 54.342,
+            "mainThreadCpuMs": 22.463
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.046040999999605,
+            "processCpuMs": 52.724,
+            "mainThreadCpuMs": 22.547
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 21.179791000000478,
+            "processCpuMs": 51.375,
+            "mainThreadCpuMs": 20.946
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.80579200000011,
+            "processCpuMs": 49.944,
+            "mainThreadCpuMs": 22.461
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 24.178084000000126,
+            "processCpuMs": 55.908,
+            "mainThreadCpuMs": 23.673
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.429833000000144,
+            "processCpuMs": 50.069,
+            "mainThreadCpuMs": 22.139
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.00304099999994,
+            "processCpuMs": 51.96,
+            "mainThreadCpuMs": 21.875
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 21.69012499999917,
+            "processCpuMs": 49.105,
+            "mainThreadCpuMs": 21.338
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.063374999999724,
+            "processCpuMs": 52.515,
+            "mainThreadCpuMs": 22.793
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.115584000000126,
+            "processCpuMs": 48.829,
+            "mainThreadCpuMs": 21.772
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.970040999999583,
+            "processCpuMs": 54.759,
+            "mainThreadCpuMs": 22.617
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.718249999999898,
+            "processCpuMs": 54.291,
+            "mainThreadCpuMs": 23.054
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.099208999999973,
+            "processCpuMs": 52.813,
+            "mainThreadCpuMs": 22.658
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.759500000000116,
+            "processCpuMs": 51.715,
+            "mainThreadCpuMs": 22.462
+          }
+        ],
+        "runtime": {
+          "node": "v24.20.0",
+          "execPath": "/Users/inaiat.moraes/.local/share/fnm/node-versions/v24.20.0/installation/bin/node",
+          "execArgv": ["--expose-gc", "--import", "tsx"],
+          "tsxConfig": {
+            "path": "/Users/inaiat.moraes/dev/flash/crab-js/benchmarks/kafka/tsconfig.runtime.json",
+            "bytes": 79,
+            "sha256": "69d3b6bceac1dcc6beab743941b0786737f20e9a620f3999163971dcdf9833f0"
+          },
+          "platform": "darwin",
+          "arch": "arm64",
+          "package": {
+            "requested": "kafka-crab-js",
+            "name": "kafka-crab-js",
+            "version": "4.1.3",
+            "root": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js",
+            "entry": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.js"
+          },
+          "javascript": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/channels.cjs",
+              "bytes": 3820,
+              "sha256": "cd5cf85534f85e4c1f06d7b5bf88e2570f6989fe3d79b2411c053584fdf9adfb"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/channels.js",
+              "bytes": 3281,
+              "sha256": "bf3dbd099ce598a9a85c4227383808503aae6b78c01f6bc7a03225de2de06f4b"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/index.cjs",
+              "bytes": 1840,
+              "sha256": "e7bedf8823b0b12996e2f69f9768ade37fc57b8169f3c314ebf97beba8c4f0c6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/index.js",
+              "bytes": 988,
+              "sha256": "20accf88f6ac80cdab7f36c1a89e4cbdff1086108849a9d3ccb3cb1234433745"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/instrumentation.cjs",
+              "bytes": 10824,
+              "sha256": "c3e8f8eb8449a8307a82716c3bc09f951b80ef817fc1c7c3a4999daa4135bc52"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/instrumentation.js",
+              "bytes": 9875,
+              "sha256": "42b64b55e8171ac21c1b44bcac399400c2a0360d1a7b48ca6c1e2d201c3081af"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.cjs",
+              "bytes": 3072,
+              "sha256": "6cc91b3aa7935a14c73f791ac1c81f04bcee6e0c51509f3f3a1af18d82653c01"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.js",
+              "bytes": 1554,
+              "sha256": "6b3bc7bf246989792bc8fab0ec9ef9fbcd320d2a82d60220aa376d44f6d0ca37"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/kafka-client.cjs",
+              "bytes": 14161,
+              "sha256": "ec4bc0aa42c5b966f841689ca26aba24cd322a0d719d7d0769ce7bac6b2a1d30"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/kafka-client.js",
+              "bytes": 13745,
+              "sha256": "6a3aa8c952b183fc4f0febcdb127d830639e5d21393a485cd3aad13cc58b8724"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/send-failure.cjs",
+              "bytes": 1331,
+              "sha256": "30360517a92ecc9322c2d9c50523f32fdcdc6fd2358d713ddc50dcaa6f1c24f6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/send-failure.js",
+              "bytes": 1195,
+              "sha256": "2839accb694017c6f83a1b58a89ee0693f321b291751f664a334b980b5051d81"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/base-kafka-stream-readable.cjs",
+              "bytes": 3492,
+              "sha256": "dd0104858398dc9c3327b08bd1d1d60ae91d3789219fb167d5f9dae9cd6ef434"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/base-kafka-stream-readable.js",
+              "bytes": 3381,
+              "sha256": "142abaffa74b6f3ea7e355098509fa3022ab8baf26e48b3f06fb42a5d1b69990"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-batch-stream-readable.cjs",
+              "bytes": 2961,
+              "sha256": "e85b3058cd6e381a311cb30586be3f33f4cb99edb1ca7d64bc2a56a5eb795983"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-batch-stream-readable.js",
+              "bytes": 2799,
+              "sha256": "35aa6ad8352ad501c1b771084097cba262393d3ac22bff0f5475d9b6c32c91ac"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-stream-readable.cjs",
+              "bytes": 1810,
+              "sha256": "8810a74f65016c1ada18179dd8e06964dc6e94f803fc5774ceddda53e54c1794"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-stream-readable.js",
+              "bytes": 1653,
+              "sha256": "503e42b218524fc676194e24be9fec9513ff71eafadb7f1972b90e2f24e1fcc0"
+            }
+          ],
+          "nativeBindings": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/kafka-crab-js.darwin-arm64.node",
+              "bytes": 7812656,
+              "sha256": "59f86de79d9943b73efc295b221b24fef22bd64871486602ec9aa37ea98a0f22"
+            }
+          ],
+          "configuration": {
+            "brokers": ["localhost:9092"],
+            "topic": "benchmarks",
+            "iterations": 20000,
+            "runs": 30,
+            "serialTimingMode": "cpu",
+            "serialPrefetchSize": 64,
+            "serialPrefetchTimeoutMs": 5,
+            "fetchMinBytes": 1,
+            "fetchWaitMs": 10,
+            "fetchMaxBytes": 2048,
+            "partitionMaxBytes": 2048,
+            "batchSize": 1,
+            "batchTimeoutMs": 2,
+            "forceGcBeforeRun": true,
+            "memorySampleIntervalMs": 100,
+            "memorySettleMs": 100
+          }
+        }
+      },
+      "finishedAt": "2026-09-11T18:54:39.430Z",
+      "throughput": 770531.700378548
+    },
+    {
+      "mode": "cpu",
+      "index": 2,
+      "scenario": "crab-serial",
+      "startedAt": "2026-09-11T18:54:39.431Z",
+      "hostBefore": {
+        "freeMemoryBytes": 226230272,
+        "loadAverage": [4.099609375, 2.97998046875, 3.267578125]
+      },
+      "result": {
+        "scenario": {
+          "id": "crab-serial",
+          "label": "kafka-crab-js (stream, serial)",
+          "library": "crab"
+        },
+        "measurements": [
+          {
+            "messages": 20000,
+            "elapsedNs": 40964208
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22594666
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24053250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22431792
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 21889875
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22986875
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23398958
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23063041
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 24301875
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22940833
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22765792
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23300791
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22081500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23657584
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22990250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22184500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22259833
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22947625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22811458
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23168125
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23644250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22843625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22132083
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 22830209
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23857250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 25622041
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 23887667
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 47843667
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 31138500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27951208
+          }
+        ],
+        "memory": {
+          "peak": {
+            "rss": 162086912,
+            "heapUsed": 13110808,
+            "external": 3283393,
+            "arrayBuffers": 209663
+          },
+          "peakDelta": {
+            "rss": 91832320,
+            "heapUsed": 5306920,
+            "external": 577568,
+            "arrayBuffers": 65576
+          },
+          "retainedDelta": {
+            "rss": 91668480,
+            "heapUsed": 933504,
+            "external": 368712,
+            "arrayBuffers": -168
+          }
+        },
+        "gc": {
+          "activeDurationMs": 749.0762949999996,
+          "totalCount": 189,
+          "totalDurationMs": 24.238712906837463,
+          "maxDurationMs": 0.4299579858779907,
+          "minorCount": 189,
+          "majorCount": 0,
+          "incrementalCount": 0,
+          "weakCallbackCount": 0,
+          "forcedCount": 0,
+          "otherCount": 0
+        },
+        "serialTiming": [
+          {
+            "mode": "cpu",
+            "wallMs": 40.925458000000006,
+            "processCpuMs": 98.485,
+            "mainThreadCpuMs": 34.299
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.553958000000023,
+            "processCpuMs": 47.704,
+            "mainThreadCpuMs": 22.076
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 24.02608299999997,
+            "processCpuMs": 52.595,
+            "mainThreadCpuMs": 23.107
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.40741700000001,
+            "processCpuMs": 50.49,
+            "mainThreadCpuMs": 22.197
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 21.870374999999967,
+            "processCpuMs": 46.079,
+            "mainThreadCpuMs": 21.816
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.960459000000128,
+            "processCpuMs": 53.887,
+            "mainThreadCpuMs": 22.599
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.375917000000072,
+            "processCpuMs": 51.813,
+            "mainThreadCpuMs": 23.004
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.05312499999991,
+            "processCpuMs": 54.533,
+            "mainThreadCpuMs": 22.879
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 24.28170799999998,
+            "processCpuMs": 48.55,
+            "mainThreadCpuMs": 23.424
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.921834000000217,
+            "processCpuMs": 52.421,
+            "mainThreadCpuMs": 22.741
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.75191700000005,
+            "processCpuMs": 49.929,
+            "mainThreadCpuMs": 22.51
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.287624999999935,
+            "processCpuMs": 54.998,
+            "mainThreadCpuMs": 22.99
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.065083999999842,
+            "processCpuMs": 49.636,
+            "mainThreadCpuMs": 21.749
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.64087500000005,
+            "processCpuMs": 53.925,
+            "mainThreadCpuMs": 23.358
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.970832999999857,
+            "processCpuMs": 49.676,
+            "mainThreadCpuMs": 22.675
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.16512499999999,
+            "processCpuMs": 53.173,
+            "mainThreadCpuMs": 22.019
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.246874999999818,
+            "processCpuMs": 49.591,
+            "mainThreadCpuMs": 22.021
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.931167000000187,
+            "processCpuMs": 52.304,
+            "mainThreadCpuMs": 22.741
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.795250000000124,
+            "processCpuMs": 50.784,
+            "mainThreadCpuMs": 22.393
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.15466600000036,
+            "processCpuMs": 56.701,
+            "mainThreadCpuMs": 22.726
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.62737500000003,
+            "processCpuMs": 52.454,
+            "mainThreadCpuMs": 23.249
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.830165999999736,
+            "processCpuMs": 54.213,
+            "mainThreadCpuMs": 22.158
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.11570799999936,
+            "processCpuMs": 47.875,
+            "mainThreadCpuMs": 21.901
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 22.80920800000058,
+            "processCpuMs": 54.876,
+            "mainThreadCpuMs": 22.519
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.829416000000492,
+            "processCpuMs": 53.373,
+            "mainThreadCpuMs": 23.075
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 25.6050409999998,
+            "processCpuMs": 68.152,
+            "mainThreadCpuMs": 24.867
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 23.876459000000068,
+            "processCpuMs": 52.014,
+            "mainThreadCpuMs": 23.103
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 47.82395799999995,
+            "processCpuMs": 88.244,
+            "mainThreadCpuMs": 35.491
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 31.119416999999885,
+            "processCpuMs": 71.739,
+            "mainThreadCpuMs": 28.552
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.93591699999979,
+            "processCpuMs": 65.956,
+            "mainThreadCpuMs": 26.824
+          }
+        ],
+        "runtime": {
+          "node": "v24.20.0",
+          "execPath": "/Users/inaiat.moraes/.local/share/fnm/node-versions/v24.20.0/installation/bin/node",
+          "execArgv": ["--expose-gc", "--import", "tsx"],
+          "tsxConfig": {
+            "path": "/Users/inaiat.moraes/dev/flash/crab-js/benchmarks/kafka/tsconfig.runtime.json",
+            "bytes": 79,
+            "sha256": "69d3b6bceac1dcc6beab743941b0786737f20e9a620f3999163971dcdf9833f0"
+          },
+          "platform": "darwin",
+          "arch": "arm64",
+          "package": {
+            "requested": "kafka-crab-js",
+            "name": "kafka-crab-js",
+            "version": "4.1.3",
+            "root": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js",
+            "entry": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.js"
+          },
+          "javascript": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/channels.cjs",
+              "bytes": 3820,
+              "sha256": "cd5cf85534f85e4c1f06d7b5bf88e2570f6989fe3d79b2411c053584fdf9adfb"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/channels.js",
+              "bytes": 3281,
+              "sha256": "bf3dbd099ce598a9a85c4227383808503aae6b78c01f6bc7a03225de2de06f4b"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/index.cjs",
+              "bytes": 1840,
+              "sha256": "e7bedf8823b0b12996e2f69f9768ade37fc57b8169f3c314ebf97beba8c4f0c6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/index.js",
+              "bytes": 988,
+              "sha256": "20accf88f6ac80cdab7f36c1a89e4cbdff1086108849a9d3ccb3cb1234433745"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/instrumentation.cjs",
+              "bytes": 10824,
+              "sha256": "c3e8f8eb8449a8307a82716c3bc09f951b80ef817fc1c7c3a4999daa4135bc52"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/diagnostics/instrumentation.js",
+              "bytes": 9875,
+              "sha256": "42b64b55e8171ac21c1b44bcac399400c2a0360d1a7b48ca6c1e2d201c3081af"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.cjs",
+              "bytes": 3072,
+              "sha256": "6cc91b3aa7935a14c73f791ac1c81f04bcee6e0c51509f3f3a1af18d82653c01"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/index.js",
+              "bytes": 1554,
+              "sha256": "6b3bc7bf246989792bc8fab0ec9ef9fbcd320d2a82d60220aa376d44f6d0ca37"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/kafka-client.cjs",
+              "bytes": 14161,
+              "sha256": "ec4bc0aa42c5b966f841689ca26aba24cd322a0d719d7d0769ce7bac6b2a1d30"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/kafka-client.js",
+              "bytes": 13745,
+              "sha256": "6a3aa8c952b183fc4f0febcdb127d830639e5d21393a485cd3aad13cc58b8724"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/send-failure.cjs",
+              "bytes": 1331,
+              "sha256": "30360517a92ecc9322c2d9c50523f32fdcdc6fd2358d713ddc50dcaa6f1c24f6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/send-failure.js",
+              "bytes": 1195,
+              "sha256": "2839accb694017c6f83a1b58a89ee0693f321b291751f664a334b980b5051d81"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/base-kafka-stream-readable.cjs",
+              "bytes": 3492,
+              "sha256": "dd0104858398dc9c3327b08bd1d1d60ae91d3789219fb167d5f9dae9cd6ef434"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/base-kafka-stream-readable.js",
+              "bytes": 3381,
+              "sha256": "142abaffa74b6f3ea7e355098509fa3022ab8baf26e48b3f06fb42a5d1b69990"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-batch-stream-readable.cjs",
+              "bytes": 2961,
+              "sha256": "e85b3058cd6e381a311cb30586be3f33f4cb99edb1ca7d64bc2a56a5eb795983"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-batch-stream-readable.js",
+              "bytes": 2799,
+              "sha256": "35aa6ad8352ad501c1b771084097cba262393d3ac22bff0f5475d9b6c32c91ac"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-stream-readable.cjs",
+              "bytes": 1810,
+              "sha256": "8810a74f65016c1ada18179dd8e06964dc6e94f803fc5774ceddda53e54c1794"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/dist/streams/kafka-stream-readable.js",
+              "bytes": 1653,
+              "sha256": "503e42b218524fc676194e24be9fec9513ff71eafadb7f1972b90e2f24e1fcc0"
+            }
+          ],
+          "nativeBindings": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/packages/kafka-crab-js/kafka-crab-js.darwin-arm64.node",
+              "bytes": 7812656,
+              "sha256": "59f86de79d9943b73efc295b221b24fef22bd64871486602ec9aa37ea98a0f22"
+            }
+          ],
+          "configuration": {
+            "brokers": ["localhost:9092"],
+            "topic": "benchmarks",
+            "iterations": 20000,
+            "runs": 30,
+            "serialTimingMode": "cpu",
+            "serialPrefetchSize": 64,
+            "serialPrefetchTimeoutMs": 5,
+            "fetchMinBytes": 1,
+            "fetchWaitMs": 10,
+            "fetchMaxBytes": 2048,
+            "partitionMaxBytes": 2048,
+            "batchSize": 1,
+            "batchTimeoutMs": 2,
+            "forceGcBeforeRun": true,
+            "memorySampleIntervalMs": 100,
+            "memorySettleMs": 100
+          }
+        }
+      },
+      "finishedAt": "2026-09-11T18:54:46.627Z",
+      "throughput": 801556.8039306999
+    },
+    {
+      "mode": "cpu",
+      "index": 3,
+      "scenario": "previous-serial",
+      "startedAt": "2026-09-11T18:54:46.628Z",
+      "hostBefore": {
+        "freeMemoryBytes": 217841664,
+        "loadAverage": [4.78515625, 3.16162109375, 3.328125]
+      },
+      "result": {
+        "scenario": {
+          "id": "previous-serial",
+          "label": "previous kafka-crab-js (Web Stream, serial)",
+          "library": "crab"
+        },
+        "measurements": [
+          {
+            "messages": 20000,
+            "elapsedNs": 76317625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 51216708
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 41675625
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27777042
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28726333
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29181666
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29594250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29938250
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27640875
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29520208
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30554541
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27790041
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 26942167
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29823500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27545500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28393375
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 26796084
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 35467792
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 32964417
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 62334542
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28622709
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30217500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 29650500
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30665958
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 27738958
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 30143542
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28807750
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 33013000
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28613208
+          },
+          {
+            "messages": 20000,
+            "elapsedNs": 28214917
+          }
+        ],
+        "memory": {
+          "peak": {
+            "rss": 157089792,
+            "heapUsed": 14876088,
+            "external": 3376528,
+            "arrayBuffers": 209663
+          },
+          "peakDelta": {
+            "rss": 86818816,
+            "heapUsed": 7072192,
+            "external": 670703,
+            "arrayBuffers": 65576
+          },
+          "retainedDelta": {
+            "rss": 76791808,
+            "heapUsed": 902296,
+            "external": 368712,
+            "arrayBuffers": -168
+          }
+        },
+        "gc": {
+          "activeDurationMs": 996.710416000001,
+          "totalCount": 166,
+          "totalDurationMs": 32.05986511707306,
+          "maxDurationMs": 1.3497910499572754,
+          "minorCount": 166,
+          "majorCount": 0,
+          "incrementalCount": 0,
+          "weakCallbackCount": 0,
+          "forcedCount": 0,
+          "otherCount": 0
+        },
+        "serialTiming": [
+          {
+            "mode": "cpu",
+            "wallMs": 76.315875,
+            "processCpuMs": 116.599,
+            "mainThreadCpuMs": 43.446
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 51.17866700000002,
+            "processCpuMs": 113.27,
+            "mainThreadCpuMs": 45.11
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 41.63979200000006,
+            "processCpuMs": 113.455,
+            "mainThreadCpuMs": 37.724
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.751166000000012,
+            "processCpuMs": 79.584,
+            "mainThreadCpuMs": 25.662
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.701915999999983,
+            "processCpuMs": 82.432,
+            "mainThreadCpuMs": 26.761
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.159333999999944,
+            "processCpuMs": 82.902,
+            "mainThreadCpuMs": 25.257
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.587041,
+            "processCpuMs": 88.319,
+            "mainThreadCpuMs": 27.201
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.93754200000012,
+            "processCpuMs": 88.303,
+            "mainThreadCpuMs": 28.035
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.62091700000019,
+            "processCpuMs": 83.682,
+            "mainThreadCpuMs": 25.906
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.5034169999999,
+            "processCpuMs": 87.465,
+            "mainThreadCpuMs": 27.661
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 30.54574999999977,
+            "processCpuMs": 86.045,
+            "mainThreadCpuMs": 27.527
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.775333000000046,
+            "processCpuMs": 83.75,
+            "mainThreadCpuMs": 26.21
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 26.931874999999764,
+            "processCpuMs": 76.845,
+            "mainThreadCpuMs": 25.305
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.81204200000002,
+            "processCpuMs": 87.458,
+            "mainThreadCpuMs": 28.106
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.52920899999981,
+            "processCpuMs": 75.989,
+            "mainThreadCpuMs": 25.953
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.383582999999817,
+            "processCpuMs": 83.801,
+            "mainThreadCpuMs": 26.988
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 26.79033299999992,
+            "processCpuMs": 78.387,
+            "mainThreadCpuMs": 25.268
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 35.45154199999979,
+            "processCpuMs": 92.144,
+            "mainThreadCpuMs": 31.895
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 32.93249999999989,
+            "processCpuMs": 86.886,
+            "mainThreadCpuMs": 29.856
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 62.32841600000029,
+            "processCpuMs": 136.752,
+            "mainThreadCpuMs": 46.593
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.611917000000176,
+            "processCpuMs": 80.986,
+            "mainThreadCpuMs": 26.801
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 30.20191700000032,
+            "processCpuMs": 87.038,
+            "mainThreadCpuMs": 27.02
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 29.641042000000198,
+            "processCpuMs": 86.373,
+            "mainThreadCpuMs": 27.987
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 30.654999999999745,
+            "processCpuMs": 82.31,
+            "mainThreadCpuMs": 27.407
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 27.73054200000024,
+            "processCpuMs": 79.176,
+            "mainThreadCpuMs": 25.939
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 30.118333999999777,
+            "processCpuMs": 89.007,
+            "mainThreadCpuMs": 28.167
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.790249999999105,
+            "processCpuMs": 82.796,
+            "mainThreadCpuMs": 26.809
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 32.996124999999665,
+            "processCpuMs": 95.646,
+            "mainThreadCpuMs": 30.756
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.60070799999994,
+            "processCpuMs": 80.324,
+            "mainThreadCpuMs": 26.617
+          },
+          {
+            "mode": "cpu",
+            "wallMs": 28.20208300000013,
+            "processCpuMs": 83.836,
+            "mainThreadCpuMs": 26.963
+          }
+        ],
+        "runtime": {
+          "node": "v24.20.0",
+          "execPath": "/Users/inaiat.moraes/.local/share/fnm/node-versions/v24.20.0/installation/bin/node",
+          "execArgv": ["--expose-gc", "--import", "tsx"],
+          "tsxConfig": {
+            "path": "/Users/inaiat.moraes/dev/flash/crab-js/benchmarks/kafka/tsconfig.runtime.json",
+            "bytes": 79,
+            "sha256": "69d3b6bceac1dcc6beab743941b0786737f20e9a620f3999163971dcdf9833f0"
+          },
+          "platform": "darwin",
+          "arch": "arm64",
+          "package": {
+            "requested": "kafka-crab-js-previous",
+            "name": "kafka-crab-js",
+            "version": "4.1.3",
+            "root": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js",
+            "entry": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.js"
+          },
+          "javascript": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/channels.cjs",
+              "bytes": 3820,
+              "sha256": "cd5cf85534f85e4c1f06d7b5bf88e2570f6989fe3d79b2411c053584fdf9adfb"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/channels.js",
+              "bytes": 3281,
+              "sha256": "bf3dbd099ce598a9a85c4227383808503aae6b78c01f6bc7a03225de2de06f4b"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/index.cjs",
+              "bytes": 1840,
+              "sha256": "e7bedf8823b0b12996e2f69f9768ade37fc57b8169f3c314ebf97beba8c4f0c6"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/index.js",
+              "bytes": 988,
+              "sha256": "20accf88f6ac80cdab7f36c1a89e4cbdff1086108849a9d3ccb3cb1234433745"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/instrumentation.cjs",
+              "bytes": 10824,
+              "sha256": "c3e8f8eb8449a8307a82716c3bc09f951b80ef817fc1c7c3a4999daa4135bc52"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/diagnostics/instrumentation.js",
+              "bytes": 9875,
+              "sha256": "42b64b55e8171ac21c1b44bcac399400c2a0360d1a7b48ca6c1e2d201c3081af"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.cjs",
+              "bytes": 3072,
+              "sha256": "6cc91b3aa7935a14c73f791ac1c81f04bcee6e0c51509f3f3a1af18d82653c01"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/index.js",
+              "bytes": 1554,
+              "sha256": "6b3bc7bf246989792bc8fab0ec9ef9fbcd320d2a82d60220aa376d44f6d0ca37"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/kafka-client.cjs",
+              "bytes": 11753,
+              "sha256": "cbed60c7460012d3275048d318edb1cd02708e8bfb0228c8d9cb2b1881221db4"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/kafka-client.js",
+              "bytes": 11385,
+              "sha256": "41920d08d74fe861902bed38ee326248222586bdfcd15b73c66ab399c071b9ca"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/base-kafka-stream-readable.cjs",
+              "bytes": 3343,
+              "sha256": "f307ff2c63f6829d226ebc351eb93815706b0f797aa5a87c63da9c4eeb0ab681"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/base-kafka-stream-readable.js",
+              "bytes": 3232,
+              "sha256": "c83e18b9a0a3f8cd59cc538d6b029b6b585a92932a2158a2ff15b0f1088eae72"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-batch-stream-readable.cjs",
+              "bytes": 3002,
+              "sha256": "1a7bd4b8d181c47fd24c32dfa570769255673b5bc662770a4f4f3d72c4db4d69"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-batch-stream-readable.js",
+              "bytes": 2840,
+              "sha256": "5554d8d997892162e713f97c890b491e86f57fda3929c5f88a02800f8a4ca37d"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-stream-readable.cjs",
+              "bytes": 1810,
+              "sha256": "8810a74f65016c1ada18179dd8e06964dc6e94f803fc5774ceddda53e54c1794"
+            },
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js@4.1.3/node_modules/kafka-crab-js/dist/streams/kafka-stream-readable.js",
+              "bytes": 1653,
+              "sha256": "503e42b218524fc676194e24be9fec9513ff71eafadb7f1972b90e2f24e1fcc0"
+            }
+          ],
+          "nativeBindings": [
+            {
+              "path": "/Users/inaiat.moraes/dev/flash/crab-js/node_modules/.pnpm/kafka-crab-js-darwin-arm64@4.1.3/node_modules/kafka-crab-js-darwin-arm64/kafka-crab-js.darwin-arm64.node",
+              "bytes": 7696752,
+              "sha256": "6cf38ecb025c7c2615297bd91a264a76cceefa53c79d1a24b4357c06f6fe7351"
+            }
+          ],
+          "configuration": {
+            "brokers": ["localhost:9092"],
+            "topic": "benchmarks",
+            "iterations": 20000,
+            "runs": 30,
+            "serialTimingMode": "cpu",
+            "serialPrefetchSize": 64,
+            "serialPrefetchTimeoutMs": 5,
+            "fetchMinBytes": 1,
+            "fetchWaitMs": 10,
+            "fetchMaxBytes": 2048,
+            "partitionMaxBytes": 2048,
+            "batchSize": 1,
+            "batchTimeoutMs": 2,
+            "forceGcBeforeRun": true,
+            "memorySampleIntervalMs": 100,
+            "memorySettleMs": 100
+          }
+        }
+      },
+      "finishedAt": "2026-09-11T18:54:54.165Z",
+      "throughput": 602477.034321017
+    }
+  ],
+  "kafkaBefore": {
+    "topic": "benchmarks",
+    "brokers": ["localhost:9092"],
+    "cluster": {
+      "brokers": [
+        {
+          "nodeId": 1,
+          "host": "127.0.0.1",
+          "port": 9092
+        },
+        {
+          "nodeId": 2,
+          "host": "127.0.0.1",
+          "port": 9093
+        },
+        {
+          "nodeId": 3,
+          "host": "127.0.0.1",
+          "port": 9094
+        }
+      ],
+      "controller": 1,
+      "clusterId": "MkU3OEVBNTcwNTJENDM2Qk"
+    },
+    "metadata": {
+      "topics": [
+        {
+          "name": "benchmarks",
+          "partitions": [
+            {
+              "partitionErrorCode": 0,
+              "partitionId": 2,
+              "leader": 1,
+              "replicas": [1],
+              "isr": [1],
+              "offlineReplicas": []
+            },
+            {
+              "partitionErrorCode": 0,
+              "partitionId": 1,
+              "leader": 3,
+              "replicas": [3],
+              "isr": [3],
+              "offlineReplicas": []
+            },
+            {
+              "partitionErrorCode": 0,
+              "partitionId": 0,
+              "leader": 2,
+              "replicas": [2],
+              "isr": [2],
+              "offlineReplicas": []
+            }
+          ]
+        }
+      ]
+    },
+    "offsets": [
+      {
+        "partition": 2,
+        "offset": "0",
+        "high": "0",
+        "low": "0"
+      },
+      {
+        "partition": 0,
+        "offset": "166665",
+        "high": "166665",
+        "low": "0"
+      },
+      {
+        "partition": 1,
+        "offset": "333335",
+        "high": "333335",
+        "low": "0"
+      }
+    ],
+    "configs": [
+      {
+        "errorCode": 0,
+        "errorMessage": "",
+        "resourceType": 2,
+        "resourceName": "benchmarks",
+        "configEntries": [
+          {
+            "configName": "compression.type",
+            "configValue": "producer",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "min.insync.replicas",
+            "configValue": "1",
+            "isDefault": false,
+            "configSource": 3
+          },
+          {
+            "configName": "cleanup.policy",
+            "configValue": "delete",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "segment.bytes",
+            "configValue": "1073741824",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "retention.ms",
+            "configValue": "604800000",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "max.message.bytes",
+            "configValue": "1048588",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "retention.bytes",
+            "configValue": "-1",
+            "isDefault": true,
+            "configSource": 5
+          }
+        ]
+      },
+      {
+        "errorCode": 0,
+        "errorMessage": "",
+        "resourceType": 4,
+        "resourceName": "1",
+        "configEntries": [
+          {
+            "configName": "log.flush.interval.messages",
+            "configValue": "9223372036854775807",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "message.max.bytes",
+            "configValue": "1048588",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.network.threads",
+            "configValue": "3",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.send.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.receive.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.io.threads",
+            "configValue": "8",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "compression.type",
+            "configValue": "producer",
+            "isDefault": true,
+            "configSource": 5
+          }
+        ]
+      },
+      {
+        "errorCode": 0,
+        "errorMessage": "",
+        "resourceType": 4,
+        "resourceName": "2",
+        "configEntries": [
+          {
+            "configName": "log.flush.interval.messages",
+            "configValue": "9223372036854775807",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "message.max.bytes",
+            "configValue": "1048588",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.network.threads",
+            "configValue": "3",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.send.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.receive.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.io.threads",
+            "configValue": "8",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "compression.type",
+            "configValue": "producer",
+            "isDefault": true,
+            "configSource": 5
+          }
+        ]
+      },
+      {
+        "errorCode": 0,
+        "errorMessage": "",
+        "resourceType": 4,
+        "resourceName": "3",
+        "configEntries": [
+          {
+            "configName": "log.flush.interval.messages",
+            "configValue": "9223372036854775807",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "message.max.bytes",
+            "configValue": "1048588",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.network.threads",
+            "configValue": "3",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.send.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.receive.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.io.threads",
+            "configValue": "8",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "compression.type",
+            "configValue": "producer",
+            "isDefault": true,
+            "configSource": 5
+          }
+        ]
+      }
+    ],
+    "samples": [
+      {
+        "partition": 2,
+        "requested": 32,
+        "messages": []
+      },
+      {
+        "partition": 0,
+        "requested": 32,
+        "messages": [
+          {
+            "offset": 0,
+            "payloadBytes": 73,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "0dc70ff256683467be4c3207d4d1c5c22062733f00f71d18ddbb95e4e71b82bb"
+          },
+          {
+            "offset": 1,
+            "payloadBytes": 73,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "6b599296484339117ae0c941921f0ee7f72a8346f6c2a1ca55609f6403602436"
+          },
+          {
+            "offset": 2,
+            "payloadBytes": 73,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "29244b40cdc9dfb2393e70b9c781007bda0b5e10024563dddf9092ef1f00600c"
+          },
+          {
+            "offset": 3,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "e891d3370759983a9d7213271bd04aa6ff2964cbe674d8a80f6282b1329f53be"
+          },
+          {
+            "offset": 4,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "e2dffdd23a7f53315d4f1d94d5fd2bc017c094fd4bd7f56fc0de6b3d763a1254"
+          },
+          {
+            "offset": 5,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "67908e6221c5b54c97fa0119f96419c5b9bb7cad31c5622c312a1daebedadc74"
+          },
+          {
+            "offset": 6,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "96743f64a9c789421f6dfbb26fb66ac93b7767ba466f39a023f6983456ebd979"
+          },
+          {
+            "offset": 7,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "942b1f49aa90f1f9e6d1e25057d56015ae78a39cd2440252b797414ee3c8dd38"
+          },
+          {
+            "offset": 8,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "72f4777ad5dd042f7281547fa682c065872d216d3faf170f84c2acf950b36322"
+          },
+          {
+            "offset": 9,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "b39e0259494b8bd25732c10a1af36098df35d86b36580c60fa9edfae5c029995"
+          },
+          {
+            "offset": 10,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "dfc0fed9f05c221c2f585eae5d38097aece0ab1af8d9317b3b9ed2dc8741a3e4"
+          },
+          {
+            "offset": 11,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "48a772dbddb12f273a8560229bbc2e63dc4b8dfbf959841b0cd5e8bff96fc404"
+          },
+          {
+            "offset": 12,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "d3af60e496d0cb7ff897ac3154759f019685b19ec23d07e8c1bd6c802e98f8a1"
+          },
+          {
+            "offset": 13,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "52188d4c4115537176c39d3e7959883506163ca727f855808e0c95077875c57b"
+          },
+          {
+            "offset": 14,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "06facd23898760382051b3889e8eb58c47a22e10bb8b877e9311c285e07072c3"
+          },
+          {
+            "offset": 15,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "a12edc4be191564fcc323bb9c79404cb9b9fd8f937db423646c19ec6ed53190d"
+          },
+          {
+            "offset": 16,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "b112ef29e6d60d0dc4020057d6f8986e3b5318b67a60b30e53583261d8ec6ecb"
+          },
+          {
+            "offset": 17,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "2a6a302e6ddc701c2106f80c3bb18642c9671b769232f5295834766f5416d36e"
+          },
+          {
+            "offset": 18,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "4f8133c6e6fe00d10157aa2be074a6c6d105c7a8827a8dfe406911d3b9567a49"
+          },
+          {
+            "offset": 19,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "e510470bc7a28859b368083e5ba673df6f9615c95ae942f0ef0fb4efd5f66bb6"
+          },
+          {
+            "offset": 20,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "cf18dc7c9a7aa212d8066a4eb7d16a601c13f92967f00e8a3a8ef8e13b2e3ba4"
+          },
+          {
+            "offset": 21,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "a61f308552b1a68e406cb8c123794c8f1fb6f9e4c56ade8db429960dbcb1f397"
+          },
+          {
+            "offset": 22,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "440fb6f7aa7aeeb1ab12325800a93bdc58bd99cbe05eb6a436bc423e72d8437c"
+          },
+          {
+            "offset": 23,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "f3d3d17d0e447bc07e8b0cd5572070ddaa789f2624f377990e7253133093eff4"
+          },
+          {
+            "offset": 24,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "837bb47a69b553c7f15bcfe52a66a07033cfbd1061ccb9e628941c1747d0bfd6"
+          },
+          {
+            "offset": 25,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "cf7e9a13d2b2b42dcca53cb242074bff4014d8074efb69cffe80441ca405fba4"
+          },
+          {
+            "offset": 26,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "b2c0ffef3a4b4b41728d2752f317f512b240bb6801356b9a15e252a7289f95b3"
+          },
+          {
+            "offset": 27,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "a4268fd29f6a30921b3f5d996034334fa77ef2fa770738d163939b7c781bfd4c"
+          },
+          {
+            "offset": 28,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "2b4e62d1da4595cb7fe9746d979b135baf9a9e37f2968597b987214c4b90471f"
+          },
+          {
+            "offset": 29,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "c8d3c716906af147c1b98035f1062b99d0b7aad447046f3d40343b0af406de07"
+          },
+          {
+            "offset": 30,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "3075ef65728b31fad168d46197c3e0fd7545cf4fe3a1ad768245c77f1ff5d108"
+          },
+          {
+            "offset": 31,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "b9158a3da47558e9ab85ea4b4d89f153cb07cb8580c9b1ef6c546a033f1fcf50"
+          }
+        ]
+      },
+      {
+        "partition": 1,
+        "requested": 32,
+        "messages": [
+          {
+            "offset": 0,
+            "payloadBytes": 73,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "59e3fd436f25c59c1ace80875c3e2781575449347fb4983f36c6a99d44ebf086"
+          },
+          {
+            "offset": 1,
+            "payloadBytes": 73,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "9267f41f932887e523d509cb6dc1e2b15acf5634db9144f8fb8a905ecfbeca4a"
+          },
+          {
+            "offset": 2,
+            "payloadBytes": 73,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "a433e74e2f89bc605b14ca27de1418e0c4e6cd83f2a523ba338594dfeb1a84cc"
+          },
+          {
+            "offset": 3,
+            "payloadBytes": 73,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "cd6c1cf92d6e089ba0826cafd780f2a5c5c08c6da67965859d6d39014c4bb2a4"
+          },
+          {
+            "offset": 4,
+            "payloadBytes": 73,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "f7f0aec8df4f71d36ee7caedbf9f45688c17ca7365ad1e0f023e6d1e7dfc1fd8"
+          },
+          {
+            "offset": 5,
+            "payloadBytes": 73,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "6da558ae378615ef954716605e8dc1cedb44944ff3b285e91322401c9f764f12"
+          },
+          {
+            "offset": 6,
+            "payloadBytes": 73,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "b1a3715b537343f532e183410190fcfbe434697f1247270b730b984add457124"
+          },
+          {
+            "offset": 7,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "a1d2bae8b2f3e453a540607aea17e6355ea5e02c218507d6d04ebc5c80b5af45"
+          },
+          {
+            "offset": 8,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "88e51bee8d976868b779a28ce52e2ab85092741bc36fb69d4131481a4cb73541"
+          },
+          {
+            "offset": 9,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "b9237051b2624fadee56481b89046b5e8142b76f829155651d7e0e74710f3a06"
+          },
+          {
+            "offset": 10,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "8e6685e85110af072df1525fda4d8eb84a50f249e2fd2fe449455f4206d545b4"
+          },
+          {
+            "offset": 11,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "094f0a322a638bd18bdc1e37810438323bcf299dd2c4fff345721bf7b264aeea"
+          },
+          {
+            "offset": 12,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "31aac7365bef7efdcf331290a1c25bfe48696166db932d66f7dcd13333a0d2ae"
+          },
+          {
+            "offset": 13,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "f3d975bba5e42659e25689f52bd5d65748e59a35bb2053becf051a485bb342d5"
+          },
+          {
+            "offset": 14,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "95fd72f23d1ec35def7a1dabee2b333762e941844408e957d761b25f5c55b50a"
+          },
+          {
+            "offset": 15,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "3a011065d393870d4cf44b09ebcf4243921e0fddb4c0b2ec8b7bebe9f60fa4a2"
+          },
+          {
+            "offset": 16,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "9da42723431a5044b8e4d88653e963eddd98ce7cd959ceddaf7b44c4a162e962"
+          },
+          {
+            "offset": 17,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "1181973fbed5daa2784cb3b3ae5c36ebbd4aa49bcff4ae6205f3f9c0220fbe98"
+          },
+          {
+            "offset": 18,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "a344f6eec7d1601e7c5964ff236e4839f00e4097a094fc30d332954a51f85b41"
+          },
+          {
+            "offset": 19,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "936bb1356c9459bb8a1cd430b22ce9706dc3b6ae008154a24ddd690cfc6fca14"
+          },
+          {
+            "offset": 20,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "c313cfbcd437cde5f3560527e12d32211fb298525a94229f195711795e3a3771"
+          },
+          {
+            "offset": 21,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "70066ab62625d17840304961423350768f498e4b35eda0bd563ec3157e1ae533"
+          },
+          {
+            "offset": 22,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "8ec8e99ace3a6117d93880ac55479c6e6085bbefb8bf801498970f0ca041fc62"
+          },
+          {
+            "offset": 23,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "1e180e1a9d386625fcf921e02ac06b11812b0a908e6f4825be8dd16c8f5e002c"
+          },
+          {
+            "offset": 24,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "233f54da45c562ddc8a0afd66e6abc35cff71e29f6ef00fb45447606e3d99dd2"
+          },
+          {
+            "offset": 25,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "ace7bd3a3b88896ae391c60145c951b1a189ed79d8cdbc0cb008732c3bcaffe0"
+          },
+          {
+            "offset": 26,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "9b0f0ea83003f8e6a923d39aeb976f670d1574c0ff8208c857c32a4772366097"
+          },
+          {
+            "offset": 27,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "310a43d0df4dd14498f3abd1ec729a1e9ff39a179a1eb0ef4684ac5af389df1e"
+          },
+          {
+            "offset": 28,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "4882a4f2201da10b50a0ac08fe0e159a03bab1928102d63b056be62df6dc028a"
+          },
+          {
+            "offset": 29,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "f6ad3bc7926be30ff75d07e437bba2aca7645afc57e33566029e7dcfca330405"
+          },
+          {
+            "offset": 30,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "92ea04cb6c6bfdb78f1bed1064aea774167eca1269db87f28aabdf96447233c0"
+          },
+          {
+            "offset": 31,
+            "payloadBytes": 75,
+            "keyBytes": 11,
+            "headerCount": 1,
+            "headerBytes": 38,
+            "tombstone": false,
+            "sha256": "9f8f9027c9fe498de4a7c9e01cbaca7b4b625a1d4695496933bfd80046be2698"
+          }
+        ]
+      }
+    ]
+  },
+  "kafkaAfter": {
+    "topic": "benchmarks",
+    "brokers": ["localhost:9092"],
+    "cluster": {
+      "brokers": [
+        {
+          "nodeId": 1,
+          "host": "127.0.0.1",
+          "port": 9092
+        },
+        {
+          "nodeId": 2,
+          "host": "127.0.0.1",
+          "port": 9093
+        },
+        {
+          "nodeId": 3,
+          "host": "127.0.0.1",
+          "port": 9094
+        }
+      ],
+      "controller": 1,
+      "clusterId": "MkU3OEVBNTcwNTJENDM2Qk"
+    },
+    "metadata": {
+      "topics": [
+        {
+          "name": "benchmarks",
+          "partitions": [
+            {
+              "partitionErrorCode": 0,
+              "partitionId": 2,
+              "leader": 1,
+              "replicas": [1],
+              "isr": [1],
+              "offlineReplicas": []
+            },
+            {
+              "partitionErrorCode": 0,
+              "partitionId": 1,
+              "leader": 3,
+              "replicas": [3],
+              "isr": [3],
+              "offlineReplicas": []
+            },
+            {
+              "partitionErrorCode": 0,
+              "partitionId": 0,
+              "leader": 2,
+              "replicas": [2],
+              "isr": [2],
+              "offlineReplicas": []
+            }
+          ]
+        }
+      ]
+    },
+    "offsets": [
+      {
+        "partition": 2,
+        "offset": "0",
+        "high": "0",
+        "low": "0"
+      },
+      {
+        "partition": 0,
+        "offset": "166665",
+        "high": "166665",
+        "low": "0"
+      },
+      {
+        "partition": 1,
+        "offset": "333335",
+        "high": "333335",
+        "low": "0"
+      }
+    ],
+    "configs": [
+      {
+        "errorCode": 0,
+        "errorMessage": "",
+        "resourceType": 2,
+        "resourceName": "benchmarks",
+        "configEntries": [
+          {
+            "configName": "compression.type",
+            "configValue": "producer",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "min.insync.replicas",
+            "configValue": "1",
+            "isDefault": false,
+            "configSource": 3
+          },
+          {
+            "configName": "cleanup.policy",
+            "configValue": "delete",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "segment.bytes",
+            "configValue": "1073741824",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "retention.ms",
+            "configValue": "604800000",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "max.message.bytes",
+            "configValue": "1048588",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "retention.bytes",
+            "configValue": "-1",
+            "isDefault": true,
+            "configSource": 5
+          }
+        ]
+      },
+      {
+        "errorCode": 0,
+        "errorMessage": "",
+        "resourceType": 4,
+        "resourceName": "1",
+        "configEntries": [
+          {
+            "configName": "log.flush.interval.messages",
+            "configValue": "9223372036854775807",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "message.max.bytes",
+            "configValue": "1048588",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.network.threads",
+            "configValue": "3",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.send.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.receive.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.io.threads",
+            "configValue": "8",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "compression.type",
+            "configValue": "producer",
+            "isDefault": true,
+            "configSource": 5
+          }
+        ]
+      },
+      {
+        "errorCode": 0,
+        "errorMessage": "",
+        "resourceType": 4,
+        "resourceName": "2",
+        "configEntries": [
+          {
+            "configName": "log.flush.interval.messages",
+            "configValue": "9223372036854775807",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "message.max.bytes",
+            "configValue": "1048588",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.network.threads",
+            "configValue": "3",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.send.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.receive.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.io.threads",
+            "configValue": "8",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "compression.type",
+            "configValue": "producer",
+            "isDefault": true,
+            "configSource": 5
+          }
+        ]
+      },
+      {
+        "errorCode": 0,
+        "errorMessage": "",
+        "resourceType": 4,
+        "resourceName": "3",
+        "configEntries": [
+          {
+            "configName": "log.flush.interval.messages",
+            "configValue": "9223372036854775807",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "message.max.bytes",
+            "configValue": "1048588",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.network.threads",
+            "configValue": "3",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.send.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "socket.receive.buffer.bytes",
+            "configValue": "102400",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "num.io.threads",
+            "configValue": "8",
+            "isDefault": true,
+            "configSource": 5
+          },
+          {
+            "configName": "compression.type",
+            "configValue": "producer",
+            "isDefault": true,
+            "configSource": 5
+          }
+        ]
+      }
+    ]
+  },
+  "sourceAfter": {
+    "root": "/Users/inaiat.moraes/dev/flash/crab-js",
+    "commit": "4c6e92ab091d35c4b03ac9381599c5b73f720bef",
+    "branch": "fix/kafka-crab-js-delivery-guarantees",
+    "status": " M .github/workflows/CI.yml\n M benchmarks/kafka/README.md\n M benchmarks/kafka/consumer.ts\n M benchmarks/kafka/package.json\n M benchmarks/kafka/producer-storm.ts\n M benchmarks/kafka/producer.ts\n M benchmarks/kafka/utils/env.ts\n M benchmarks/kafka/utils/output.ts\n M benchmarks/kafka/utils/results.ts\n M examples/kafka/otel-metrics-example.mjs\n M examples/kafka/otel-tracing-example.mjs\n M examples/kafka/web-stream-async-generator.ts\n M packages/kafka-crab-js/README.md\n M packages/kafka-crab-js/docs/rfc/README.md\n M packages/kafka-crab-js/docs/rfc/fix/README.md\n M packages/kafka-crab-js/docs/rfc/implemented/0006-m06-producer-delivery-state/README.md\n M packages/kafka-crab-js/docs/rfc/implemented/0011-deterministic-prefetch-drain/README.md\n M packages/kafka-crab-js/docs/rfc/proposed/0012-byte-based-backpressure/README.md\n M packages/kafka-crab-js/docs/rfc/proposed/0013-async-commit-error-contract/README.md\n M packages/kafka-crab-js/docs/rfc/proposed/0014-metadata-fetch-offload/README.md\n M packages/kafka-crab-js/docs/rfc/proposed/README.md\n M packages/kafka-crab-js/js-src/kafka-client.ts\n M packages/kafka-crab-js/js-tests/fixtures/mock-kafka-broker.mjs\n M packages/kafka-crab-js/js-tests/integration/consumer-manual-commit.test.mjs\n M packages/kafka-crab-js/js-tests/integration/consumer-stream.test.mjs\n M packages/kafka-crab-js/js-tests/native-drain/README.md\n M packages/kafka-crab-js/js-tests/native-drain/build.rs\n M packages/kafka-crab-js/js-tests/native-drain/src/lib.rs\n M packages/kafka-crab-js/js-tests/unit/regressions.test.ts\n M packages/kafka-crab-js/src/kafka/consumer/consumer_helper.rs\n M packages/kafka-crab-js/src/kafka/consumer/context.rs\n M packages/kafka-crab-js/src/kafka/consumer/kafka_consumer.rs\n M packages/kafka-crab-js/src/kafka/consumer/mod.rs\n M packages/kafka-crab-js/src/kafka/kafka_admin.rs\n M packages/kafka-crab-js/src/kafka/producer/kafka_producer.rs\n D packages/pdf-crab-js/index.js\n M pnpm-lock.yaml\n?? benchmarks/kafka/diagnostics/\n?? benchmarks/kafka/serial-memory.mjs\n?? benchmarks/kafka/tsconfig.runtime.json\n?? benchmarks/kafka/utils/runtime-fingerprint.ts\n?? benchmarks/kafka/utils/serial-timing.ts\n?? benchmarks/kafka/utils/shuffle.ts\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-10-rfc-conformance-review.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-consumer-serial-instrumentation.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-operational-safety.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-rfc-evidence.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-serial-abba.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-serial-depth-experiment.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-serial-investigation.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-serial-memory.md\n?? packages/kafka-crab-js/docs/rfc/fix/2026-09-11-serial-timing.md\n?? packages/kafka-crab-js/docs/rfc/fix/evidence/\n?? packages/kafka-crab-js/docs/rfc/implemented/0013-async-commit-error-contract/\n?? packages/kafka-crab-js/docs/rfc/implemented/0014-metadata-fetch-offload/\n?? packages/kafka-crab-js/docs/rfc/implemented/0016-byte-based-backpressure/\n?? packages/kafka-crab-js/js-src/send-failure.ts\n?? packages/kafka-crab-js/js-tests/diagnostics/\n?? packages/kafka-crab-js/js-tests/fixtures/byte-pressure-evidence.mjs\n?? packages/kafka-crab-js/js-tests/fixtures/metadata-offload-probe.mjs\n?? packages/kafka-crab-js/js-tests/integration/producer-send-failure.test.mjs\n?? packages/kafka-crab-js/src/kafka/consumer/byte_budget.rs\n?? packages/pdf-crab-js/js-binding.cjs\n",
+    "fingerprints": [
+      {
+        "path": "benchmarks/kafka/consumer.ts",
+        "sha256": "454a75bd6e71fd4ab8c2ea73a42bf65bb8172cfe2edf3d4e511a1b4ec5ec2a45"
+      },
+      {
+        "path": "benchmarks/kafka/diagnostics/serial-abba.mjs",
+        "sha256": "2d92f52e94bcde18e040b20a9a2bdbf113d1c16ae64b0b7370fd396ea9aa02b3"
+      },
+      {
+        "path": "benchmarks/kafka/diagnostics/serial-timing.mjs",
+        "sha256": "ebd848891681887f3d839ae0cafb4b1098d2ffbd26dba2103717b728d3eeccb3"
+      },
+      {
+        "path": "benchmarks/kafka/package.json",
+        "sha256": "c590b18ee45bbb0bf14daefc7e622f280957a74f763b59a1f6e6ad9ec6b99598"
+      },
+      {
+        "path": "benchmarks/kafka/producer-storm.ts",
+        "sha256": "5c2bf7a8adb28495814ac620ae1878699ce9771fa9c71b897519e6f64c903078"
+      },
+      {
+        "path": "benchmarks/kafka/producer.ts",
+        "sha256": "cf539267da791e635e61cf940a27337b2e2da98615b0b402dea5c1d02a54b905"
+      },
+      {
+        "path": "benchmarks/kafka/serial-memory.mjs",
+        "sha256": "7bdd47d63c95c2ec0e3da3f6a648c3c34420b243cf8e511aa5c6bb7c323dc0f6"
+      },
+      {
+        "path": "benchmarks/kafka/tsconfig.json",
+        "sha256": "7b24f6a135b7fd4a599a5b8dd74bc65474b1a48556325bcac3f693ca6487160e"
+      },
+      {
+        "path": "benchmarks/kafka/tsconfig.runtime.json",
+        "sha256": "69d3b6bceac1dcc6beab743941b0786737f20e9a620f3999163971dcdf9833f0"
+      },
+      {
+        "path": "benchmarks/kafka/utils/definitions.ts",
+        "sha256": "fcb37cc378dcf65d8424af4cf6414ec8f953ed30d6c75cf290893c3e2f75a750"
+      },
+      {
+        "path": "benchmarks/kafka/utils/env.ts",
+        "sha256": "271ccaa5a6dff302a8471c21b2748f9c23eca95e869e4c3557f1af1cc8d75ea6"
+      },
+      {
+        "path": "benchmarks/kafka/utils/gc.ts",
+        "sha256": "19f2d7a3a3c6970c3752f87fc51c225908a1bda17ce5592980406d5e150cc766"
+      },
+      {
+        "path": "benchmarks/kafka/utils/memory.ts",
+        "sha256": "97a7385c692e2faca951a61347a5650c8297cb8e8d972f5f5330f2606001c8a8"
+      },
+      {
+        "path": "benchmarks/kafka/utils/messages.ts",
+        "sha256": "7e31276404794645cddf25346aebd95f914cf39fd58d431acd8a3c71829af559"
+      },
+      {
+        "path": "benchmarks/kafka/utils/output.ts",
+        "sha256": "722284f4c2afb86904c2fc827c9eb86c80f17b64ec23f4b3f336c8a82f50a21d"
+      },
+      {
+        "path": "benchmarks/kafka/utils/results.ts",
+        "sha256": "b568de4cb26bc6ff4ad0e556226c650503c92342d83c45ae72fdb7df82f52c79"
+      },
+      {
+        "path": "benchmarks/kafka/utils/runtime-fingerprint.ts",
+        "sha256": "59b10e74c81f5dee9123a123b385f64cb29206083acbdb54dd38821aa38fcb56"
+      },
+      {
+        "path": "benchmarks/kafka/utils/serial-timing.ts",
+        "sha256": "c88f100679dbdd966a97cbec746ebebca3f979233c2df9059c4306c40c84a4c5"
+      },
+      {
+        "path": "benchmarks/kafka/utils/setup.ts",
+        "sha256": "6200d4d10688d2061440b55e446d0d0aa0d0c4a147c3ef74b239f603b259f678"
+      },
+      {
+        "path": "benchmarks/kafka/utils/shuffle.ts",
+        "sha256": "e890a9c16aa3ced2c0dc0b97931361da3437237e0827d1487ebed17e895c4b4e"
+      },
+      {
+        "path": "benchmarks/kafka/vite.config.ts",
+        "sha256": "e565b378dd41517c6aa9c1f00e8895afdb2234ff7131ca08d1dc39be83949eb3"
+      },
+      {
+        "path": "packages/kafka-crab-js/Cargo.lock",
+        "sha256": "1da79b0e494edbe018a66700ec30615b0d1c8ee1995ec4e749624f9e50b9b66c"
+      },
+      {
+        "path": "packages/kafka-crab-js/Cargo.toml",
+        "sha256": "bda6749317e1a9f7ad15d18e628076e06c436ececfcf4e1ea6911ffb6b359ae7"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/diagnostics/channels.ts",
+        "sha256": "b0a439626e14644b653686c1d9f984ba0cc0c8fdd6a1d61428fbc4140efa2bfe"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/diagnostics/index.ts",
+        "sha256": "767c2a2c2f73ae8dc8f8cdb9c56bd456bd20045f13a347d8201a6d8f50c1e998"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/diagnostics/instrumentation.ts",
+        "sha256": "d002e59b2fdb037a7c9538a57445c259ba287ac67debde07dc66bcbec72ebb2c"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/index.ts",
+        "sha256": "2d66934f5541ea4969d2637c3af1930919055683a944c7460d9a3ef4a347cf5e"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/kafka-client.ts",
+        "sha256": "8da9cea9721ccbcd41cfe6a4c39483448f3281f96b48689d2178cd9d446cced6"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/send-failure.ts",
+        "sha256": "217b9dd3979b601e66cfe4262aaf98fcc9ec7cb4e78357e3d123c597cbd71194"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/streams/base-kafka-stream-readable.ts",
+        "sha256": "cdb8678d4704e40185402d5e3961132c1cff4b37a342a33b699021d7a39bc9a7"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/streams/kafka-batch-stream-readable.ts",
+        "sha256": "6b36823934fc4d90af47f79b8a7326223b8e3e17699811b40e398b4ca9ea64b1"
+      },
+      {
+        "path": "packages/kafka-crab-js/js-src/streams/kafka-stream-readable.ts",
+        "sha256": "b426c937ef043ad38575785e92e6924088337a3769bdb81868a354f569ee3c4c"
+      },
+      {
+        "path": "packages/kafka-crab-js/package.json",
+        "sha256": "02745ef745c6a2f920bc485ab685d3c603aabe47557be4e9bde81dce6523b8f1"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/byte_budget.rs",
+        "sha256": "e2809460857967772772b2e235b422625821a1b8e47dfe64f30803a1c43e59a5"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/consumer_helper.rs",
+        "sha256": "dfc0ef1fd856ef09ce51541f5edca5363d63e4ad84028f07db8251011d3e8710"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/context.rs",
+        "sha256": "20f720bfc5745c52751abcda27e9612f8f9b45d84ed74c40e9f2e89acdbbca37"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/kafka_consumer.rs",
+        "sha256": "28e62b6cb4e0c3bed4a1d57b3ec2589c38a3f5b06f98a7d9eddbaa282c57b1a3"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/mod.rs",
+        "sha256": "d12198cd9bce26c298b7c21052a1c08096caf80f309d576f095b4d80faf39641"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/consumer/model.rs",
+        "sha256": "91a612f3b57abf6e02cf3b47c52704e4aec02555634a7c8110f607ce737f2c46"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/kafka_admin.rs",
+        "sha256": "c2fe335a8338f62c0ef76efa4ff1e8e9912c89f2c405f83c3d1102ccd3854ab3"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/kafka_client_config.rs",
+        "sha256": "c80bc95a259e012376c7a507f565b16164355dc1f0c34662e5232aef3ffe59d2"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/kafka_util.rs",
+        "sha256": "bb5f4c908e56b39fb93015db54544dfd1356f000f620a1fa7e5ef21341620042"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/mod.rs",
+        "sha256": "feefdb75468ac880ec740dba31764673947eae80777abe94baf2f5a6ee9cc35e"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/producer/kafka_producer.rs",
+        "sha256": "c66b4beac977cb397b9bf25f6303045ece3a533f5a772e12735dffb367f43804"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/producer/mod.rs",
+        "sha256": "e69726e5da50623ede02682d992cbdcdf3f0c20571851ee59855ff45123db9c7"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/kafka/producer/model.rs",
+        "sha256": "ade1e22b6c19acff05d99816c09969ca8d280324a203b13a619e9c5b2cd71ae4"
+      },
+      {
+        "path": "packages/kafka-crab-js/src/lib.rs",
+        "sha256": "7bf6ac5cc570c5aca306fd12e98ef2302d2201661033feb013fdf0bcfdc80f64"
+      },
+      {
+        "path": "pnpm-lock.yaml",
+        "sha256": "5d4ef7dc2f70b172929413a996f7ebac5fa93373a1f18ca9803a6b737fba77cb"
+      }
+    ],
+    "sha256": "d019e1f809efd71611503f154e23ef61bf1f513f5048558e7a889824be3d2bbb"
+  },
+  "sourceUnchanged": true,
+  "topicOffsetsUnchanged": true,
+  "artifactConsistency": {
+    "previous-serial": true,
+    "crab-serial": true
+  },
+  "comparisons": [
+    {
+      "mode": "off",
+      "previous": 614612.5532785535,
+      "current": 810832.3132071816,
+      "aggregateDeltaPct": 31.925765082721604,
+      "firstPairDeltaPct": 40.51547442404815,
+      "reversedPairDeltaPct": 23.921750352326598
+    },
+    {
+      "mode": "cpu",
+      "previous": 629841.4273589456,
+      "current": 785738.1125677676,
+      "aggregateDeltaPct": 24.751735665043316,
+      "firstPairDeltaPct": 16.780869631400485,
+      "reversedPairDeltaPct": 33.04354494342561
+    }
+  ],
+  "finishedAt": "2026-09-11T18:54:54.578Z"
+}

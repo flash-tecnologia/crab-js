@@ -307,18 +307,19 @@ impl KafkaProducer {
       if self.auto_flush && !receivers.is_empty() {
         let flush_res = self.flush_queue().await;
         let (confirmed, _) = Self::gather(receivers, deadline).await;
-        let confirmed_count = confirmed.len();
         *self
           .last_delivery_results
           .lock()
-          .unwrap_or_else(|e| e.into_inner()) = confirmed;
+          .unwrap_or_else(|e| e.into_inner()) = confirmed.clone();
         let underlying_err = flush_res
           .err()
           .map(|e| e.reason)
           .unwrap_or_else(|| err.to_string());
-        return Err(Error::new(
-          Status::GenericFailure,
-          partial_send_error_message(enqueued, total, confirmed_count, &underlying_err),
+        return Err(send_failure_error(
+          enqueued,
+          total,
+          confirmed,
+          &underlying_err,
         ));
       }
       if !self.auto_flush {
@@ -333,9 +334,11 @@ impl KafkaProducer {
           .lock()
           .unwrap_or_else(|e| e.into_inner()) = Vec::new();
       }
-      return Err(Error::new(
-        Status::GenericFailure,
-        partial_send_error_message(enqueued, total, 0, &err.to_string()),
+      return Err(send_failure_error(
+        enqueued,
+        total,
+        Vec::new(),
+        &err.to_string(),
       ));
     }
 
@@ -346,11 +349,15 @@ impl KafkaProducer {
         .last_delivery_results
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = confirmed.clone();
-      flush_res?;
+      if let Err(e) = flush_res {
+        return Err(send_failure_error(enqueued, total, confirmed, &e.reason));
+      }
       if let Some(e) = delivery_err {
-        return Err(Error::new(
-          Status::GenericFailure,
-          format!("Message delivery failed: {e}"),
+        return Err(send_failure_error(
+          enqueued,
+          total,
+          confirmed,
+          &format!("Message delivery failed: {e}"),
         ));
       }
       Ok(confirmed)
@@ -422,10 +429,12 @@ fn to_record_metadata(data: &DeliveryResultData) -> RecordMetadata {
     }),
   }
 }
-/// Machine-readable partial-failure message shared with the JS layer, which
-/// parses `enqueued X of Y, confirmed Z` to fill `SendFailureError`. The exact
-/// wording is pinned by the M06 partial-failure regression test in
-/// js-tests/unit/regressions.test.ts; change both sides together.
+/// Keep in sync with `SEND_FAILURE_PAYLOAD_MARKER` in js-src/send-failure.ts.
+const SEND_FAILURE_PAYLOAD_MARKER: &str = "\n--kafka-crab-send-failure--\n";
+
+/// Human prefix is pinned by the M06 partial-failure regression
+/// (`enqueued X of Y, confirmed Z`). Confirmed metadata travels in the
+/// trailing JSON payload so JS does not re-read the shared compat slot.
 fn partial_send_error_message(
   enqueued: usize,
   total: usize,
@@ -433,4 +442,39 @@ fn partial_send_error_message(
   underlying: &str,
 ) -> String {
   format!("Failed to send all messages (enqueued {enqueued} of {total}, confirmed {confirmed}): {underlying}")
+}
+
+fn send_failure_error(
+  enqueued: usize,
+  total: usize,
+  confirmed: Vec<RecordMetadata>,
+  underlying: &str,
+) -> Error {
+  let confirmed_count = confirmed.len();
+  let human = partial_send_error_message(enqueued, total, confirmed_count, underlying);
+  let payload = serde_json::json!({
+    "enqueuedCount": enqueued,
+    "totalCount": total,
+    "confirmedCount": confirmed_count,
+    "confirmedMessages": confirmed.iter().map(record_metadata_json).collect::<Vec<_>>(),
+  });
+  match serde_json::to_string(&payload) {
+    Ok(json) => Error::new(
+      Status::GenericFailure,
+      format!("{human}{SEND_FAILURE_PAYLOAD_MARKER}{json}"),
+    ),
+    Err(_) => Error::new(Status::GenericFailure, human),
+  }
+}
+
+fn record_metadata_json(meta: &RecordMetadata) -> serde_json::Value {
+  serde_json::json!({
+    "topic": meta.topic,
+    "partition": meta.partition,
+    "offset": meta.offset,
+    "error": meta.error.as_ref().map(|err| serde_json::json!({
+      "code": err.code,
+      "message": err.message,
+    })),
+  })
 }

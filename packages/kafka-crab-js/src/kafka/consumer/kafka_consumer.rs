@@ -2,12 +2,16 @@ use futures_util::{stream, StreamExt};
 use std::{
   collections::{HashMap, VecDeque},
   mem,
-  sync::Arc,
+  sync::{
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+    Arc,
+  },
   time::Duration,
 };
 use tokio::sync::{
   mpsc,
   watch::{self},
+  Mutex,
 };
 
 use napi::{
@@ -35,6 +39,8 @@ use crate::kafka::{
 };
 
 use super::{
+  byte_budget::{ByteBudget, DEFAULT_STREAM_BUFFER_BYTES},
+  commit_queue::AsyncCommitQueue,
   consumer_helper::{convert_tpl_to_array_of_topic_partition, create_stream_consumer},
   context::{KafkaCrabContext, KafkaEvent},
   model::{
@@ -56,7 +62,114 @@ const SERIAL_STREAM_PREFETCH_TIMEOUT_MS: i64 = 1;
 const CONSUMER_DISCONNECTED_REASON: &str = "Consumer disconnected";
 const BUFFER_DICTIONARY_MAX_UNIQUE_VALUES: usize = 64;
 const BUFFER_DICTIONARY_MIN_REPEAT_FACTOR: usize = 4;
-const DEFAULT_STREAM_BUFFER_CAPACITY: usize = 4;
+
+/// Native handoff queue depth (batches) for the Web batch/compact streams.
+/// Memory stays governed by the 32 MiB wired-byte budget (`ByteBudget`): the
+/// count cap must not bind before the budget for small messages. A 4-batch
+/// cap limited 64-message prefetches to ~256 messages of lookahead, which
+/// starved the reader on fetch bubbles (measured 614k vs 920k op/sec at
+/// 200k messages). 256 batches bank up to ~16k small messages so the fetch
+/// pipeline never goes cold.
+const DEFAULT_STREAM_BUFFER_CAPACITY: usize = 256;
+const DRAIN_GRACE_PERIOD: Duration = Duration::from_millis(1500);
+
+fn message_headers_wired_bytes(headers: &Option<MessageHeaders>) -> usize {
+  match headers {
+    None => 0,
+    Some(MessageHeaders::One(key, value)) => key.len() + value.len(),
+    Some(MessageHeaders::Many(entries)) => entries
+      .iter()
+      .map(|(key, value)| key.len() + value.len())
+      .sum(),
+  }
+}
+
+fn message_wired_bytes(message: &Message) -> usize {
+  message.payload.len()
+    + message.key.as_ref().map(|key| key.len()).unwrap_or(0)
+    + message_headers_wired_bytes(&message.headers)
+    + message.topic.len()
+    + 24
+}
+
+fn messages_wired_bytes(messages: &[Message]) -> usize {
+  messages.iter().map(message_wired_bytes).sum()
+}
+
+fn compact_wired_bytes(batch: &CompactMessageBatch) -> usize {
+  let payloads: usize = batch.payloads.iter().map(|payload| payload.len()).sum();
+  let keys: usize = batch
+    .keys
+    .as_ref()
+    .map(|keys| {
+      keys
+        .iter()
+        .map(|key| key.as_ref().map(|value| value.len()).unwrap_or(0))
+        .sum()
+    })
+    .unwrap_or(0);
+  let shared_key = batch.shared_key.as_ref().map(|key| key.len()).unwrap_or(0);
+  let dictionary: usize = batch
+    .key_dictionary
+    .as_ref()
+    .map(|keys| keys.iter().map(|key| key.len()).sum())
+    .unwrap_or(0);
+  let topics: usize = batch
+    .topics
+    .as_ref()
+    .map(|topics| topics.iter().map(|topic| topic.len()).sum())
+    .unwrap_or_else(|| batch.topic.as_ref().map(|topic| topic.len()).unwrap_or(0));
+  // Shared header state is retained once (key) or once per distinct value;
+  // per-message headers are retained per message. Dictionary indexes and
+  // tombstone flags are one small entry per message.
+  let shared_header_key = batch
+    .shared_header_key
+    .as_ref()
+    .map(|key| key.len())
+    .unwrap_or(0);
+  let shared_header_value = batch
+    .shared_header_value
+    .as_ref()
+    .map(|value| value.len())
+    .unwrap_or(0);
+  let shared_header_values: usize = batch
+    .shared_header_values
+    .as_ref()
+    .map(|values| {
+      values
+        .iter()
+        .map(|value| value.as_ref().map(|value| value.len()).unwrap_or(0))
+        .sum()
+    })
+    .unwrap_or(0);
+  let headers: usize = batch
+    .headers
+    .as_ref()
+    .map(|headers| headers.iter().map(message_headers_wired_bytes).sum())
+    .unwrap_or(0);
+  let dictionary_indexes = batch
+    .key_dictionary_indexes
+    .as_ref()
+    .map(|indexes| indexes.len())
+    .unwrap_or(0);
+  let tombstones = batch
+    .tombstones
+    .as_ref()
+    .map(|tombstones| tombstones.len())
+    .unwrap_or(0);
+  payloads
+    + keys
+    + shared_key
+    + dictionary
+    + topics
+    + shared_header_key
+    + shared_header_value
+    + shared_header_values
+    + headers
+    + dictionary_indexes
+    + tombstones
+    + batch.partitions.len() * 12
+}
 
 type CompactKeyEncoding = (
   Option<Vec<Option<Buffer>>>,
@@ -129,6 +242,7 @@ struct SerialStreamState {
   disconnect_signal: watch::Receiver<()>,
   cancel_signal: watch::Receiver<bool>,
   pending_messages: VecDeque<Message>,
+  pending_bytes: usize,
   prefetch_size: u32,
   prefetch_timeout_ms: i64,
   closed: bool,
@@ -166,12 +280,12 @@ impl CompactBatchBuilder {
   #[inline]
   fn new(capacity: usize) -> Self {
     Self {
-      payloads: Vec::with_capacity(capacity),
+      payloads: Vec::new(),
       keys: None,
       topic: None,
       topics: None,
-      partitions: Vec::with_capacity(capacity),
-      offsets: Vec::with_capacity(capacity),
+      partitions: Vec::new(),
+      offsets: Vec::new(),
       headers: HeaderBatchState::None,
       tombstones: None,
       capacity,
@@ -181,6 +295,12 @@ impl CompactBatchBuilder {
   #[inline]
   fn push(&mut self, kafka_message: &BorrowedMessage<'_>, payload: Option<&[u8]>) {
     let previous_count = self.payloads.len();
+    // Empty timeouts never allocate batch storage. Reserve once data arrives.
+    if previous_count == 0 {
+      self.payloads.reserve(self.capacity);
+      self.partitions.reserve(self.capacity);
+      self.offsets.reserve(self.capacity);
+    }
     let is_tombstone = payload.is_none();
 
     self.payloads.push(Buffer::from(payload.unwrap_or(&[])));
@@ -527,7 +647,7 @@ async fn collect_batch_messages(
   timeout_ms: i64,
 ) -> Result<BatchCollection> {
   let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms as u64);
-  let mut messages = Vec::with_capacity(size as usize);
+  let mut messages = Vec::new();
   let mut disconnected = false;
   let mut pending_error = None;
   let mut message_stream = stream_consumer.stream();
@@ -549,6 +669,7 @@ async fn collect_batch_messages(
         match message {
           Some(Ok(kafka_message)) => {
             let payload = kafka_message.payload();
+            messages.reserve(size as usize);
             messages.push(create_message(&kafka_message, payload));
           }
           Some(Err(error)) => {
@@ -572,6 +693,7 @@ async fn collect_batch_messages(
         match message {
           Some(Ok(kafka_message)) => {
             let payload = kafka_message.payload();
+            messages.reserve(size as usize);
             messages.push(create_message(&kafka_message, payload));
           }
           Some(Err(error)) => {
@@ -806,6 +928,9 @@ async fn next_serial_stream_item(
 ) -> Option<(Result<Message>, SerialStreamState)> {
   loop {
     if let Some(message) = state.pending_messages.pop_front() {
+      state.pending_bytes = state
+        .pending_bytes
+        .saturating_sub(message_wired_bytes(&message));
       return Some((Ok(message), state));
     }
 
@@ -854,6 +979,7 @@ async fn next_serial_stream_item(
           continue;
         }
 
+        state.pending_bytes = messages_wired_bytes(&batch.messages);
         state.pending_messages = VecDeque::from(batch.messages);
         state.pending_error = batch.pending_error;
         if batch.disconnected {
@@ -877,6 +1003,13 @@ pub struct KafkaConsumer {
   disconnect_signal: DisconnectSignal,
   client_id: String,
   pending_error: Arc<std::sync::Mutex<Option<Error>>>,
+  event_listeners_active: Arc<AtomicUsize>,
+  async_commit_queue: std::sync::Mutex<Option<Arc<AsyncCommitQueue>>>,
+  /// Serializes terminal lifecycle mutations with subscription/assignment
+  /// application. Metadata lookup itself remains outside this lock so
+  /// disconnect is not held up by a blocking fetch.
+  lifecycle_lock: Arc<Mutex<()>>,
+  disconnected: Arc<AtomicBool>,
 }
 
 #[napi]
@@ -914,7 +1047,26 @@ impl KafkaConsumer {
       disconnect_signal: watch::channel(()),
       client_id: kafka_client.configuration().client_id,
       pending_error: Arc::new(std::sync::Mutex::new(None)),
+      event_listeners_active: Arc::new(AtomicUsize::new(0)),
+      async_commit_queue: std::sync::Mutex::new(None),
+      lifecycle_lock: Arc::new(Mutex::new(())),
+      disconnected: Arc::new(AtomicBool::new(false)),
     })
+  }
+
+  fn disconnected_error() -> Error {
+    Error::new(
+      Status::InvalidArg,
+      "Consumer is disconnected; subscribe cannot be used after disconnect".to_string(),
+    )
+  }
+
+  fn ensure_connected(&self) -> Result<()> {
+    if self.disconnected.load(Ordering::Acquire) {
+      Err(Self::disconnected_error())
+    } else {
+      Ok(())
+    }
   }
 
   /// Returns the current consumer configuration.
@@ -946,6 +1098,11 @@ impl KafkaConsumer {
     ts_args_type = "callback: (error: Error | undefined, event: KafkaEvent) => void"
   )]
   pub fn on_events(&self, callback: Arc<ThreadsafeFunction<KafkaEvent>>) -> Result<()> {
+    // Count live event tasks so a second `onEvents()` is not invalidated when
+    // the first task stops, and so `commit('Async')` stops being authorized
+    // once every task has exited (notably after `disconnect()`).
+    self.event_listeners_active.fetch_add(1, Ordering::AcqRel);
+    let active = Arc::clone(&self.event_listeners_active);
     let mut rx = self.stream_consumer.context().event_channel.1.resubscribe();
     let mut disconnect_signal = self.disconnect_signal.1.clone();
 
@@ -973,6 +1130,7 @@ impl KafkaConsumer {
             }
         }
       }
+      active.fetch_sub(1, Ordering::AcqRel);
     });
     Ok(())
   }
@@ -989,6 +1147,11 @@ impl KafkaConsumer {
     &self,
     topic_configs: Either<String, Vec<TopicPartitionConfig>>,
   ) -> Result<()> {
+    // This is an inexpensive fast path for an already terminal consumer. The
+    // lifecycle lock below is still required at the actual assignment point,
+    // because disconnect may race this check while metadata is being fetched.
+    self.ensure_connected()?;
+
     let topics = match topic_configs {
       Either::A(config) => {
         debug!("Subscribing to topic: {:#?}", &config);
@@ -1056,23 +1219,33 @@ impl KafkaConsumer {
       }
     }
 
+    self.ensure_connected()?;
+
     let has_manual_assignment = topics
       .iter()
       .any(|t| t.all_offsets.is_some() || t.partition_offset.is_some());
 
     if has_manual_assignment {
-      let mut tpl = RdTopicPartitionList::new();
-      for item in &topics {
-        add_topic_partitions_to_tpl(
-          &mut tpl,
-          &item.topic,
-          item.partition_offset.as_ref(),
-          item.all_offsets.as_ref(),
-          &self.stream_consumer,
-          self.fetch_metadata_timeout,
-        )
-        .map_err(|e| e.into_napi_error("Failed to assign topic partitions"))?;
-      }
+      let consumer = self.stream_consumer.clone();
+      let timeout = self.fetch_metadata_timeout;
+      let assigned_topics = topics.clone();
+      let tpl = tokio::task::spawn_blocking(move || {
+        let mut tpl = RdTopicPartitionList::new();
+        for item in &assigned_topics {
+          add_topic_partitions_to_tpl(
+            &mut tpl,
+            &item.topic,
+            item.partition_offset.as_ref(),
+            item.all_offsets.as_ref(),
+            consumer.as_ref(),
+            timeout,
+          )?;
+        }
+        Ok::<_, anyhow::Error>(tpl)
+      })
+      .await
+      .map_err(|e| e.into_napi_error("Failed to join metadata fetch"))?
+      .map_err(|e| e.into_napi_error("Failed to assign topic partitions"))?;
 
       if tpl.count() == 0 {
         return Err(Error::new(
@@ -1081,11 +1254,19 @@ impl KafkaConsumer {
         ));
       }
 
-      self
-        .stream_consumer
-        .assign(&tpl)
-        .map_err(|e| anyhow::anyhow!("Failed to assign topic partitions: {:?}", e))
-        .map_err(|e| e.into_napi_error("Failed to assign partitions"))?;
+      // Metadata is fetched outside the lifecycle lock. Once it completes,
+      // acquire the lock and re-check the terminal flag immediately before
+      // assigning. If disconnect won the race, this operation cannot restore
+      // an assignment after the consumer was disconnected.
+      {
+        let _lifecycle_guard = self.lifecycle_lock.lock().await;
+        self.ensure_connected()?;
+        self
+          .stream_consumer
+          .assign(&tpl)
+          .map_err(|e| anyhow::anyhow!("Failed to assign topic partitions: {:?}", e))
+          .map_err(|e| e.into_napi_error("Failed to assign partitions"))?;
+      }
       debug!(
         "Assigned topic partition list with {} elements",
         tpl.count()
@@ -1096,6 +1277,8 @@ impl KafkaConsumer {
         .map(|x| x.topic.clone())
         .collect::<Vec<String>>();
 
+      let _lifecycle_guard = self.lifecycle_lock.lock().await;
+      self.ensure_connected()?;
       try_subscribe(&self.stream_consumer, &topics_name)
         .map_err(|e| e.into_napi_error("Failed to subscribe to topics"))?;
     }
@@ -1158,6 +1341,14 @@ impl KafkaConsumer {
   pub async fn disconnect(&self) -> Result<()> {
     info!("Disconnecting consumer - This will stop the consumer from receiving messages");
 
+    // Serialize the terminal transition with the final subscription mutation.
+    // A pending metadata fetch may finish later, but it must observe the flag
+    // before it can call assign()/subscribe().
+    let _lifecycle_guard = self.lifecycle_lock.lock().await;
+    if self.disconnected.swap(true, Ordering::AcqRel) {
+      return Ok(());
+    }
+
     // First unsubscribe from topics
     self.stream_consumer.unsubscribe();
 
@@ -1170,6 +1361,14 @@ impl KafkaConsumer {
       // This is not necessarily an error during shutdown
       warn!("Disconnect signal could not be sent - no active receivers");
     }
+
+    // Responses for already scheduled commits are best-effort after disconnect.
+    // Release the reply queue; its poll task only holds a Weak reference.
+    self
+      .async_commit_queue
+      .lock()
+      .unwrap_or_else(|e| e.into_inner())
+      .take();
 
     Ok(())
   }
@@ -1308,6 +1507,7 @@ impl KafkaConsumer {
       disconnect_signal: self.disconnect_signal.1.clone(),
       cancel_signal: cancel_receiver,
       pending_messages: VecDeque::with_capacity(normalized_prefetch_size as usize),
+      pending_bytes: 0,
       prefetch_size: normalized_prefetch_size,
       prefetch_timeout_ms: normalized_prefetch_timeout_ms,
       closed: false,
@@ -1390,9 +1590,12 @@ impl KafkaConsumer {
     let mut disconnect_signal = self.disconnect_signal.1.clone();
     let normalized_size = normalize_batch_size(size);
     let normalized_timeout_ms = normalize_batch_timeout(timeout_ms);
-    let (sender, receiver) = mpsc::channel::<Result<Vec<Message>>>(DEFAULT_STREAM_BUFFER_CAPACITY);
+    let (sender, receiver) =
+      mpsc::channel::<Result<(Vec<Message>, usize)>>(DEFAULT_STREAM_BUFFER_CAPACITY);
     let (cancel_sender, mut cancel_receiver) = watch::channel(false);
     let mut task_cancel_rx = cancel_receiver.clone();
+    let budget = Arc::new(ByteBudget::new(DEFAULT_STREAM_BUFFER_BYTES));
+    let producer_budget = budget.clone();
 
     napi::bindgen_prelude::spawn(async move {
       loop {
@@ -1448,18 +1651,44 @@ impl KafkaConsumer {
                   break;
                 }
 
+                let wired = messages_wired_bytes(&messages);
+                // Preserve disconnect observed during the byte-budget wait: `changed()`
+                // marks this receiver observed, so a later `has_changed()` alone
+                // would miss it and skip the drain deadline.
+                let mut reserve_disconnected =
+                  disconnected || disconnect_signal.has_changed().unwrap_or(false);
+                if !reserve_disconnected {
+                  tokio::select! {
+                    biased;
+                    _ = cancel_receiver.changed() => {
+                      break;
+                    }
+                    _ = disconnect_signal.changed() => {
+                      reserve_disconnected = true;
+                    }
+                    _ = producer_budget.reserve(wired) => {}
+                  }
+                  if *cancel_receiver.borrow() {
+                    break;
+                  }
+                }
+
                 let mut send_failed = false;
                 let pending_messages = messages.len();
-                let send_fut = sender.send(Ok(messages));
+                let send_fut = sender.send(Ok((messages, wired)));
                 tokio::pin!(send_fut);
-                let mut is_disconnected = disconnect_signal.has_changed().unwrap_or(false);
-                let mut grace_timer = std::pin::pin!(tokio::time::sleep(Duration::from_millis(1500)));
-                let mut grace_active = is_disconnected;
+                let mut is_disconnected =
+                  reserve_disconnected || disconnect_signal.has_changed().unwrap_or(false);
+                let mut grace_timer = None::<std::pin::Pin<Box<tokio::time::Sleep>>>;
 
                 loop {
                   if *cancel_receiver.borrow() {
                     send_failed = true;
                     break;
+                  }
+
+                  if is_disconnected && grace_timer.is_none() {
+                    grace_timer = Some(Box::pin(tokio::time::sleep(DRAIN_GRACE_PERIOD)));
                   }
 
                   tokio::select! {
@@ -1474,10 +1703,14 @@ impl KafkaConsumer {
                     }
                     _ = disconnect_signal.changed(), if !is_disconnected => {
                       is_disconnected = true;
-                      grace_timer.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(1500));
-                      grace_active = true;
                     }
-                    _ = &mut grace_timer, if grace_active => {
+                    _ = async {
+                      grace_timer
+                        .as_mut()
+                        .expect("disconnect drain timer")
+                        .as_mut()
+                        .await
+                    }, if is_disconnected => {
                       warn!(
                         dropped = pending_messages as u64,
                         "Disconnect drainage grace period expired; dropping collected batch"
@@ -1525,8 +1758,14 @@ impl KafkaConsumer {
       }
     });
 
-    let inner = stream::unfold(receiver, |mut receiver| async move {
-      receiver.recv().await.map(|item| (item, receiver))
+    let inner = stream::unfold((receiver, budget), |(mut receiver, budget)| async move {
+      receiver.recv().await.map(|item| {
+        let item = item.map(|(messages, wired)| {
+          budget.release(wired);
+          messages
+        });
+        (item, (receiver, budget))
+      })
     })
     .boxed();
     let native_stream = ReadableStream::new(&env, inner)?;
@@ -1544,9 +1783,11 @@ impl KafkaConsumer {
     let normalized_size = normalize_batch_size(size);
     let normalized_timeout_ms = normalize_batch_timeout(timeout_ms);
     let (sender, receiver) =
-      mpsc::channel::<Result<CompactMessageBatch>>(DEFAULT_STREAM_BUFFER_CAPACITY);
+      mpsc::channel::<Result<(CompactMessageBatch, usize)>>(DEFAULT_STREAM_BUFFER_CAPACITY);
     let (cancel_sender, mut cancel_receiver) = watch::channel(false);
     let mut task_cancel_rx = cancel_receiver.clone();
+    let budget = Arc::new(ByteBudget::new(DEFAULT_STREAM_BUFFER_BYTES));
+    let producer_budget = budget.clone();
 
     napi::bindgen_prelude::spawn(async move {
       loop {
@@ -1601,18 +1842,42 @@ impl KafkaConsumer {
                   break;
                 }
 
+                let wired = compact_wired_bytes(&batch_data);
+                // Same disconnect preservation as the regular path: a disconnect
+                // winning the budget wait must still activate the drain deadline.
+                let mut reserve_disconnected =
+                  disconnected || disconnect_signal.has_changed().unwrap_or(false);
+                if !reserve_disconnected {
+                  tokio::select! {
+                    biased;
+                    _ = cancel_receiver.changed() => {
+                      break;
+                    }
+                    _ = disconnect_signal.changed() => {
+                      reserve_disconnected = true;
+                    }
+                    _ = producer_budget.reserve(wired) => {}
+                  }
+                  if *cancel_receiver.borrow() {
+                    break;
+                  }
+                }
+
                 let mut send_failed = false;
                 let pending_messages = batch_data.payloads.len();
-                let send_fut = sender.send(Ok(batch_data));
+                let send_fut = sender.send(Ok((batch_data, wired)));
                 tokio::pin!(send_fut);
-                let mut is_disconnected = disconnect_signal.has_changed().unwrap_or(false);
-                let mut grace_timer = std::pin::pin!(tokio::time::sleep(Duration::from_millis(1500)));
-                let mut grace_active = is_disconnected;
-
+                let mut is_disconnected =
+                  reserve_disconnected || disconnect_signal.has_changed().unwrap_or(false);
+                let mut grace_timer = None::<std::pin::Pin<Box<tokio::time::Sleep>>>;
                 loop {
                   if *cancel_receiver.borrow() {
                     send_failed = true;
                     break;
+                  }
+
+                  if is_disconnected && grace_timer.is_none() {
+                    grace_timer = Some(Box::pin(tokio::time::sleep(DRAIN_GRACE_PERIOD)));
                   }
 
                   tokio::select! {
@@ -1627,10 +1892,14 @@ impl KafkaConsumer {
                     }
                     _ = disconnect_signal.changed(), if !is_disconnected => {
                       is_disconnected = true;
-                      grace_timer.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(1500));
-                      grace_active = true;
                     }
-                    _ = &mut grace_timer, if grace_active => {
+                    _ = async {
+                      grace_timer
+                        .as_mut()
+                        .expect("disconnect drain timer")
+                        .as_mut()
+                        .await
+                    }, if is_disconnected => {
                       warn!(
                         dropped = pending_messages as u64,
                         "Disconnect drainage grace period expired; dropping collected batch"
@@ -1678,8 +1947,14 @@ impl KafkaConsumer {
       }
     });
 
-    let inner = stream::unfold(receiver, |mut receiver| async move {
-      receiver.recv().await.map(|item| (item, receiver))
+    let inner = stream::unfold((receiver, budget), |(mut receiver, budget)| async move {
+      receiver.recv().await.map(|item| {
+        let item = item.map(|(batch, wired)| {
+          budget.release(wired);
+          batch
+        });
+        (item, (receiver, budget))
+      })
     })
     .boxed();
     let native_stream = ReadableStream::new(&env, inner)?;
@@ -1724,6 +1999,48 @@ impl KafkaConsumer {
     offset: i64,
     commit: CommitMode,
   ) -> Result<()> {
+    if matches!(commit, CommitMode::Async) {
+      // Serialize validation and scheduling with disconnect. The short native
+      // enqueue below does not wait for the broker's response.
+      let _lifecycle_guard = self.lifecycle_lock.lock().await;
+      if self.disconnected.load(Ordering::Acquire) {
+        return Err(Error::new(
+          Status::InvalidArg,
+          "commit('Async') requires an active onEvents() listener; the event listener is stopped after disconnect"
+            .to_string(),
+        ));
+      }
+      if self.event_listeners_active.load(Ordering::Acquire) == 0 {
+        return Err(Error::new(
+          Status::InvalidArg,
+          "commit('Async') requires onEvents() so commit failures are observable; use 'Sync' or register onEvents first"
+            .to_string(),
+        ));
+      }
+
+      let mut tpl = RdTopicPartitionList::new();
+      tpl
+        .add_partition_offset(&topic, partition, Offset::Offset(offset))
+        .map_err(|e| e.into_napi_error("Failed to add partition offset"))?;
+      let mut queue = self
+        .async_commit_queue
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+      if queue.is_none() {
+        let replies = Arc::new(
+          AsyncCommitQueue::new(self.stream_consumer.clone())
+            .map_err(|e| e.into_napi_error("Failed to create commit reply queue"))?,
+        );
+        replies.start(self.disconnect_signal.1.clone());
+        *queue = Some(replies);
+      }
+      return queue
+        .as_ref()
+        .expect("commit reply queue initialized")
+        .enqueue(&tpl)
+        .map_err(|e| e.into_napi_error("Failed to schedule commit offset"));
+    }
+
     let consumer = self.stream_consumer.clone();
 
     tokio::task::spawn_blocking(move || {

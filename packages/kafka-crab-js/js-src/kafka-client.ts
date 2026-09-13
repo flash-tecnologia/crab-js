@@ -9,15 +9,7 @@ import {
   type Message,
   type ProducerConfiguration,
   type ProducerRecord,
-  type RecordMetadata,
 } from '../js-binding.js'
-
-export interface SendFailureError extends Error {
-  enqueuedCount?: number
-  totalCount?: number
-  confirmedCount?: number
-  confirmedMessages?: RecordMetadata[]
-}
 
 import {
   instrumentBatchReadableStream,
@@ -26,8 +18,11 @@ import {
   instrumentConsumerReceive,
   instrumentProducerSend,
 } from './diagnostics/instrumentation.js'
+import { attachSendFailureDetails } from './send-failure.js'
 import { KafkaBatchStreamReadable } from './streams/kafka-batch-stream-readable.js'
 import { KafkaStreamReadable } from './streams/kafka-stream-readable.js'
+
+export type { SendFailureError } from './send-failure.js'
 
 const DEFAULT_WEB_STREAM_BATCH_TIMEOUT = 1000
 const DEFAULT_WEB_STREAM_SERIAL_PREFETCH_SIZE = 64
@@ -427,9 +422,8 @@ export class KafkaClient {
   /**
    * Creates a KafkaProducer instance.
    * Each `send()` owns its delivery confirmations natively, so concurrent sends
-   * stay isolated. `confirmedMessages` on a `SendFailureError` is exact unless
-   * concurrent native-direct sends share the instance and overwrite the
-   * compat slot read after the throw; per-send `Ok` metadata is always exact.
+   * stay isolated. `SendFailureError.confirmedMessages` is copied from that
+   * send's native error payload, not from `getLastDeliveryResults()`.
    * @param {ProducerConfiguration} [producerConfiguration] - Optional producer configuration
    * @returns {KafkaProducer} A KafkaProducer instance
    */
@@ -443,30 +437,10 @@ export class KafkaClient {
       try {
         return await originalSend(record)
       } catch (error: unknown) {
-        if (error && typeof error === 'object') {
-          const sendError = error as SendFailureError
-          const match =
-            typeof sendError.message === 'string'
-              ? /enqueued (?<enqueued>\d+) of (?<total>\d+), confirmed (?<confirmed>\d+)/.exec(sendError.message)
-              : null
-          if (match?.groups) {
-            sendError.enqueuedCount = Number.parseInt(match.groups.enqueued ?? '0', 10)
-            sendError.totalCount = Number.parseInt(match.groups.total ?? '0', 10)
-            sendError.confirmedCount = Number.parseInt(match.groups.confirmed ?? '0', 10)
-            const producerWithResults = producer as unknown as { getLastDeliveryResults?: () => RecordMetadata[] }
-            sendError.confirmedMessages =
-              typeof producerWithResults.getLastDeliveryResults === 'function'
-                ? producerWithResults.getLastDeliveryResults()
-                : []
-          }
-        }
+        attachSendFailureDetails(error)
         throw error
       }
     }
-
-    // No serialization needed: each send owns its confirmations natively.
-    // The shared `getLastDeliveryResults()` slot below only serves the
-    // `SendFailureError.confirmedMessages` compat field.
 
     // Instrument producer for diagnostic channels if enabled
     if (this._diagnosticsEnabled) {

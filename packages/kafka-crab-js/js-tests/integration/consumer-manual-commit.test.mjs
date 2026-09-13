@@ -1,4 +1,4 @@
-import { equal, ok } from 'node:assert/strict'
+import { deepEqual, equal, ok, rejects } from 'node:assert/strict'
 import test from 'node:test'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { KafkaClient } from '../../dist/index.js'
@@ -30,6 +30,22 @@ async function waitForAssignment(consumer, timeoutMs = 10000) {
   throw new Error('Timeout waiting for partition assignment after 10000ms')
 }
 
+function collectCommitEvents(consumer, expectedCount) {
+  const events = []
+  let listenerError
+  consumer.onEvents((error, event) => {
+    if (error) listenerError = error
+    if (event?.name === 'CommitCallback') events.push(event)
+  })
+  return async () => {
+    const deadline = Date.now() + 5000
+    while (events.length < expectedCount && !listenerError && Date.now() < deadline) await sleep(10)
+    if (listenerError) throw listenerError
+    equal(events.length, expectedCount, 'every scheduled commit must produce a callback without recv polling')
+    return events
+  }
+}
+
 await test('Consumer Manual Commit Integration Tests', async (t) => {
   let client
   let producer
@@ -40,6 +56,179 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
     producer = client.createProducer(createProducerConfig())
     ok(client, 'KafkaClient should be created')
     ok(producer, 'Producer should be created')
+  })
+
+  await t.test('M13: Async commit and commitMessage report broker success and failure without polling', async () => {
+    const { topic, messages, testId } = await setupTestEnvironment()
+    const [metadata] = await producer.send({ topic, messages })
+    const consumer = client.createConsumer(
+      createConsumerConfig(`commit-callback-${testId}`, {
+        enableAutoCommit: false,
+      }),
+    )
+    const invalidPartition = metadata.partition + 10_000
+    const nextOffset = metadata.offset + 1
+    const waitForEvents = collectCommitEvents(consumer, 2)
+    try {
+      await consumer.subscribe([
+        { topic, partitionOffset: [{ partition: metadata.partition, offset: { offset: metadata.offset } }] },
+      ])
+      const message = await consumer.recv()
+      ok(message)
+      await consumer.commitMessage(message, 'Async')
+      await consumer.commit(topic, invalidPartition, nextOffset, 'Async')
+      const events = await waitForEvents()
+      const byPartition = new Map(
+        events.map((event) => {
+          equal(event.payload.tpl.length, 1)
+          const entry = event.payload.tpl[0]
+          equal(entry.topic, topic)
+          equal(entry.partitionOffset.length, 1)
+          equal(entry.partitionOffset[0].offset.offset, nextOffset)
+          return [entry.partitionOffset[0].partition, event]
+        }),
+      )
+      ok(!byPartition.get(metadata.partition)?.payload.error)
+      ok(byPartition.has(metadata.partition), 'successful callback must preserve its partition')
+      ok(byPartition.get(invalidPartition)?.payload.error?.includes('Unknown topic or partition'))
+      // Independently verify the failure is a broker rejection, not a synthetic callback.
+      await rejects(consumer.commit(topic, invalidPartition, nextOffset, 'Sync'), /Unknown topic or partition/i)
+    } finally {
+      await cleanupConsumer(consumer)
+    }
+  })
+
+  await t.test('M13: concurrent Async commits retain every offset without consuming messages', async () => {
+    const { topic, messages, testId } = await setupTestEnvironment()
+    const [metadata] = await producer.send({ topic, messages })
+    const consumer = client.createConsumer(
+      createConsumerConfig(`commit-concurrent-${testId}`, { enableAutoCommit: false }),
+    )
+    const offsets = Array.from({ length: 32 }, (_, index) => index + 1)
+    const waitForEvents = collectCommitEvents(consumer, offsets.length)
+    try {
+      await Promise.all(offsets.map((offset) => consumer.commit(topic, metadata.partition, offset, 'Async')))
+      const events = await waitForEvents()
+      deepEqual(
+        events
+          .map(({ payload }) => {
+            ok(!payload.error)
+            equal(payload.tpl[0].topic, topic)
+            equal(payload.tpl[0].partitionOffset[0].partition, metadata.partition)
+            return payload.tpl[0].partitionOffset[0].offset.offset
+          })
+          .sort((a, b) => a - b),
+        offsets,
+      )
+    } finally {
+      await cleanupConsumer(consumer)
+    }
+  })
+
+  await t.test('M13: concurrent Async commits and disconnect settle and leave commits disabled', async () => {
+    const { topic, messages, testId } = await setupTestEnvironment()
+    const [metadata] = await producer.send({ topic, messages })
+    const consumer = client.createConsumer(
+      createConsumerConfig(`commit-disconnect-${testId}`, { enableAutoCommit: false }),
+    )
+    consumer.onEvents(() => {})
+    const commits = Array.from({ length: 32 }, (_, index) =>
+      consumer.commit(topic, metadata.partition, index + 1, 'Async'),
+    )
+    const settled = Promise.allSettled(commits)
+    const startedAt = Date.now()
+    try {
+      await consumer.disconnect()
+      const results = await settled
+      ok(Date.now() - startedAt < 2000, 'disconnect must not wait for broker commit responses')
+      for (const result of results) {
+        if (result.status === 'rejected') ok(/disconnect|onEvents/.test(result.reason.message))
+      }
+      await rejects(consumer.commit(topic, metadata.partition, 100, 'Async'), /onEvents/)
+    } finally {
+      await cleanupConsumer(consumer)
+    }
+  })
+
+  await t.test('M04: missing topic in allOffsets rejects and preserves the previous assignment', async () => {
+    const { topic, messages, testId } = await setupTestEnvironment()
+    const [metadata] = await producer.send({ topic, messages })
+    const missing = `missing-${testId}`
+    const consumer = client.createConsumer(
+      createConsumerConfig(`assignment-missing-${testId}`, {
+        enableAutoCommit: false,
+        configuration: { 'allow.auto.create.topics': false },
+      }),
+    )
+    try {
+      await consumer.subscribe([
+        { topic, partitionOffset: [{ partition: metadata.partition, offset: { offset: metadata.offset } }] },
+      ])
+      const previous = consumer.assignment()
+      await rejects(
+        consumer.subscribe([
+          { topic, allOffsets: { position: 'End' } },
+          { topic: missing, allOffsets: { position: 'Beginning' } },
+        ]),
+        (error) => error.message.includes(missing) && /metadata|partition/i.test(error.message),
+      )
+      deepEqual(consumer.assignment(), previous)
+    } finally {
+      await cleanupConsumer(consumer)
+    }
+  })
+
+  await t.test('M04: empty explicit partition list rejects and preserves the previous assignment', async () => {
+    const { topic, messages, testId } = await setupTestEnvironment()
+    const [metadata] = await producer.send({ topic, messages })
+    const emptyTopic = `empty-${testId}`
+    const consumer = client.createConsumer(
+      createConsumerConfig(`assignment-empty-${testId}`, { enableAutoCommit: false }),
+    )
+    try {
+      await consumer.subscribe([
+        { topic, partitionOffset: [{ partition: metadata.partition, offset: { offset: metadata.offset } }] },
+      ])
+      const previous = consumer.assignment()
+      await rejects(
+        consumer.subscribe([
+          { topic, partitionOffset: [{ partition: metadata.partition, offset: { position: 'End' } }] },
+          { topic: emptyTopic, partitionOffset: [] },
+        ]),
+        (error) => error.message.includes(emptyTopic) && /partition/i.test(error.message),
+      )
+      deepEqual(consumer.assignment(), previous)
+    } finally {
+      await cleanupConsumer(consumer)
+    }
+  })
+
+  await t.test('Consumer: disconnect stays terminal while manual subscribe fetches metadata', async () => {
+    const { topic, messages } = await setupTestEnvironment()
+    await producer.send({ topic, messages })
+
+    const consumer = client.createConsumer(
+      createConsumerConfig(`subscribe-disconnect-race-${topic}`, {
+        enableAutoCommit: false,
+        fetchMetadataTimeout: 10_000,
+        configuration: {
+          'enable.auto.commit': 'false',
+        },
+      }),
+    )
+
+    try {
+      // Manual assignment performs a blocking metadata fetch on a worker. The
+      // disconnect is intentionally issued while that operation is pending;
+      // the completed subscribe must not restore an assignment afterwards.
+      const subscribing = consumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
+      const settled = Promise.allSettled([subscribing])
+      await consumer.disconnect()
+      await settled
+      equal(consumer.assignment().length, 0, 'disconnect must leave no assignment behind')
+    } finally {
+      await cleanupConsumer(consumer)
+    }
   })
 
   await t.test('Consumer: Manual commit sync with offset verification', async () => {
@@ -190,7 +379,20 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
       }
     }
 
-    await cleanupConsumer(consumer)
+    try {
+      const deadline = Date.now() + 5000
+      while (
+        events.filter((event) => event.name === 'CommitCallback').length < messages.length &&
+        Date.now() < deadline
+      ) {
+        await sleep(10)
+      }
+      const callbacks = events.filter((event) => event.name === 'CommitCallback')
+      equal(callbacks.length, messages.length, 'Async commits must all report their broker result')
+      ok(callbacks.every((event) => !event.payload.error))
+    } finally {
+      await cleanupConsumer(consumer)
+    }
 
     // Verify results
     equal(receivedMessages.length, messages.length, 'Should receive all sent messages')
@@ -199,7 +401,7 @@ await test('Consumer Manual Commit Integration Tests', async (t) => {
       'All messages should have offsets',
     )
 
-    // Verify that events were captured (if any)
+    // Callback delivery above is required, not optional logging.
     console.log(`Captured ${events.length} events during async commit test`)
     events.forEach((event) => console.log(`Event: ${event.name}`))
   })
