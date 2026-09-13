@@ -333,6 +333,8 @@ jobs:
         run: |
           pnpm napi pre-publish -t npm --dry-run
           npm pack --dry-run
+      - name: Test packed distribution in an isolated installation
+        run: pnpm --filter pdf-crab-js test:package
       - name: Publish pdf-crab-js
         working-directory: packages/pdf-crab-js
         run: |

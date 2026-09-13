@@ -77,6 +77,7 @@ export const sharedLintConfig = {
     'new-cap': 'off',
     'sort-keys': 'off',
     'consistent-type-imports': 'error',
+    'one-var': ['error', 'never'],
     'no-ternary': 'off',
     'init-declarations': 'off',
     'func-names': 'off',
