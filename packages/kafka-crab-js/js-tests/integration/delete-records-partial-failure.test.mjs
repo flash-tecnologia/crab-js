@@ -1,8 +1,10 @@
 import { deepEqual, equal, match, ok, rejects } from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { setTimeout as sleep } from 'node:timers/promises'
 import test from 'node:test'
 
 import { KafkaClient } from '../../dist/index.js'
+import { cleanupProducer } from './utils.mjs'
 
 await test(
   'deleteRecords reports a partition failure while preserving partial success',
@@ -25,24 +27,32 @@ await test(
         },
       })
 
-    const setupConsumer = newConsumer()
-    try {
-      await setupConsumer.subscribe([
-        {
-          topic,
-          createTopic: true,
-          numPartitions: 1,
-          replicas: 1,
-          allOffsets: { position: 'Beginning' },
-        },
-      ])
-      deepEqual(
-        setupConsumer.assignment().flatMap((entry) => entry.partitionOffset.map((partition) => partition.partition)),
-        [0],
-      )
-    } finally {
-      await setupConsumer.disconnect()
+    let topicReady = false
+    for (let attempt = 0; attempt < 6 && !topicReady; attempt += 1) {
+      const setupConsumer = newConsumer()
+      try {
+        await setupConsumer.subscribe([
+          {
+            topic,
+            createTopic: true,
+            numPartitions: 1,
+            replicas: 1,
+            allOffsets: { position: 'Beginning' },
+          },
+        ])
+        deepEqual(
+          setupConsumer.assignment().flatMap((entry) => entry.partitionOffset.map((partition) => partition.partition)),
+          [0],
+        )
+        topicReady = true
+      } catch (error) {
+        if (attempt === 5) throw error
+      } finally {
+        await setupConsumer.disconnect()
+      }
+      if (!topicReady) await sleep(500)
     }
+    ok(topicReady, 'the one-partition topic must become available before producing')
 
     const producer = client.createProducer({
       configuration: { 'message.timeout.ms': 10_000 },
@@ -95,7 +105,7 @@ await test(
         await reader.disconnect()
       }
     } finally {
-      await producer.disconnect()
+      await cleanupProducer(producer)
     }
   },
 )
