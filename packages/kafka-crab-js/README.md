@@ -54,7 +54,7 @@ do not need a separate Rust toolchain or librdkafka installation. ESM, CommonJS,
 and TypeScript declarations are included.
 
 ```js
-import { KafkaClient } from 'kafka-crab-js'
+import { KafkaClient } from "kafka-crab-js";
 // CommonJS: const { KafkaClient } = require('kafka-crab-js')
 ```
 
@@ -85,33 +85,35 @@ Use `KAFKA_BROKERS` for a comma-separated broker list; the examples default to
 `producer.mjs`:
 
 ```js
-import { KafkaClient } from 'kafka-crab-js'
+import { KafkaClient } from "kafka-crab-js";
 
 const client = new KafkaClient({
-  brokers: process.env.KAFKA_BROKERS ?? 'localhost:9092',
-  clientId: 'orders-producer',
-})
+  brokers: process.env.KAFKA_BROKERS ?? "localhost:9092",
+  clientId: "orders-producer",
+});
 
 const producer = client.createProducer({
   configuration: {
-    'enable.idempotence': true,
-    acks: 'all',
-    'compression.type': 'lz4',
+    "enable.idempotence": true,
+    acks: "all",
+    "compression.type": "lz4",
   },
-})
+});
 
 const deliveries = await producer.send({
-  topic: 'orders',
+  topic: "orders",
   messages: [
     {
-      key: Buffer.from('order-42'),
-      payload: Buffer.from(JSON.stringify({ orderId: 'order-42', total: 129.9 })),
-      headers: { 'content-type': Buffer.from('application/json') },
+      key: Buffer.from("order-42"),
+      payload: Buffer.from(
+        JSON.stringify({ orderId: "order-42", total: 129.9 }),
+      ),
+      headers: { "content-type": Buffer.from("application/json") },
     },
   ],
-})
+});
 
-console.log('Delivered:', deliveries)
+console.log("Delivered:", deliveries);
 ```
 
 By default, `send()` waits for delivery results and rejects on failure. For
@@ -125,62 +127,65 @@ See [producer delivery semantics](docs/api.md#delivery-and-partial-failures).
 `consumer.mjs`:
 
 ```js
-import { KafkaClient } from 'kafka-crab-js'
+import { KafkaClient } from "kafka-crab-js";
 
 const client = new KafkaClient({
-  brokers: process.env.KAFKA_BROKERS ?? 'localhost:9092',
-  clientId: 'orders-consumer',
-})
+  brokers: process.env.KAFKA_BROKERS ?? "localhost:9092",
+  clientId: "orders-consumer",
+});
 
 const { consumer, stream } = client.createWebStreamConsumer({
-  groupId: 'orders-workers',
+  groupId: "orders-workers",
   enableAutoCommit: false,
   batchSize: 64,
   batchTimeout: 5,
   configuration: {
-    'enable.auto.offset.store': false,
-    'auto.offset.reset': 'earliest',
+    "enable.auto.offset.store": false,
+    "auto.offset.reset": "earliest",
   },
-})
+});
 
-const reader = stream.getReader()
+const reader = stream.getReader();
 const stop = () => {
-  void reader.cancel('shutdown').catch(console.error)
-}
-process.once('SIGINT', stop)
-process.once('SIGTERM', stop)
+  void reader.cancel("shutdown").catch(console.error);
+};
+process.once("SIGINT", stop);
+process.once("SIGTERM", stop);
 
 try {
-  await consumer.subscribe('orders')
+  await consumer.subscribe("orders");
 
   while (true) {
-    const { value: messages, done } = await reader.read()
-    if (done) break
+    const { value: messages, done } = await reader.read();
+    if (done) break;
 
-    const processed = new Map()
+    const processed = new Map();
     for (const message of messages) {
       // Replace this with an awaited, idempotent database write or handler.
       if (message.isTombstone) {
-        console.log('Delete:', message.key?.toString())
+        console.log("Delete:", message.key?.toString());
       } else {
-        console.log('Order:', JSON.parse(message.payload.toString()))
+        console.log("Order:", JSON.parse(message.payload.toString()));
       }
-      processed.set(JSON.stringify([message.topic, message.partition]), message)
+      processed.set(
+        JSON.stringify([message.topic, message.partition]),
+        message,
+      );
     }
 
     // Commit once per topic/partition, only after the entire batch succeeds.
     for (const message of processed.values()) {
-      await consumer.commitMessage(message, 'Sync')
+      await consumer.commitMessage(message, "Sync");
     }
   }
 } finally {
-  process.off('SIGINT', stop)
-  process.off('SIGTERM', stop)
+  process.off("SIGINT", stop);
+  process.off("SIGTERM", stop);
   try {
-    await reader.cancel()
+    await reader.cancel();
   } finally {
-    reader.releaseLock()
-    await consumer.disconnect()
+    reader.releaseLock();
+    await consumer.disconnect();
   }
 }
 ```
@@ -267,9 +272,9 @@ Competitor API descriptions come from the official
 covers these interfaces, not every feature or every client in the Kafka ecosystem.
 
 `kafka-crab-js` is a strong fit for ingestion workers, event-driven services, and
-bulk processing where you can benefit from native batch delivery. If you need
-Kafka transactions, a built-in schema registry client, or a broad administrative
-API, account for the current public API's scope before migrating.
+bulk processing where you can benefit from native batch delivery. If you need Kafka transactions, a built-in schema registry client, or other
+administrative operations beyond record deletion, account for the current public
+API's scope before migrating.
 
 ### Coming from KafkaJS
 
@@ -306,12 +311,12 @@ these consumer properties against your own workload:
 
 ```js
 const configuration = {
-  'queued.max.messages.kbytes': 65536,
-  'queued.min.messages': 256,
-  'fetch.max.bytes': 8 * 1024 * 1024,
-  'max.partition.fetch.bytes': 1024 * 1024,
-  'fetch.queue.backoff.ms': 20,
-}
+  "queued.max.messages.kbytes": 65536,
+  "queued.min.messages": 256,
+  "fetch.max.bytes": 8 * 1024 * 1024,
+  "max.partition.fetch.bytes": 1024 * 1024,
+  "fetch.queue.backoff.ms": 20,
+};
 ```
 
 In the [concurrent workload](docs/rfc/review/performance.md#concurrent-workload-with-natural-gc--2026-09-12),

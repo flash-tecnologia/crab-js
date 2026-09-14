@@ -17,6 +17,12 @@ export declare class KafkaClientConfig {
    */
   createProducer(producerConfiguration: ProducerConfiguration): KafkaProducer
   /**
+   * Deletes all records before the requested offset for each topic partition.
+   * Kafka does not delete an individual record directly: passing offset `N`
+   * deletes records with offsets lower than `N`.
+   */
+  deleteRecords(topicPartitions: Array<TopicPartition>): Promise<Array<TopicPartition>>
+  /**
    * Creates a new Kafka consumer with the specified configuration.
    * The consumer must be subscribed to topics before receiving messages.
    * @param consumerConfiguration - The consumer-specific configuration options

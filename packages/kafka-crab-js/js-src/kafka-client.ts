@@ -9,6 +9,7 @@ import {
   type Message,
   type ProducerConfiguration,
   type ProducerRecord,
+  type TopicPartition,
 } from '../js-binding.js'
 
 import {
@@ -448,6 +449,16 @@ export class KafkaClient {
     }
 
     return producer
+  }
+
+  /**
+   * Deletes records before the requested offset for each topic partition.
+   * Passing offset `N` deletes records with offsets lower than `N`.
+   * @param topicPartitions - Topic partitions and deletion offsets
+   * @returns The topic partitions and low-water marks returned by Kafka
+   */
+  public deleteRecords(topicPartitions: TopicPartition[]) {
+    return this.kafkaClientConfig.deleteRecords(topicPartitions)
   }
 
   /**
