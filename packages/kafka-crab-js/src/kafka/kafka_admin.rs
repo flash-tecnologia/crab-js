@@ -38,9 +38,17 @@ impl<'a> KafkaAdmin<'a> {
   }
 
   async fn fetch_config_resource(&self) -> Result<HashMap<String, String>, KafkaError> {
-    let consumer: BaseConsumer = self.client_config.create()?;
-
-    let metadata = consumer.fetch_metadata(None, self.fetch_metadata_timeout)?;
+    let client_config = self.client_config.clone();
+    let timeout = self.fetch_metadata_timeout;
+    let metadata = tokio::task::spawn_blocking(move || {
+      let consumer: BaseConsumer = client_config.create()?;
+      consumer.fetch_metadata(None, timeout)
+    })
+    .await
+    .map_err(|err| {
+      warn!("Failed to join metadata fetch: {err}");
+      KafkaError::AdminOp(RDKafkaErrorCode::Fail)
+    })??;
 
     for broker in metadata.brokers() {
       debug!(
@@ -120,11 +128,15 @@ impl<'a> KafkaAdmin<'a> {
       .map_err(anyhow::Error::new)?;
     trace!("Broker properties: {:?}", broker_properties);
 
-    // Fetch metadata separately for broker count
-    let consumer: BaseConsumer = self.client_config.create().map_err(anyhow::Error::new)?;
-    let metadata = consumer
-      .fetch_metadata(None, self.fetch_metadata_timeout)
-      .map_err(anyhow::Error::new)?;
+    let client_config = self.client_config.clone();
+    let timeout = self.fetch_metadata_timeout;
+    let metadata = tokio::task::spawn_blocking(move || {
+      let consumer: BaseConsumer = client_config.create()?;
+      consumer.fetch_metadata(None, timeout)
+    })
+    .await
+    .map_err(|err| anyhow::anyhow!("Failed to join metadata fetch: {err}"))?
+    .map_err(anyhow::Error::new)?;
 
     // Use provided num_partitions or fall back to broker config
     let num_partitions = num_partitions.unwrap_or_else(|| {
@@ -173,11 +185,37 @@ impl<'a> KafkaAdmin<'a> {
       })
       .collect();
 
-    self
+    let results = self
       .admin_client
       .create_topics(&new_topics, &AdminOptions::default())
       .await
       .map_err(anyhow::Error::new)?;
+
+    let mut failed_topics = Vec::new();
+    for result in results {
+      match result {
+        Ok(topic_name) => {
+          debug!("Topic '{}' was created successfully", topic_name);
+        }
+        Err((topic_name, error_code)) => {
+          if error_code == RDKafkaErrorCode::TopicAlreadyExists {
+            debug!("Topic '{}' already exists", topic_name);
+          } else {
+            warn!("Topic '{}' creation failed: {:?}", topic_name, error_code);
+            failed_topics.push((topic_name, error_code));
+          }
+        }
+      }
+    }
+
+    if !failed_topics.is_empty() {
+      let err_msg = failed_topics
+        .iter()
+        .map(|(t, c)| format!("{}: {:?}", t, c))
+        .collect::<Vec<_>>()
+        .join(", ");
+      return Err(anyhow::anyhow!("Failed to create topic(s): {}", err_msg));
+    }
 
     debug!("Topic(s) {:?} was created successfully", topics);
     Ok(())

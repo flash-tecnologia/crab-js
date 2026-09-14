@@ -10,11 +10,14 @@ import { AlwaysOnSampler, InMemorySpanExporter, SimpleSpanProcessor } from '@ope
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node'
 
 // ESM imports for Kafka client
-import { KafkaClient } from 'kafka-crab-js'
+import { KafkaClient, type Message, type MessageProducer } from 'kafka-crab-js'
 
 // Import from source so integration tests do not depend on a prebuilt dist/
 import {
   enableOtelInstrumentation,
+  extractTraceContext,
+  endSpan,
+  getMessageContext,
   getKafkaInstrumentation,
   KAFKA_SEMANTIC_CONVENTIONS,
   type KafkaCrabInstrumentation,
@@ -185,6 +188,10 @@ const kafkaAvailable = await (async () => {
   return isKafkaReachable(KAFKA_BROKERS)
 })()
 
+if (process.env.KAFKA_REQUIRED === 'true' && !kafkaAvailable) {
+  throw new Error(`Kafka is required for OTEL integration tests but is unavailable at ${KAFKA_BROKERS}`)
+}
+
 const describeKafka = kafkaAvailable ? describe : describe.skip
 
 void describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIMEOUT }, () => {
@@ -260,6 +267,101 @@ void describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIME
     resetKafkaInstrumentation()
     resetOtelAdapter()
   })
+
+  test.each(['direct-serial', 'direct-batch', 'web-serial', 'web-batch', 'node-serial', 'node-batch'])(
+    'preserves binary data, tombstones and producer origins through %s',
+    async (mode) => {
+      const producer = kafkaClient.createProducer()
+      const binary = Buffer.from([255, 254, 0x00, 0x80])
+      const originals: MessageProducer[] = [
+        { key: Buffer.from('value'), payload: binary },
+        { key: Buffer.from('empty'), payload: Buffer.alloc(0) },
+        { key: Buffer.from('deleted'), isTombstone: true },
+      ]
+      const origins = new Map<string, string>()
+      for (const original of originals) {
+        const message = { ...original, headers: { binary, empty: Buffer.alloc(0) } }
+        await producer.send({ topic: testTopic, messages: [message] })
+        const origin = trace.getSpanContext(extractTraceContext(message.headers))
+        assert(origin)
+        origins.set(original.key?.toString() ?? '', origin.traceId)
+      }
+      await producer.flush()
+      const config = { groupId: `regression-${nanoid()}`, enableAutoCommit: false }
+      const subscription = [{ topic: testTopic, allOffsets: { position: 'Beginning' as const } }]
+      const received: Message[] = []
+      const inspect = (target: Message | Message[]) => {
+        const messages = Array.isArray(target) ? target : [target]
+        for (const message of messages) {
+          const original = originals.find((entry) => entry.key?.equals(message.key ?? Buffer.alloc(0)))
+          assert(original)
+          assert(message.headers)
+          assert.deepEqual(message.headers.binary, binary)
+          assert.deepEqual(message.headers.empty, Buffer.alloc(0))
+          assert.deepEqual(message.payload, original.payload ?? Buffer.alloc(0))
+          assert.equal(Boolean(message.isTombstone), Boolean(original.isTombstone))
+          assert.equal(
+            trace.getSpanContext(extractTraceContext(message.headers))?.traceId,
+            origins.get(message.key?.toString() ?? ''),
+          )
+          assert.equal(
+            trace.getSpanContext(getMessageContext(message))?.traceId,
+            origins.get(message.key?.toString() ?? ''),
+          )
+          received.push(message)
+        }
+        endSpan(target)
+      }
+      if (mode.startsWith('direct')) {
+        const consumer = kafkaClient.createConsumer(config)
+        try {
+          await consumer.subscribe(subscription)
+          while (received.length < originals.length) {
+            const result = mode === 'direct-batch' ? await consumer.recvBatch(3, 1000) : await consumer.recv()
+            if (result) inspect(result)
+          }
+        } finally {
+          await consumer.disconnect()
+        }
+      } else if (mode.startsWith('web')) {
+        const source = kafkaClient.createWebStreamConsumer({
+          ...config,
+          batchSize: mode === 'web-batch' ? 3 : 1,
+          batchTimeout: 100,
+        })
+        const reader = source.stream.getReader()
+        try {
+          await source.consumer.subscribe(subscription)
+          while (received.length < originals.length) {
+            const { value, done } = await reader.read()
+            assert(!done)
+            inspect(value)
+          }
+        } finally {
+          await reader.cancel()
+          reader.releaseLock()
+          await source.consumer.disconnect()
+        }
+      } else {
+        const stream = kafkaClient.createStreamConsumer({
+          ...config,
+          batchSize: mode === 'node-batch' ? 3 : 1,
+          batchTimeout: 100,
+        })
+        await stream.subscribe(subscription)
+        for await (const message of stream) {
+          inspect(message as Message)
+          if (received.length === originals.length) break
+        }
+      }
+      assert.equal(received.length, originals.length)
+      const spans = await flushSpans()
+      const tombstones = spans.filter(
+        (span) => span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_TOMBSTONE] === true,
+      )
+      assert.equal(tombstones.length, 2, 'Both producer and consumer mark the tombstone')
+    },
+  )
 
   test('should create producer spans for message sending', async () => {
     const producer = kafkaClient.createProducer()
@@ -1146,10 +1248,34 @@ void describeKafka('KafkaClient OpenTelemetry Integration', { timeout: TEST_TIME
 
     assert(consumerSpans.length >= 1, `Should have consumer spans from stream batch mode, got ${consumerSpans.length}`)
     assert(receivedMessages.length >= batchSize, 'Should receive at least one batch worth of messages')
-    const allOnParentTrace = consumerSpans.every(
-      (span) => span.spanContext().traceId === streamParent.spanContext().traceId,
+    const messageSpans = consumerSpans.filter(
+      (span) => span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET] !== undefined,
     )
-    assert(allOnParentTrace, 'Stream batch consumer spans should stay on parent context trace')
+    assert.equal(messageSpans.length, batchSize * 2, 'Every received message has a processing span')
+    for (const message of receivedMessages) {
+      const origin = trace.getSpanContext(extractTraceContext(message.headers ?? {}))
+      assert(origin, 'The original producer context remains in the headers')
+      const processingSpan = messageSpans.find(
+        (span) =>
+          span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET] === message.offset &&
+          span.attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] === String(message.partition),
+      )
+      assert(processingSpan)
+      assert.equal(processingSpan.spanContext().traceId, streamParent.spanContext().traceId)
+      // A shared-origin batch can be the direct parent; mixed batches preserve each producer parent.
+      const parentBatch = consumerSpans.find((span) => span.spanContext().spanId === processingSpan.parentSpanId)
+      if (parentBatch) {
+        assert.equal(parentBatch.parentSpanId, origin.spanId)
+      } else {
+        assert.equal(processingSpan.parentSpanId, origin.spanId)
+      }
+    }
+    const batchSpans = consumerSpans.filter((span) => !messageSpans.includes(span))
+    assert(batchSpans.length > 0, 'Batch processing spans are exported')
+    for (const batchSpan of batchSpans) {
+      assert(batchSpan.links.length > 0, 'Batch spans link to their producer origins')
+      assert(batchSpan.links.every((link) => link.context.traceId === streamParent.spanContext().traceId))
+    }
   })
 
   test('should handle producer send with delivery reports in spans', async () => {

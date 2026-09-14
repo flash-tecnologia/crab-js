@@ -49,7 +49,19 @@ export function readCsvValues(name: string): string[] {
       (process.env[name] ?? '')
         .split(',')
         .map((value) => value.trim().toLowerCase())
-        .filter(Boolean),
+        .filter(Boolean)
+        .map(canonicalizeBenchmarkScenarioId),
     ),
   )
+}
+
+/** `v4-*` and `current-*` still work in `BENCHMARK_ONLY`; ids are `crab-*`. */
+export function canonicalizeBenchmarkScenarioId(value: string): string {
+  if (value.startsWith('v4-')) {
+    return `crab-${value.slice(3)}`
+  }
+  if (value.startsWith('current-')) {
+    return `crab-${value.slice('current-'.length)}`
+  }
+  return value
 }

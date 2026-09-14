@@ -241,10 +241,8 @@ async function produceAndConsume() {
 
   // Enable OTEL instrumentation with the kafka-crab-js-otel package
   enableOtelInstrumentation({
-    serviceName,
     captureMessagePayload: true,
     captureMessageHeaders: true,
-    enableBatchInstrumentation: true,
     metrics: {
       enabled: true,
       includePartitionId: true,

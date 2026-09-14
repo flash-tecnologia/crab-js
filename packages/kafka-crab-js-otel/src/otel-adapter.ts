@@ -12,7 +12,10 @@ import {
   type Context,
   context,
   diag,
+  isSpanContextValid,
+  ROOT_CONTEXT,
   type Span,
+  type SpanContext,
   SpanKind,
   trace,
   type Tracer,
@@ -64,6 +67,7 @@ import {
   createProducerSpan,
   extractTraceContext,
   getCapturedHeaderAttributes,
+  getCommonDestination,
   injectTraceContext,
   normalizeHeadersToBuffer,
   setSpanStatus,
@@ -85,6 +89,53 @@ type BatchWithOtelFields = Message[] & {
   otelContext?: Context
 }
 
+/** Keep independent message origins instead of assigning the first origin to a whole batch. */
+function getBatchOrigins(messages: Message[]) {
+  const parents = messages.map((message) => extractTraceContext(message.headers ?? {}))
+  const origins = parents.map((parent) => trace.getSpanContext(parent))
+  const [firstOrigin] = origins
+  const sharedOrigin =
+    firstOrigin !== undefined &&
+    isSpanContextValid(firstOrigin) &&
+    origins.every((origin) => origin?.traceId === firstOrigin.traceId && origin?.spanId === firstOrigin.spanId)
+  const uniqueOrigins = new Map<string, SpanContext>()
+  for (const origin of origins) {
+    if (origin && isSpanContextValid(origin)) {
+      uniqueOrigins.set(`${origin.traceId}:${origin.spanId}`, origin)
+    }
+  }
+  return {
+    parents,
+    sharedOrigin,
+    parentContext: sharedOrigin ? parents[0] : ROOT_CONTEXT,
+    links: [...uniqueOrigins.values()].map((origin) => ({ context: origin })),
+  }
+}
+
+function recordReceiveMetrics(metrics: KafkaMetrics | null, event: ConsumerReceiveEndEvent): void {
+  const timer = event.context[TIMER_KEY] as (() => number) | undefined
+  if (!metrics || !timer) {
+    return
+  }
+  try {
+    metrics.recordConsumerDuration(event.message?.topic, timer(), {
+      partition: event.message?.partition,
+      groupId: event.groupId,
+      clientId: event.clientId,
+      error: event.error,
+    })
+    if (event.message) {
+      metrics.recordMessagesConsumed(event.message, {
+        groupId: event.groupId,
+        clientId: event.clientId,
+        error: event.error,
+      })
+    }
+  } catch (error) {
+    diag.warn('Failed to record consumer metrics:', error)
+  }
+}
+
 /**
  * Configuration options for the OTEL adapter
  */
@@ -95,11 +146,11 @@ export interface OtelAdapterConfig {
   metrics?: KafkaMetricsConfig
   /** Function to filter topics from instrumentation */
   ignoreTopics?: string[] | ((topic: string) => boolean)
-  /** Whether to capture message headers as span attributes */
+  /** Whether to record header names and count (never header values; default true) */
   captureMessageHeaders?: boolean
-  /** Whether to capture message payloads (security sensitive) */
+  /** Whether to record payload size within maxPayloadSize (never contents; default false) */
   captureMessagePayload?: boolean
-  /** Maximum payload size to capture */
+  /** Maximum payload size in bytes for size attributes (default 1024) */
   maxPayloadSize?: number
   /** Custom hook called for each message */
   messageHook?: (span: Span, message: Message) => void
@@ -118,7 +169,12 @@ export class OtelAdapter {
   private readonly _handlers = new Map<string, (event: unknown, name: string) => void>()
 
   public constructor(config: OtelAdapterConfig = {}) {
-    this._config = config
+    this._config = {
+      captureMessagePayload: false,
+      captureMessageHeaders: true,
+      maxPayloadSize: 1024,
+      ...config,
+    }
     const tracerProvider = config.tracerProvider ?? trace
     this._tracer = tracerProvider.getTracer(PACKAGE_INFO.NAME, PACKAGE_INFO.VERSION)
   }
@@ -316,14 +372,27 @@ export class OtelAdapter {
           return
         }
 
-        // Set partition/offset from metadata
-        if (event.metadata?.length) {
-          const [meta] = event.metadata
-          if (meta?.partition !== undefined) {
-            span.setAttribute(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID, String(meta.partition))
-          }
-          if (meta?.offset !== undefined) {
-            span.setAttribute(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET, meta.offset)
+        // A send spanning partitions has no single partition or offset.
+        const destination =
+          event.metadata?.length === event.record.messages.length ? getCommonDestination(event.metadata) : {}
+        if (destination.partition !== undefined) {
+          span.setAttribute(
+            KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID,
+            String(destination.partition),
+          )
+        }
+        if (event.record.messages.length === 1 && event.metadata?.length === 1) {
+          span.setAttribute(KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_OFFSET, event.metadata[0].offset)
+        }
+
+        // Call producer hook with metadata
+        if (this._config.producerHook && event.metadata?.length) {
+          try {
+            context.with(trace.setSpan(context.active(), span), () => {
+              this._config.producerHook?.(span, event.record, event.metadata?.[0])
+            })
+          } catch (error) {
+            diag.warn('Producer hook with metadata failed:', error)
           }
         }
 
@@ -337,7 +406,7 @@ export class OtelAdapter {
             try {
               const duration = timer()
               this._metrics.recordProducerDuration(event.topic, duration, {
-                partition: event.metadata?.[0]?.partition,
+                partition: destination.partition,
                 clientId: event.clientId,
                 error: event.error,
               })
@@ -348,15 +417,6 @@ export class OtelAdapter {
             } catch (error) {
               diag.warn('Failed to record producer metrics:', error)
             }
-          }
-        }
-
-        // Call producer hook with metadata
-        if (this._config.producerHook && event.metadata?.length) {
-          try {
-            this._config.producerHook(span, event.record, event.metadata[0])
-          } catch (error) {
-            diag.warn('Producer hook with metadata failed:', error)
           }
         }
       } catch (error) {
@@ -425,32 +485,11 @@ export class OtelAdapter {
           pollSpan.end(endTime)
         }
 
-        if (!event.message || ignoredTopic) {
+        if (ignoredTopic || (!event.message && !event.error)) {
           return
         }
 
-        // Record receive metrics
-        if (this._metrics) {
-          const timer = event.context[TIMER_KEY] as (() => number) | undefined
-          if (timer) {
-            try {
-              const duration = timer()
-              this._metrics.recordConsumerDuration(event.message.topic, duration, {
-                partition: event.message.partition,
-                groupId: event.groupId,
-                clientId: event.clientId,
-                error: event.error,
-              })
-              this._metrics.recordMessagesConsumed(event.message, {
-                groupId: event.groupId,
-                clientId: event.clientId,
-                error: event.error,
-              })
-            } catch (error) {
-              diag.warn('Failed to record consumer metrics:', error)
-            }
-          }
-        }
+        recordReceiveMetrics(this._metrics, event)
       } catch (error) {
         diag.warn('Consumer receive end handler failed:', error)
       }
@@ -577,8 +616,8 @@ export class OtelAdapter {
 
         // Emit poll span for successful receives and errors (skip fully ignored batches).
         if (instrumentedMessages.length > 0 || event.error) {
-          const [first] = instrumentedMessages
-          const pollTopic = first ? first.topic : 'kafka'
+          const destination = getCommonDestination(instrumentedMessages)
+          const pollTopic = destination.topic ?? 'kafka'
           const attributes: Attributes = {
             [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_SYSTEM]: KAFKA_DEFAULTS.MESSAGING_SYSTEM,
             [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_OPERATION_NAME]: KAFKA_OPERATION_NAMES.POLL,
@@ -589,12 +628,13 @@ export class OtelAdapter {
             ...(event.groupId ? { [KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_CONSUMER_GROUP_NAME]: event.groupId } : {}),
           }
 
-          if (first) {
-            attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] = first.topic
-            if (first.partition !== undefined) {
-              attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] = String(first.partition)
-            }
+          if (destination.topic) {
+            attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_NAME] = destination.topic
           }
+          if (destination.partition !== undefined) {
+            attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_DESTINATION_PARTITION_ID] = String(destination.partition)
+          }
+          attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_BATCH_MESSAGE_COUNT] = instrumentedMessages.length
 
           const endTime = event.timestamp
           const startTime = endTime - event.durationMs
@@ -607,19 +647,15 @@ export class OtelAdapter {
           pollSpan.end(endTime)
         }
 
-        if (instrumentedMessages.length === 0) {
-          return
-        }
-
-        // Record batch receive metrics
+        // Record batch receive metrics, including failures with no returned messages.
         if (this._metrics) {
           const timer = event.context[TIMER_KEY] as (() => number) | undefined
           if (timer) {
             try {
               const duration = timer()
-              const [first] = instrumentedMessages
-              this._metrics.recordConsumerDuration(first.topic, duration, {
-                partition: first.partition,
+              const destination = getCommonDestination(instrumentedMessages)
+              this._metrics.recordConsumerDuration(destination.topic, duration, {
+                partition: destination.partition,
                 groupId: event.groupId,
                 clientId: event.clientId,
                 error: event.error,
@@ -646,19 +682,12 @@ export class OtelAdapter {
           return
         }
 
-        const [first] = instrumentedMessages
-        const headerCarrier = (event.context as { parentHeaders?: Record<string, unknown> }).parentHeaders
-        const parentContext = extractTraceContext(
-          (headerCarrier || first.headers || {}) as Record<string, Buffer | string | string[] | undefined>,
-        )
-        // Re-inject parent context into messages to help stream/batch consumers stay on the producer trace
-        for (const message of instrumentedMessages) {
-          const headers = message.headers ?? {}
-          message.headers = normalizeHeadersToBuffer(injectTraceContext(headers, parentContext))
-        }
+        const { parents, sharedOrigin, parentContext, links } = getBatchOrigins(instrumentedMessages)
+        const destination = getCommonDestination(instrumentedMessages)
 
         const batchSpan = createBatchSpan(this._tracer, instrumentedMessages.length, {
-          topic: first.topic,
+          topic: destination.topic,
+          links,
           operationName: KAFKA_OPERATION_NAMES.PROCESS,
           parentContext,
           clientId: event.clientId,
@@ -675,15 +704,17 @@ export class OtelAdapter {
           }
 
           event.context[SPAN_KEY] = batchSpan
-          OtelAdapter._attachBatchSpan(instrumentedMessages, batchSpan, parentContext)
+          OtelAdapter._attachBatchSpan(event.messages, batchSpan, parentContext)
         }
 
-        for (const message of instrumentedMessages) {
+        for (const [index, message] of instrumentedMessages.entries()) {
           try {
+            const processingParent = sharedOrigin ? messageParentContext : parents[index]
             const messageSpan = createConsumerSpan(this._tracer, message, {
               operationName: KAFKA_OPERATION_NAMES.PROCESS,
               operationType: KAFKA_OPERATION_TYPES.PROCESS,
-              parentContext: messageParentContext,
+              parentContext: processingParent,
+              links: !sharedOrigin && batchSpan ? [{ context: batchSpan.spanContext() }] : undefined,
               clientId: event.clientId,
               serverAddress: event.serverAddress,
               serverPort: event.serverPort,
@@ -701,7 +732,7 @@ export class OtelAdapter {
                 messageSpan.setAttributes(getCapturedHeaderAttributes(message.headers))
               }
 
-              const messageSpanContext = OtelAdapter._attachMessageSpan(message, messageSpan, messageParentContext)
+              const messageSpanContext = OtelAdapter._attachMessageSpan(message, messageSpan, processingParent)
 
               if (this._config.messageHook) {
                 try {
@@ -873,5 +904,7 @@ export function resetOtelAdapter(): void {
  * Convenience function to enable OTEL instrumentation
  */
 export function enableOtelInstrumentation(config?: OtelAdapterConfig): OtelAdapter {
-  return getOtelAdapter(config)
+  const adapter = getOtelAdapter(config)
+  adapter.enable()
+  return adapter
 }

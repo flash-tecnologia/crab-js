@@ -684,8 +684,10 @@ import { renderPdf } from 'pdf-crab-js/browser/threaded'
 The threaded entry point requires the normal COOP/COEP cross-origin isolation setup. Both browser
 entry points expose the same PDF API, but file path sources are Node-only.
 
-The root package carries the threadless browser artifact. The generated WASI flavor package can be
-installed separately when a runtime needs the low-level binding directly:
+The root package carries the browser artifacts and declares their JavaScript runtimes as production
+dependencies. The matching WASI flavor packages are installed automatically as optional dependencies;
+keep optional dependencies enabled when using the generated Workerd entry point. The generated
+threadless WASI package can also be installed separately for direct access to the low-level binding:
 
 ```bash
 npm install pdf-crab-js-wasm32-wasip1
@@ -917,3 +919,11 @@ pnpm --filter pdf-crab-js test
 pnpm --filter pdf-crab-js build:wasm
 pnpm --filter pdf-crab-js test:wasm
 ```
+
+The release pipeline also runs `pnpm --filter pdf-crab-js test:package` after gathering the native and
+WASM artifacts for all configured targets. This prepares and packs a temporary copy without publishing,
+then installs the tarballs in an isolated consumer. It checks ESM, CommonJS, the Workerd loader lifecycle,
+and production builds of both browser entry points without relying on workspace dependencies.
+
+Production runtime dependencies use explicit versions so that the `npm publish` workflow ships valid
+dependency specifiers. Keep those versions aligned with the WASM toolchain in `pnpm-workspace.yaml`.

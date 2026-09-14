@@ -207,7 +207,7 @@ async function consumeWithMetrics() {
       const processingTime = Math.random() * 200
       await new Promise((resolve) => setTimeout(resolve, processingTime))
 
-      await consumer.commitMessage(message, 'Async')
+      await consumer.commitMessage(message, 'Sync')
 
       if (messageCount % 5 === 0) {
         console.log(`✅ Consumed ${messageCount}/${maxMessages} messages`)
@@ -272,7 +272,7 @@ async function batchProcessWithMetrics() {
     await Promise.all(
       messages.map(async (message) => {
         await new Promise((resolve) => setTimeout(resolve, 50))
-        await consumer.commitMessage(message, 'Async')
+        await consumer.commitMessage(message, 'Sync')
       }),
     )
   }

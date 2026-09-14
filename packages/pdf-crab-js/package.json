@@ -1,6 +1,6 @@
 {
   "name": "pdf-crab-js",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Fast, typed PDF generation for Node.js and browser/WASM, powered by Rust.",
   "keywords": [
     "N-API",
@@ -90,17 +90,19 @@
     "test:wasm": "pnpm run build:wasm && NAPI_RS_WASI_FLAVOR=wasm32-wasip1 node js-tests/wasm-smoke.mjs",
     "test:wasm-threaded": "pnpm run build:wasm-threaded && NAPI_RS_WASI_FLAVOR=wasm32-wasi node js-tests/wasm-smoke.mjs",
     "test:workerd": "pnpm run build:wasm && node js-tests/workerd-smoke.mjs",
+    "test:package": "node js-tests/package-smoke.mjs",
     "test:unit": "npm run typecheck && vp test run js-tests/unit",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@emnapi/core": "2.0.0-alpha.4",
+    "@emnapi/runtime": "2.0.0-alpha.4",
+    "@napi-rs/wasm-runtime": "1.2.4",
     "buffer": "^6.0.3"
   },
   "devDependencies": {
-    "@emnapi/core": "catalog:",
-    "@emnapi/runtime": "catalog:",
     "@napi-rs/cli": "catalog:",
-    "@napi-rs/wasm-runtime": "catalog:"
+    "emnapi": "catalog:"
   },
   "napi": {
     "binaryName": "pdf-crab-js",
@@ -117,7 +119,7 @@
       "wasm32-wasip1-threads"
     ],
     "wasm": {
-      "optionalDependency": false
+      "optionalDependency": true
     }
   },
   "engines": {

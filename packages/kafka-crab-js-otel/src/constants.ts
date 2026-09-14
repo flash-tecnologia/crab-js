@@ -114,7 +114,7 @@ export const ERROR_TYPES = {
 // Package information
 // Values are injected at build time by the pack config in vite.config.ts
 // Fallbacks exist so unbundled execution doesn't throw.
-const PACKAGE_NAME = typeof __PACKAGE_NAME__ !== 'undefined' ? __PACKAGE_NAME__ : 'kafka-crab-js'
+const PACKAGE_NAME = typeof __PACKAGE_NAME__ !== 'undefined' ? __PACKAGE_NAME__ : 'kafka-crab-js-otel'
 const PACKAGE_VERSION = typeof __PACKAGE_VERSION__ !== 'undefined' ? __PACKAGE_VERSION__ : '0.0.0'
 
 export const PACKAGE_INFO = {

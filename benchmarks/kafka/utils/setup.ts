@@ -1,6 +1,6 @@
 import { KafkaClient, type MessageProducer } from 'kafka-crab-js'
 import { brokers, partitionCount, topic } from './definitions.js'
-import { readPositiveInteger } from './env.js'
+import { readNonNegativeInteger, readPositiveInteger } from './env.js'
 import { createBenchmarkMessage, createBenchmarkPartitionKeys } from './messages.js'
 
 const topicPrepareTimeoutMs = readPositiveInteger('BENCHMARK_TOPIC_PREPARE_TIMEOUT_MS', 30_000)
@@ -54,7 +54,12 @@ export async function prepareConsumerData() {
   const partitionKeys = createBenchmarkPartitionKeys(partitionCount)
 
   const benchmarkIterations = readPositiveInteger('BENCHMARK_ITERATIONS', 100_000)
-  const max = readPositiveInteger('BENCHMARK_SETUP_MESSAGES', benchmarkIterations)
+  const warmup =
+    process.env.BENCHMARK_MEASUREMENT_WINDOW === 'first-message'
+      ? 0
+      : readNonNegativeInteger('BENCHMARK_WARMUP_MESSAGES', benchmarkIterations)
+  const defaultMessages = benchmarkIterations + warmup + Math.max(benchmarkIterations, 16384)
+  const max = readPositiveInteger('BENCHMARK_SETUP_MESSAGES', defaultMessages)
   const batchSize = readPositiveInteger('BENCHMARK_SETUP_BATCH_SIZE', 10_000)
 
   console.log(`Starting to produce ${max} messages...`)

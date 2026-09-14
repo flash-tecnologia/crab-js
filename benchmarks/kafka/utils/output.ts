@@ -2,9 +2,11 @@ import type { GcSummary } from './gc.js'
 import type { MemoryUsageSnapshot } from './memory.js'
 import {
   createBenchmarkResult,
-  formatDifference,
+  formatOps,
+  formatRelativeToBaseline,
+  formatSignedPercent,
   formatThroughput,
-  formatTolerance,
+  throughputPercentile,
   throughputValue,
   type BenchmarkResult,
   type RunMeasurement,
@@ -12,6 +14,7 @@ import {
 
 interface MemoryBenchmarkResult {
   scenario: {
+    id?: string
     label: string
   }
   measurements: readonly RunMeasurement[]
@@ -25,14 +28,33 @@ interface MemoryBenchmarkResult {
 
 interface OutputOptions {
   title?: string
+  memoryTitle?: string
   useColors: boolean
   showCharts?: boolean
+}
+
+interface LabeledBenchmarkResult {
+  id?: string
+  label: string
+  result: BenchmarkResult
+  measurements?: readonly RunMeasurement[]
 }
 
 interface ThroughputChartEntry {
   label: string
   result: BenchmarkResult
 }
+
+const CRAB_BASELINE_PAIRS = [
+  { baselineId: 'previous-serial', currentId: 'crab-serial', name: 'serial' },
+  { baselineId: 'previous-batch', currentId: 'crab-batch', name: 'batch' },
+  { baselineId: 'previous-producer', currentId: 'crab-producer', name: 'producer autoFlush' },
+  {
+    baselineId: 'previous-producer-manual',
+    currentId: 'crab-producer-manual',
+    name: 'producer manual flush',
+  },
+] as const
 
 interface MemoryEfficiencyEntry extends ThroughputChartEntry {
   rssDelta: number
@@ -49,36 +71,38 @@ const styles = {
   gray: '\u001B[90m',
 }
 
-export function printBenchmarkResults(results: Record<string, BenchmarkResult>, options: OutputOptions) {
-  const entries = Object.entries(results).toSorted(
-    ([, left], [, right]) => throughputValue(left) - throughputValue(right),
+export function printBenchmarkResults(
+  results: Record<string, BenchmarkResult> | readonly LabeledBenchmarkResult[],
+  options: OutputOptions,
+) {
+  const entries = normalizeLabeledResults(results).toSorted(
+    (left, right) => throughputValue(left.result) - throughputValue(right.result),
   )
-  const rows = entries.map(([label, result], index) => {
+  const rows = entries.map((entry, index) => {
     const colors = resultColor(index, entries.length)
-    const previous = entries[index - 1]?.[1]
     return [
       colorize(String(index + 1), options.useColors, ...colors),
-      colorize(label, options.useColors, ...colors),
-      colorize(String(result.size), options.useColors, ...colors),
-      colorize(formatThroughput(result), options.useColors, ...colors),
-      colorize(formatTolerance(result), options.useColors, styles.gray),
-      colorize(formatDifference(result, previous), options.useColors, styles.green),
+      colorize(entry.label, options.useColors, ...colors),
+      colorize(String(entry.result.size), options.useColors, ...colors),
+      ...throughputStatCells(entry, options.useColors, colors),
     ]
   })
 
   printTable(
     {
       title: options.title ?? 'Consumer throughput',
-      headers: ['#', 'Scenario', 'Runs', 'Result', 'Tolerance', 'Vs previous'],
+      headers: ['#', 'Scenario', 'Runs', 'Mean', 'Median', 'p05', 'p95'],
       rows,
-      rightAlignedColumns: new Set([0, 2, 3, 4, 5]),
+      rightAlignedColumns: new Set([0, 2, 3, 4, 5, 6]),
     },
     options.useColors,
   )
+  printSpreadNotes(entries, options.useColors)
+  printCrabBaselineComparison(entries, options.useColors)
 
   if (options.showCharts ?? true) {
     printThroughputChart(
-      entries.map(([label, result]) => ({ label, result })),
+      entries.map((entry) => ({ label: entry.label, result: entry.result })),
       options.useColors,
     )
   }
@@ -99,17 +123,26 @@ export function printMemoryResults(results: readonly MemoryBenchmarkResult[], op
   const externalValues = rankedResults.map(({ result }) => result.memory.peak.external)
   const arrayBufferValues = rankedResults.map(({ result }) => result.memory.peak.arrayBuffers)
 
+  const labeledResults: LabeledBenchmarkResult[] = rankedResults.map(({ result, benchmarkResult }) => ({
+    id: result.scenario.id,
+    label: result.scenario.label,
+    result: benchmarkResult,
+    measurements: result.measurements,
+  }))
+
   const rows = rankedResults.map(({ result, benchmarkResult }, index) => {
     const colors = resultColor(index, rankedResults.length)
-    const previous = rankedResults[index - 1]?.benchmarkResult
+    const entry = labeledResults[index]
 
     return [
       colorize(String(index + 1), options.useColors, ...colors),
       colorize(result.scenario.label, options.useColors, ...colors),
       colorize(String(result.measurements.length), options.useColors, ...colors),
-      colorize(formatThroughput(benchmarkResult), options.useColors, ...colors),
-      colorize(formatTolerance(benchmarkResult), options.useColors, styles.gray),
-      colorize(formatDifference(benchmarkResult, previous), options.useColors, styles.green),
+      ...throughputStatCells(
+        entry ?? { label: result.scenario.label, result: benchmarkResult },
+        options.useColors,
+        colors,
+      ),
       colorize(
         formatBytes(result.memory.peak.rss),
         options.useColors,
@@ -145,14 +178,15 @@ export function printMemoryResults(results: readonly MemoryBenchmarkResult[], op
 
   printTable(
     {
-      title: 'Consumer benchmark (isolated process + lifecycle memory)',
+      title: options.memoryTitle ?? 'Consumer benchmark (isolated process + lifecycle memory)',
       headers: [
         '#',
         'Scenario',
         'Runs',
-        'Result',
-        'Tolerance',
-        'Vs previous',
+        'Mean',
+        'Median',
+        'p05',
+        'p95',
         'Peak RSS',
         'RSS delta',
         'Retained RSS',
@@ -161,10 +195,12 @@ export function printMemoryResults(results: readonly MemoryBenchmarkResult[], op
         'ArrayBuffer',
       ],
       rows,
-      rightAlignedColumns: new Set([0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]),
+      rightAlignedColumns: new Set([0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
     },
     options.useColors,
   )
+  printSpreadNotes(labeledResults, options.useColors)
+  printCrabBaselineComparison(labeledResults, options.useColors)
 
   printGcResults(
     rankedResults.map(({ result }) => ({ label: result.scenario.label, gc: result.gc })),
@@ -185,6 +221,103 @@ export function printMemoryResults(results: readonly MemoryBenchmarkResult[], op
       options.useColors,
     )
   }
+}
+
+function normalizeLabeledResults(
+  results: Record<string, BenchmarkResult> | readonly LabeledBenchmarkResult[],
+): LabeledBenchmarkResult[] {
+  if (Array.isArray(results)) {
+    return [...results]
+  }
+
+  return Object.entries(results).map(([label, result]) => ({ label, result }))
+}
+
+function throughputStatCells(entry: LabeledBenchmarkResult, useColors: boolean, colors: string[]): string[] {
+  const measurements = entry.measurements
+  const mean = formatThroughput(entry.result)
+  if (!measurements || measurements.length === 0) {
+    return [
+      colorize(mean, useColors, ...colors),
+      colorize(mean, useColors, styles.gray),
+      colorize(mean, useColors, styles.gray),
+      colorize(mean, useColors, styles.gray),
+    ]
+  }
+
+  return [
+    colorize(mean, useColors, ...colors),
+    colorize(formatOps(throughputPercentile(measurements, 50)), useColors, ...colors),
+    colorize(formatOps(throughputPercentile(measurements, 5)), useColors, styles.gray),
+    colorize(formatOps(throughputPercentile(measurements, 95)), useColors, styles.gray),
+  ]
+}
+
+function printSpreadNotes(entries: readonly LabeledBenchmarkResult[], useColors: boolean) {
+  for (const entry of entries) {
+    const measurements = entry.measurements
+    if (!measurements || measurements.length < 2) {
+      continue
+    }
+
+    const p05 = throughputPercentile(measurements, 5)
+    const p95 = throughputPercentile(measurements, 95)
+    if (p05 <= 0 || p95 / p05 < 1.5) {
+      continue
+    }
+
+    console.log(
+      colorize(
+        `Note: ${entry.label} p95/p05 = ${(p95 / p05).toFixed(2)}; mean is a poor summary of this scenario.`,
+        useColors,
+        styles.yellow,
+      ),
+    )
+  }
+}
+
+function printCrabBaselineComparison(entries: readonly LabeledBenchmarkResult[], useColors: boolean) {
+  const byId = new Map(entries.filter((entry) => entry.id).map((entry) => [entry.id, entry]))
+  const rows = CRAB_BASELINE_PAIRS.flatMap((pair) => {
+    const baseline = byId.get(pair.baselineId)
+    const current = byId.get(pair.currentId)
+    if (!baseline || !current) {
+      return []
+    }
+
+    const baselineMean = throughputValue(baseline.result)
+    const currentMean = throughputValue(current.result)
+    const delta = baselineMean > 0 ? ((currentMean - baselineMean) / baselineMean) * 100 : 0
+    const deltaColor = delta >= 0 ? styles.green : styles.red
+    const baselineMedian = baseline.measurements ? throughputPercentile(baseline.measurements, 50) : baselineMean
+    const currentMedian = current.measurements ? throughputPercentile(current.measurements, 50) : currentMean
+    const medianDelta = baselineMedian > 0 ? ((currentMedian - baselineMedian) / baselineMedian) * 100 : 0
+
+    return [
+      [
+        colorize(pair.name, useColors),
+        colorize(formatThroughput(baseline.result), useColors),
+        colorize(formatThroughput(current.result), useColors),
+        colorize(formatRelativeToBaseline(currentMean, baselineMean), useColors, deltaColor),
+        colorize(formatSignedPercent(delta), useColors, deltaColor),
+        colorize(formatSignedPercent(medianDelta), useColors, medianDelta >= 0 ? styles.green : styles.red),
+      ],
+    ]
+  })
+
+  if (rows.length === 0) {
+    return
+  }
+
+  printTable(
+    {
+      title: 'vs previous kafka-crab-js@4.1.3',
+      headers: ['Mode', 'previous mean', 'kafka-crab-js mean', 'this / previous', 'mean delta', 'median delta'],
+      rows,
+      rightAlignedColumns: new Set([1, 2, 3, 4, 5]),
+    },
+    useColors,
+  )
 }
 
 function printGcResults(results: readonly { label: string; gc: GcSummary }[], useColors: boolean) {

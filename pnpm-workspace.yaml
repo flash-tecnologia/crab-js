@@ -9,13 +9,14 @@ allowBuilds:
   protobufjs: true
 
 catalog:
-  '@emnapi/core': 2.0.0-alpha.3
-  '@emnapi/runtime': 2.0.0-alpha.3
-  '@napi-rs/cli': 3.8.5
-  '@napi-rs/wasm-runtime': 1.2.2
-  '@types/node': 26.2.0
+  '@emnapi/core': 2.0.0-alpha.4
+  '@emnapi/runtime': 2.0.0-alpha.4
+  '@napi-rs/cli': 3.9.1
+  '@napi-rs/wasm-runtime': 1.2.4
+  '@types/node': 26.5.1
+  emnapi: 2.0.0-alpha.4
   'nanoid': 6.0.1
-  '@faker-js/faker': 10.5.0
+  '@faker-js/faker': 10.6.0
   '@opentelemetry/api': 1.9.0
   '@opentelemetry/context-async-hooks': 2.5.1
   '@opentelemetry/core': 2.5.1
@@ -29,7 +30,14 @@ catalog:
   '@opentelemetry/sdk-node': 0.57.2
 
 overrides:
-  emnapi: 2.0.0-alpha.3
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.1
+  vitest: 4.1.11
+
+peerDependencyRules:
+  allowedVersions:
+    # Vite+ replaces Vite with its bundled core, which uses the Vite+ version.
+    'vitest@4.1.11>vite': '0.3.1'
+    '@vitest/mocker@4.1.11>vite': '0.3.1'
 
 supportedArchitectures:
   cpu:
@@ -43,6 +51,6 @@ onlyBuiltDependencies:
   - protobufjs
 
 minimumReleaseAgeExclude:
-  - '@napi-rs/wasm-runtime@1.2.2'
-  - tsx@4.23.12
-  - '@napi-rs/cli@3.8.5'
+  - '@napi-rs/wasm-runtime@1.2.4'
+  - tsx@4.23.13
+  - '@napi-rs/cli@3.9.1'

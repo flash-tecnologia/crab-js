@@ -1,7 +1,8 @@
 import { equal, ok, throws } from 'node:assert/strict'
 import { test } from 'vite-plus/test'
 
-import { KafkaClient, KafkaClientConfig } from '../../js-src/index.js'
+import { type CompactMessageBatch, KafkaClient, KafkaClientConfig } from '../../js-src/index.js'
+import { expandCompactBatch } from '../../js-src/kafka-client.js'
 
 const TEST_BROKERS = process.env.KAFKA_BROKERS || 'localhost:29092'
 const TEST_CLIENT_ID = process.env.KAFKA_CLIENT_ID || 'kafka-crab-test-client'
@@ -142,4 +143,115 @@ test('createConsumer validates groupId', () => {
     /Error: Missing field `groupId`/,
     'Should throw when groupId is missing',
   )
+})
+
+test('createStreamConsumer enforces objectMode: true and rejects objectMode: false', () => {
+  const client = createClient(TEST_CLIENT_ID)
+
+  throws(
+    () =>
+      client.createStreamConsumer({
+        groupId: 'test-group',
+        streamOptions: { objectMode: false },
+      }),
+    /Stream consumer requires objectMode: true/,
+  )
+
+  const stream = client.createStreamConsumer({ groupId: 'test-group' })
+  ok(stream.readableObjectMode, 'Stream should have readableObjectMode enabled')
+})
+
+test('createConsumer preserves enable.auto.commit in configuration map when enableAutoCommit is omitted', () => {
+  const client = createClient(TEST_CLIENT_ID)
+  const consumer = client.createConsumer({
+    groupId: 'test-group-commit-preserve',
+    configuration: {
+      'enable.auto.commit': 'false',
+    },
+  })
+  const config = consumer.getConfig()
+  equal(config.configuration?.['enable.auto.commit'], 'false')
+})
+
+test('expandCompactBatch preserves Buffer payloads and marks tombstones across batch formats', () => {
+  // Format 1: Shared key and header
+  const batch1: CompactMessageBatch = {
+    payloads: [Buffer.from('hello'), Buffer.alloc(0)],
+    tombstones: [false, true],
+    sharedKey: Buffer.from('key1'),
+    topic: 'test-topic',
+    partitions: [0, 0],
+    offsets: [100, 101],
+    sharedHeaderKey: 'trace',
+    sharedHeaderValue: Buffer.from('123'),
+  }
+  const expanded1 = expandCompactBatch(batch1)
+  equal(expanded1.length, 2)
+  ok(Buffer.isBuffer(expanded1[0]?.payload))
+  equal(expanded1[0]?.isTombstone, undefined)
+  ok(Buffer.isBuffer(expanded1[1]?.payload))
+  equal(expanded1[1]?.payload.length, 0)
+  equal(expanded1[1]?.isTombstone, true)
+  equal(expanded1[1]?.topic, 'test-topic')
+  equal(expanded1[1]?.partition, 0)
+  equal(expanded1[1]?.offset, 101)
+
+  // Format 2: Key dictionary
+  const batch2: CompactMessageBatch = {
+    payloads: [Buffer.alloc(0), Buffer.from('world')],
+    tombstones: [true, false],
+    keyDictionary: [Buffer.from('dict-key')],
+    keyDictionaryIndexes: [0, 0],
+    topic: 'test-topic',
+    partitions: [1, 1],
+    offsets: [200, 201],
+    sharedHeaderKey: 'trace',
+    sharedHeaderValue: Buffer.from('123'),
+  }
+  const expanded2 = expandCompactBatch(batch2)
+  equal(expanded2.length, 2)
+  ok(Buffer.isBuffer(expanded2[0]?.payload))
+  equal(expanded2[0]?.isTombstone, true)
+  ok(Buffer.isBuffer(expanded2[1]?.payload))
+  equal(expanded2[1]?.isTombstone, undefined)
+
+  // Format 3: Generic / variable format
+  const batch3: CompactMessageBatch = {
+    payloads: [Buffer.alloc(0)],
+    tombstones: [true],
+    keys: [Buffer.from('k3')],
+    topic: 'test-topic',
+    partitions: [0],
+    offsets: [300],
+  }
+  const expanded3 = expandCompactBatch(batch3)
+  equal(expanded3.length, 1)
+  ok(Buffer.isBuffer(expanded3[0]?.payload))
+  equal(expanded3[0]?.isTombstone, true)
+  equal(expanded3[0]?.partition, 0)
+  equal(expanded3[0]?.offset, 300)
+})
+
+test('expandCompactBatch rejects ragged batches', () => {
+  throws(
+    () =>
+      expandCompactBatch({
+        payloads: [Buffer.from('a'), Buffer.from('b')],
+        topic: 't',
+        partitions: [0],
+        offsets: [0, 1],
+      }),
+    /partitions has length 1, expected 2/,
+  )
+})
+
+test('producer.flush() returns empty array when autoFlush is enabled', async () => {
+  const client = new KafkaClient({
+    clientId: 'producer-flush-compat-test',
+    brokers: 'localhost:29092',
+  })
+  const producer = client.createProducer()
+  const results = await producer.flush()
+  equal(Array.isArray(results), true)
+  equal(results.length, 0)
 })

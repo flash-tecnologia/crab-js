@@ -1,1131 +1,370 @@
-# Kafka Crab JS
+# kafka-crab-js
 
-Kafka Crab JS is a native Kafka client for Node.js and TypeScript. It uses Rust, NAPI-RS, and librdkafka to reduce
-JavaScript heap pressure, expose Kafka's mature native client behavior, and push high-throughput consumer workloads
-through a small TypeScript-friendly API.
+**Native Kafka performance. A JavaScript API.**
 
-[![npm beta version](https://img.shields.io/badge/npm%20beta-v4.0.0--beta.3-blue.svg)](https://www.npmjs.com/package/kafka-crab-js)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+Build Kafka services in JavaScript and TypeScript with Rust, NAPI-RS, and librdkafka
+handling the native transport. Publish with delivery confirmations, consume through
+Web Streams or Node.js streams, and process batches without writing native code.
 
-## Version 4
+[![npm](https://img.shields.io/npm/v/kafka-crab-js)](https://www.npmjs.com/package/kafka-crab-js)
+[![Node.js 24](https://img.shields.io/badge/Node.js-24-339933)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-`kafka-crab-js` v4 is the current beta line. It focuses on high-throughput consumers, lower JavaScript heap pressure,
-and a cleaner monorepo release model under [`flash-tecnologia/crab-js`](https://github.com/flash-tecnologia/crab-js).
+[Quick start](#quick-start) · [Benchmarks](#benchmarks) · [Choose your API](#choose-your-api) ·
+[API reference](docs/api.md) · [Examples](../../examples/kafka/README.md) ·
+[Production recommendations](#production-recommendations)
 
-The main v4 additions are:
+## Why kafka-crab-js
 
-- Native Web Stream consumers through `client.createWebStreamConsumer()`, with explicit `serial` and `batch` modes.
-- Direct batch consumption through `consumer.recvBatch(size, timeoutMs)` for workers that can process chunks.
-- Compact native batch streaming internally, reducing native-to-JavaScript marshalling overhead before expanding to the
-  public `Message[]` API.
-- Serial Web Stream prefetching, so message-by-message code still benefits from small native batches.
-- Diagnostics-channel events in the core package, with OpenTelemetry tracing and metrics moved to the optional
-  `kafka-crab-js-otel` package.
-- Updated TypeScript exports where runtime enum-like values are now string literal types, avoiding missing runtime
-  exports in ESM/CommonJS consumers.
+Kafka should move your events without consuming your entire JavaScript heap.
+`kafka-crab-js` puts Kafka transport and batch collection in native code while
+keeping application logic in familiar async JavaScript.
 
-For production adoption, treat v4 as a beta release: validate it with your broker settings, payload sizes, partition
-count, commit strategy, and shutdown path before replacing an existing Kafka client.
+- **Batch throughput that makes a difference.** The current development snapshot
+  delivered **1.66 million messages/s**, **1.98× KafkaJS `eachBatch`**, in the
+  [reproducible consumer comparison](../../BENCHMARKS.md).
+- **More room in the JavaScript heap.** That batch scenario peaked at **29.0 MiB
+  of JS heap versus KafkaJS's 71.7 MiB**. Native memory still contributes to RSS;
+  the comparison reports both.
+- **An API for each processing style.** Use `Message[]` Web Stream batches for
+  bulk writes, individual messages for sequential handlers, Node streams for
+  pipelines, or `recvBatch()` for your own receive loop.
+- **Explicit delivery and offset control.** Await producer results, commit after
+  successful processing, and preserve keys, headers, and tombstones across batching.
+- **librdkafka configuration when you need it.** Configure TLS/SASL, compression,
+  idempotent production, fetch behavior, and prefetch through the native client.
+- **Observability without bundling an OTEL SDK into the core.** Diagnostic channels
+  integrate with the optional [`kafka-crab-js-otel`](../kafka-crab-js-otel/README.md) package.
 
-## Why Kafka Crab JS?
+The measurements above describe this source tree's development build, not the
+currently installed npm release. The
+[artifact fingerprints and methodology](../../BENCHMARKS.md#methodology) identify the tested build.
 
-KafkaJS is a strong default for many Node.js services. Kafka Crab JS is for the cases where Kafka throughput, memory
-pressure, native batching, or librdkafka behavior start to matter.
+## Install
 
-| Need                                | What Kafka Crab JS Provides                                                              |
-| ----------------------------------- | ---------------------------------------------------------------------------------------- |
-| Higher consumer throughput          | Native batch receive paths and Web Stream batch consumers.                               |
-| Lower JavaScript heap pressure      | Message fetch and Kafka protocol work happen in Rust/librdkafka before crossing into JS. |
-| Predictable Kafka offset handling   | `commitMessage()` commits `message.offset + 1`, the value Kafka expects.                 |
-| Production Kafka tuning             | Advanced librdkafka settings are passed through with their original names.               |
-| Node.js ecosystem integration       | Direct APIs, Node.js `Readable` streams, native Web Streams, and CommonJS/ESM exports.   |
-| Observability without core coupling | Diagnostics-channel events power the optional `kafka-crab-js-otel` package.              |
-
-In the local isolated consumer benchmark snapshot, `kafka-crab-js v4 (stream, batch)` reached about
-`1.17M messages/sec`, ahead of the measured `@platformatic/kafka` and KafkaJS batch scenarios, while using lower RSS
-delta and peak heap than both. Treat benchmark numbers as workload-specific; the full methodology and memory/GC
-breakdown are documented in [BENCHMARKS.md](../../BENCHMARKS.md) and [Performance Benchmarks](#performance-benchmarks).
-
-## Highlights
-
-- Native librdkafka client exposed through a TypeScript-friendly API.
-- Producer, direct consumer, Node.js `Readable` stream, and v4 native Web Stream consumer APIs.
-- High-throughput batch receive APIs for workloads that can process more than one message at a time.
-- Compact batch streaming and serial prefetching to reduce native boundary crossings.
-- Manual commit helpers that commit `message.offset + 1` correctly.
-- Optional diagnostics-channel instrumentation for OpenTelemetry through `kafka-crab-js-otel`.
-- Advanced librdkafka settings are forwarded through `configuration` without forcing a custom allowlist.
-
-## Requirements
-
-- Node.js `24`.
-- A Kafka broker reachable from the Node.js process.
-- No separate librdkafka install is required for the published binaries.
-
-## Table Of Contents
-
-1. [Version 4](#version-4)
-2. [Installation](#installation)
-3. [Module Usage](#module-usage)
-4. [Quick Start](#quick-start)
-5. [Message Model](#message-model)
-6. [Choosing A Consumer API](#choosing-a-consumer-api)
-7. [Producer API](#producer-api)
-8. [Consumer API](#consumer-api)
-9. [Stream Consumers](#stream-consumers)
-10. [Batching, Backpressure, And Tuning](#batching-backpressure-and-tuning)
-11. [Configuration](#configuration)
-12. [OpenTelemetry](#opentelemetry)
-13. [Performance Benchmarks](#performance-benchmarks)
-14. [Migration Notes](#migration-notes)
-15. [Troubleshooting](#troubleshooting)
-16. [Development](#development)
-17. [License](#license)
-
-## Installation
-
-```bash
+```sh
 npm install kafka-crab-js
-```
-
-```bash
+# or
 pnpm add kafka-crab-js
 ```
 
-```bash
-yarn add kafka-crab-js
-```
-
-## Module Usage
-
-The package publishes both ESM and CommonJS entry points:
-
-```ts
-import { KafkaClient } from 'kafka-crab-js'
-import type { Message, ProducerRecord } from 'kafka-crab-js'
-```
+Use **Node.js 24**. Prebuilt binaries cover macOS x64/arm64 and Linux x64/arm64
+with glibc or musl. Published binaries include librdkafka; supported installations
+do not need a separate Rust toolchain or librdkafka installation. ESM, CommonJS,
+and TypeScript declarations are included.
 
 ```js
-const { KafkaClient } = require('kafka-crab-js')
+import { KafkaClient } from 'kafka-crab-js'
+// CommonJS: const { KafkaClient } = require('kafka-crab-js')
 ```
 
-The public TypeScript types are generated from the native NAPI contract and the JavaScript wrapper. Runtime enum-like
-values such as commit modes and security protocols are string literals, not runtime objects:
+This is a native Node.js client. Web Streams support refers to Node's Web Stream
+API; browser, WASM, and Windows builds are not provided. Documentation on the main
+branch describes the current source; use a matching release tag for older packages.
 
-```ts
-await consumer.commitMessage(message, 'Sync')
+### Upgrading to 5.0
 
-const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  securityProtocol: 'Plaintext',
-})
-```
+Version 5.0 requires Node.js 24. The previous release supported Node.js 22 and
+newer; update service runtimes and container images before upgrading.
 
-## Quick Start
+Producer and consumer entrypoints remain available. Review the stricter
+[commit and shutdown contracts](docs/api.md#commits-and-processing-order): manual
+Async commits require a live event listener, mixed group subscriptions and manual
+assignments are rejected, and Node.js consumer streams require object mode.
+Failed sends expose per-call delivery details through `SendFailureError`; use
+those details when deciding retries after partial delivery.
 
-### Produce Messages
+## Quick start
 
-```ts
+Run a Kafka broker and create an `orders` topic before starting these examples.
+Use `KAFKA_BROKERS` for a comma-separated broker list; the examples default to
+`localhost:9092`. Save the following files as `.mjs` and run with Node.js 24.
+
+### Publish with confirmation
+
+`producer.mjs`:
+
+```js
 import { KafkaClient } from 'kafka-crab-js'
 
 const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  clientId: 'orders-api',
-  securityProtocol: 'Plaintext',
+  brokers: process.env.KAFKA_BROKERS ?? 'localhost:9092',
+  clientId: 'orders-producer',
 })
 
-const producer = client.createProducer()
+const producer = client.createProducer({
+  configuration: {
+    'enable.idempotence': true,
+    acks: 'all',
+    'compression.type': 'lz4',
+  },
+})
 
-const metadata = await producer.send({
+const deliveries = await producer.send({
   topic: 'orders',
   messages: [
     {
-      key: Buffer.from('order-123'),
-      payload: Buffer.from(JSON.stringify({ id: 'order-123', status: 'created' })),
-      headers: {
-        'content-type': Buffer.from('application/json'),
-      },
+      key: Buffer.from('order-42'),
+      payload: Buffer.from(JSON.stringify({ orderId: 'order-42', total: 129.9 })),
+      headers: { 'content-type': Buffer.from('application/json') },
     },
   ],
 })
 
-console.log(metadata)
+console.log('Delivered:', deliveries)
 ```
 
-### Consume One Message At A Time
+By default, `send()` waits for delivery results and rejects on failure. For
+high-volume publishing, send multiple records together and bound concurrent sends.
+If you opt into `autoFlush: false`, call `flush()` regularly and before shutdown.
+Records can be transmitted before a manual flush; it collects confirmations.
+See [producer delivery semantics](docs/api.md#delivery-and-partial-failures).
 
-```ts
+### Consume batches and commit after processing
+
+`consumer.mjs`:
+
+```js
 import { KafkaClient } from 'kafka-crab-js'
 
 const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  clientId: 'orders-worker',
-  securityProtocol: 'Plaintext',
+  brokers: process.env.KAFKA_BROKERS ?? 'localhost:9092',
+  clientId: 'orders-consumer',
 })
 
-const consumer = client.createConsumer({
-  groupId: 'orders-worker',
+const { consumer, stream } = client.createWebStreamConsumer({
+  groupId: 'orders-workers',
   enableAutoCommit: false,
+  batchSize: 64,
+  batchTimeout: 5,
   configuration: {
+    'enable.auto.offset.store': false,
     'auto.offset.reset': 'earliest',
   },
 })
 
-await consumer.subscribe('orders')
-
-try {
-  while (true) {
-    const message = await consumer.recv()
-    if (!message) {
-      break
-    }
-
-    const value = JSON.parse(message.payload.toString('utf8'))
-    console.log({ value, topic: message.topic, partition: message.partition, offset: message.offset })
-
-    await consumer.commitMessage(message, 'Sync')
-  }
-} finally {
-  await consumer.disconnect()
+const reader = stream.getReader()
+const stop = () => {
+  void reader.cancel('shutdown').catch(console.error)
 }
-```
+process.once('SIGINT', stop)
+process.once('SIGTERM', stop)
 
-### Consume In Batches
-
-```ts
-const consumer = client.createConsumer({
-  groupId: 'orders-batch-worker',
-  enableAutoCommit: false,
-  configuration: {
-    'auto.offset.reset': 'earliest',
-  },
-})
-
-await consumer.subscribe('orders')
-
-try {
-  while (true) {
-    const batch = await consumer.recvBatch(500, 50)
-    if (batch.length === 0) {
-      continue
-    }
-
-    for (const message of batch) {
-      await processOrder(message.payload)
-      await consumer.commitMessage(message, 'Async')
-    }
-  }
-} finally {
-  await consumer.disconnect()
-}
-```
-
-## Message Model
-
-Messages use `Buffer` values because the Kafka protocol treats keys, payloads, and headers as bytes. Decode them at the
-edge of your application instead of assuming text:
-
-```ts
-import type { Message, MessageProducer, RecordMetadata } from 'kafka-crab-js'
-
-const outgoing: MessageProducer = {
-  key: Buffer.from('order-123'),
-  payload: Buffer.from(JSON.stringify({ id: 'order-123' })),
-  headers: {
-    'content-type': Buffer.from('application/json'),
-    source: Buffer.from('orders-api'),
-  },
-}
-
-function decodeJsonMessage(message: Message) {
-  return JSON.parse(message.payload.toString('utf8')) as unknown
-}
-
-function logDelivery(records: RecordMetadata[]) {
-  for (const record of records) {
-    console.log(`${record.topic}[${record.partition}]@${record.offset}`)
-  }
-}
-```
-
-`Message` values contain the consumed Kafka offset. When committing manually, commit the next offset. Prefer
-`commitMessage()` unless you intentionally need to calculate offsets yourself:
-
-```ts
-await consumer.commitMessage(message, 'Sync')
-await consumer.commit(message.topic, message.partition, message.offset + 1, 'Async')
-```
-
-Keys are optional. An omitted key keeps Kafka producer partitioning semantics for keyless records. An empty
-`Buffer.alloc(0)` is still a present key.
-
-## Choosing A Consumer API
-
-| API                                | Emits                                                        | Best For                                               |
-| ---------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------ |
-| `consumer.recv()`                  | `Message \| null`                                            | Simple sequential workers and explicit control.        |
-| `consumer.recvBatch()`             | `Message[]`                                                  | High-throughput workers that can process chunks.       |
-| `consumer.recvStream()`            | Web `ReadableStream<Message>`                                | Pull-based Web Stream workflows.                       |
-| `consumer.recvBatchStream()`       | Web `ReadableStream<Message[]>`                              | Native batch streaming with explicit consumer control. |
-| `client.createStreamConsumer()`    | Node.js `Readable` emitting `Message`                        | Existing Node stream pipelines.                        |
-| `client.createWebStreamConsumer()` | Web `ReadableStream<Message>` or `ReadableStream<Message[]>` | v4 high-throughput stream consumers.                   |
-
-Two details matter for choosing correctly:
-
-- `createStreamConsumer()` is a Node.js `Readable` compatibility API. Even when `batchSize > 1`, it emits individual
-  `Message` objects and uses batching internally to reduce native boundary crossings.
-- `createWebStreamConsumer()` returns a discriminated object. In serial mode it emits `Message`; in batch mode it emits
-  `Message[]`. Use this API when your code can process whole batches directly.
-
-Recommended starting points:
-
-- Use `consumer.recv()` for straightforward workers where one handler processes one message and then commits.
-- Use `consumer.recvBatch()` when the handler can process chunks, flush work in groups, or commit after a batch.
-- Use `createStreamConsumer()` when existing code already expects a Node.js `Readable`.
-- Use `createWebStreamConsumer()` for new v4 stream code, especially when you can keep batch chunks intact.
-
-## Producer API
-
-Create a producer from a `KafkaClient`:
-
-```ts
-const producer = client.createProducer({
-  autoFlush: true,
-  queueTimeout: 5000,
-  configuration: {
-    'compression.type': 'lz4',
-    acks: 'all',
-  },
-})
-```
-
-Send one or more messages:
-
-```ts
-const records = await producer.send({
-  topic: 'orders',
-  messages: [
-    { key: Buffer.from('1'), payload: Buffer.from('first') },
-    { key: Buffer.from('2'), payload: Buffer.from('second') },
-  ],
-})
-```
-
-When `autoFlush` is enabled, `send()` waits for delivery confirmation and returns `RecordMetadata[]`. When `autoFlush`
-is disabled, `send()` buffers messages and `flush()` sends pending messages:
-
-```ts
-const producer = client.createProducer({ autoFlush: false })
-
-await producer.send({
-  topic: 'orders',
-  messages: [{ payload: Buffer.from('buffered') }],
-})
-
-const records = await producer.flush()
-console.log(records)
-```
-
-`producer.inFlightCount()` returns the number of messages sent but not yet acknowledged.
-
-### Delivery Semantics
-
-`send()` writes records to librdkafka and, with the default `autoFlush: true`, waits for delivery results before
-resolving. Delivery metadata can still contain a per-record `error`, so production code should inspect it when failed
-records must be retried or reported:
-
-```ts
-const records = await producer.send({
-  topic: 'orders',
-  messages: [{ payload: Buffer.from('created') }],
-})
-
-for (const record of records) {
-  if (record.error) {
-    throw new Error(`Kafka delivery failed: ${record.error.message}`)
-  }
-}
-```
-
-With `autoFlush: false`, `send()` returns an empty array and leaves delivery confirmation to the next `flush()` call.
-This can improve throughput for bursty producers, but shutdown code must flush before the process exits:
-
-```ts
-import type { RecordMetadata } from 'kafka-crab-js'
-
-const producer = client.createProducer({ autoFlush: false })
-
-function assertAllDelivered(records: RecordMetadata[]) {
-  for (const record of records) {
-    if (record.error) {
-      throw new Error(`Kafka delivery failed: ${record.error.message}`)
-    }
-  }
-}
-
-try {
-  await producer.send({ topic: 'orders', messages })
-  const records = await producer.flush()
-  assertAllDelivered(records)
-} finally {
-  const remaining = await producer.flush()
-  assertAllDelivered(remaining)
-}
-```
-
-## Consumer API
-
-### Subscribe
-
-The simplest subscription accepts a topic string:
-
-```ts
-await consumer.subscribe('orders')
-```
-
-Use `TopicPartitionConfig[]` when you need offsets, partition-specific offsets, or topic creation:
-
-```ts
-await consumer.subscribe([
-  {
-    topic: 'orders',
-    createTopic: true,
-    numPartitions: 3,
-    replicas: 1,
-    allOffsets: { position: 'Beginning' },
-  },
-])
-```
-
-For partition-specific offsets:
-
-```ts
-await consumer.subscribe([
-  {
-    topic: 'orders',
-    partitionOffset: [
-      {
-        partition: 0,
-        offset: { offset: 42 },
-      },
-    ],
-  },
-])
-```
-
-### Receive
-
-`recv()` waits for one message and returns `null` when the consumer is disconnected:
-
-```ts
-const message = await consumer.recv()
-if (message) {
-  await handleMessage(message)
-}
-```
-
-`recvBatch(size, timeoutMs)` returns up to `size` messages:
-
-```ts
-const messages = await consumer.recvBatch(1000, 100)
-```
-
-An empty array means the timeout elapsed without a full batch. It does not mean the consumer is closed.
-
-### Commit
-
-Use `commitMessage()` for normal message processing. It commits `message.offset + 1`, which is the offset Kafka expects:
-
-```ts
-await consumer.commitMessage(message, 'Sync')
-```
-
-Use `commit()` when you already calculated the offset:
-
-```ts
-await consumer.commit(message.topic, message.partition, message.offset + 1, 'Async')
-```
-
-Commit modes are string literal values:
-
-```ts
-type CommitMode = 'Sync' | 'Async'
-```
-
-For at-least-once processing, disable auto commit, process the message successfully, then commit. If processing fails
-before the commit, Kafka can redeliver that message after restart or rebalance:
-
-```ts
-const consumer = client.createConsumer({
-  groupId: 'orders-worker',
-  enableAutoCommit: false,
-})
-
-const message = await consumer.recv()
-if (message) {
-  await processOrder(message)
-  await consumer.commitMessage(message, 'Sync')
-}
-```
-
-`'Sync'` waits for the broker commit response. `'Async'` schedules the commit through librdkafka and returns sooner,
-which can be useful in high-throughput workers that tolerate the usual async commit tradeoff.
-
-### Pause, Resume, Seek, And Assignment
-
-```ts
-consumer.pause()
-consumer.resume()
-
-consumer.seek('orders', 0, { position: 'Beginning' })
-consumer.seek('orders', 0, { offset: 42 })
-
-const assignment = consumer.assignment()
-const subscription = consumer.getSubscription()
-```
-
-Consumer events are available through `onEvents()`:
-
-```ts
-consumer.onEvents((error, event) => {
-  if (error) {
-    console.error(error)
-    return
-  }
-
-  console.log(event.name, event.payload)
-})
-```
-
-Event names are currently `PreRebalance`, `PostRebalance`, and `CommitCallback`. The payload includes the topic-partition
-list associated with the event and may include an `error` string for commit or rebalance failures.
-
-### Cleanup
-
-Always disconnect direct consumers:
-
-```ts
 try {
   await consumer.subscribe('orders')
-  // consume...
-} finally {
-  await consumer.disconnect()
-}
-```
 
-## Stream Consumers
+  while (true) {
+    const { value: messages, done } = await reader.read()
+    if (done) break
 
-### Node.js Readable Stream
-
-Use `createStreamConsumer()` when integrating with Node.js stream tooling. It emits `Message` objects.
-
-```ts
-const stream = client.createStreamConsumer({
-  groupId: 'orders-stream',
-  enableAutoCommit: false,
-  batchSize: 256,
-  batchTimeout: 50,
-  configuration: {
-    'auto.offset.reset': 'earliest',
-  },
-})
-
-await stream.subscribe('orders')
-
-stream.on('data', async (message) => {
-  try {
-    await processOrder(message.payload)
-    await stream.commitMessage(message, 'Async')
-  } catch (error) {
-    stream.destroy(error instanceof Error ? error : new Error(String(error)))
-  }
-})
-
-stream.on('error', (error) => {
-  console.error('stream error', error)
-})
-
-stream.on('close', () => {
-  console.log('stream closed')
-})
-```
-
-Destroy stream consumers instead of calling `disconnect()` directly. The stream cleanup path cancels the source reader,
-unsubscribes, and disconnects the native consumer:
-
-```ts
-stream.destroy()
-```
-
-### Native Web Stream
-
-Use `createWebStreamConsumer()` when you want a Web Stream and clear serial/batch typing.
-
-Serial mode is selected when `batchSize` is omitted, `0`, or `1`:
-
-```ts
-const webConsumer = client.createWebStreamConsumer({
-  groupId: 'orders-web-serial',
-  serialPrefetchSize: 64,
-  serialPrefetchTimeout: 1,
-  configuration: {
-    'auto.offset.reset': 'earliest',
-  },
-})
-
-await webConsumer.consumer.subscribe('orders')
-
-const reader = webConsumer.stream.getReader()
-
-try {
-  const { value: message, done } = await reader.read()
-  if (!done && message) {
-    await processOrder(message.payload)
-    await webConsumer.consumer.commitMessage(message, 'Async')
-  }
-} finally {
-  await reader.cancel()
-  await webConsumer.consumer.disconnect()
-}
-```
-
-Batch mode is selected with `batchSize > 1` and emits `Message[]` chunks:
-
-```ts
-const webConsumer = client.createWebStreamConsumer({
-  groupId: 'orders-web-batch',
-  batchSize: 1024,
-  batchTimeout: 10,
-  configuration: {
-    'auto.offset.reset': 'earliest',
-  },
-})
-
-if (webConsumer.mode === 'batch') {
-  await webConsumer.consumer.subscribe('orders')
-  const reader = webConsumer.stream.getReader()
-
-  try {
-    const { value: batch, done } = await reader.read()
-    if (!done && batch) {
-      for (const message of batch) {
-        await processOrder(message.payload)
+    const processed = new Map()
+    for (const message of messages) {
+      // Replace this with an awaited, idempotent database write or handler.
+      if (message.isTombstone) {
+        console.log('Delete:', message.key?.toString())
+      } else {
+        console.log('Order:', JSON.parse(message.payload.toString()))
       }
+      processed.set(JSON.stringify([message.topic, message.partition]), message)
     }
-  } finally {
-    await reader.cancel()
-    await webConsumer.consumer.disconnect()
+
+    // Commit once per topic/partition, only after the entire batch succeeds.
+    for (const message of processed.values()) {
+      await consumer.commitMessage(message, 'Sync')
+    }
   }
-}
-```
-
-## Batching, Backpressure, And Tuning
-
-The main throughput lever is how many messages cross the native-to-JavaScript boundary per call.
-
-| Knob                    | Applies To                                      | Effect                                                                 |
-| ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------- |
-| `recvBatch(size, ms)`   | Direct consumer                                 | Pulls up to `size` messages, waiting up to `ms` for data.              |
-| `batchSize`             | Node stream and Web Stream batch modes          | Sets the maximum native batch size used by the stream.                 |
-| `batchTimeout`          | Node stream and Web Stream batch modes          | Bounds how long a partially filled batch waits before being emitted.   |
-| `serialPrefetchSize`    | `createWebStreamConsumer()` serial mode         | Pulls small native batches and flattens them into individual messages. |
-| `serialPrefetchTimeout` | `createWebStreamConsumer()` serial mode         | Timeout for the serial-mode prefetch batch.                            |
-| `streamOptions`         | `createStreamConsumer()` Node.js `Readable` API | Lets Node stream `highWaterMark` participate in backpressure.          |
-
-Use larger batches when throughput matters and your handler can process arrays efficiently. Use smaller batches and
-shorter timeouts when tail latency matters more than total throughput. Very large batches can increase RSS because more
-payloads, keys, headers, and metadata must be retained at once.
-
-The v4 Web Stream serial path defaults to `serialPrefetchSize: 64` and `serialPrefetchTimeout: 1`. This keeps the public
-serial API message-by-message while reducing native boundary crossings. Batch mode defaults `batchTimeout` to `1000`
-milliseconds when it is omitted.
-
-For broker fetch tuning, pass librdkafka settings through `configuration`. Keep these values aligned with your expected
-message size:
-
-```ts
-const consumer = client.createConsumer({
-  groupId: 'orders-worker',
-  configuration: {
-    'fetch.min.bytes': 1,
-    'fetch.wait.max.ms': 10,
-    'fetch.max.bytes': 1_048_576,
-    'max.partition.fetch.bytes': 1_048_576,
-    'message.max.bytes': 1_000_000,
-  },
-})
-```
-
-`fetch.max.bytes` must be greater than or equal to `message.max.bytes`. If this invariant is broken, librdkafka rejects
-the consumer configuration before the benchmark or application starts.
-
-## Configuration
-
-### KafkaClient
-
-```ts
-const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  clientId: 'orders-service',
-  securityProtocol: 'Plaintext',
-  logLevel: 'info',
-  brokerAddressFamily: 'v4',
-  diagnostics: true,
-  configuration: {
-    'socket.keepalive.enable': true,
-  },
-})
-```
-
-| Option                | Type                                                   | Default   | Description                                                               |
-| --------------------- | ------------------------------------------------------ | --------- | ------------------------------------------------------------------------- |
-| `brokers`             | `string`                                               | required  | Comma-separated broker list, for example `localhost:9092,localhost:9093`. |
-| `clientId`            | `string`                                               | `rdkafka` | Client identifier sent to Kafka.                                          |
-| `securityProtocol`    | `'Plaintext' \| 'Ssl' \| 'SaslPlaintext' \| 'SaslSsl'` |           | Security protocol.                                                        |
-| `logLevel`            | `string`                                               | `error`   | librdkafka log level.                                                     |
-| `brokerAddressFamily` | `string`                                               | `v4`      | Address family hint such as `v4` or `any`.                                |
-| `diagnostics`         | `boolean`                                              | `true`    | Enables diagnostic-channel events used by `kafka-crab-js-otel`.           |
-| `configuration`       | `Record<string, any>`                                  |           | Additional librdkafka client settings.                                    |
-
-`configuration` is passed through to librdkafka after values are converted to strings. Use the original librdkafka
-property names, for example `sasl.mechanism`, `queued.min.messages`, or `fetch.wait.max.ms`.
-
-Common connection examples:
-
-```ts
-const localClient = new KafkaClient({
-  brokers: 'localhost:9092',
-  clientId: 'orders-local',
-  securityProtocol: 'Plaintext',
-  brokerAddressFamily: 'v4',
-})
-```
-
-```ts
-const saslClient = new KafkaClient({
-  brokers: process.env.KAFKA_BROKERS!,
-  clientId: 'orders-worker',
-  securityProtocol: 'SaslSsl',
-  configuration: {
-    'sasl.mechanism': 'PLAIN',
-    'sasl.username': process.env.KAFKA_USERNAME!,
-    'sasl.password': process.env.KAFKA_PASSWORD!,
-  },
-})
-```
-
-### ConsumerConfiguration
-
-```ts
-const consumer = client.createConsumer({
-  groupId: 'orders-worker',
-  enableAutoCommit: false,
-  fetchMetadataTimeout: 5000,
-  configuration: {
-    'auto.offset.reset': 'earliest',
-    'enable.auto.commit': false,
-    'fetch.min.bytes': 1,
-  },
-})
-```
-
-| Option                 | Type                  | Description                                |
-| ---------------------- | --------------------- | ------------------------------------------ |
-| `groupId`              | `string`              | Kafka consumer group id.                   |
-| `enableAutoCommit`     | `boolean`             | Convenience flag for auto commit behavior. |
-| `fetchMetadataTimeout` | `number`              | Metadata fetch timeout in milliseconds.    |
-| `configuration`        | `Record<string, any>` | Additional librdkafka consumer settings.   |
-
-`enableAutoCommit` is a convenience option that sets librdkafka `enable.auto.commit`. You can also pass
-`'enable.auto.commit'` in `configuration`, but using both with different values makes the intent hard to read.
-
-For new services that need explicit processing guarantees, start with manual commits:
-
-```ts
-const consumer = client.createConsumer({
-  groupId: 'orders-worker',
-  enableAutoCommit: false,
-  configuration: {
-    'auto.offset.reset': 'earliest',
-    'enable.partition.eof': false,
-  },
-})
-```
-
-### ProducerConfiguration
-
-```ts
-const producer = client.createProducer({
-  autoFlush: true,
-  queueTimeout: 5000,
-  configuration: {
-    'compression.type': 'lz4',
-  },
-})
-```
-
-| Option          | Type                  | Description                                             |
-| --------------- | --------------------- | ------------------------------------------------------- |
-| `autoFlush`     | `boolean`             | When enabled, `send()` waits for delivery confirmation. |
-| `queueTimeout`  | `number`              | Queue timeout in milliseconds.                          |
-| `configuration` | `Record<string, any>` | Additional librdkafka producer settings.                |
-
-Producer settings are workload-specific. A low-latency producer might prefer smaller buffering windows, while a
-throughput-oriented producer can allow librdkafka to coalesce more work:
-
-```ts
-const producer = client.createProducer({
-  autoFlush: false,
-  queueTimeout: 5000,
-  configuration: {
-    acks: 'all',
-    'compression.type': 'lz4',
-    'queue.buffering.max.ms': 10,
-    'queue.buffering.max.messages': 100000,
-  },
-})
-```
-
-### TopicPartitionConfig
-
-| Option            | Type                | Description                                      |
-| ----------------- | ------------------- | ------------------------------------------------ |
-| `topic`           | `string`            | Topic name.                                      |
-| `allOffsets`      | `OffsetModel`       | Offset model applied to all assigned partitions. |
-| `partitionOffset` | `PartitionOffset[]` | Partition-specific offset model.                 |
-| `createTopic`     | `boolean`           | Create the topic before subscribing.             |
-| `numPartitions`   | `number`            | Partition count when creating a topic.           |
-| `replicas`        | `number`            | Replica count when creating a topic.             |
-
-Offset models:
-
-```ts
-{
-  position: 'Beginning'
-}
-{
-  position: 'End'
-}
-{
-  position: 'Stored'
-}
-{
-  position: 'Invalid'
-}
-{
-  offset: 42
-}
-```
-
-### Type-Only Literals
-
-In v4, these names are TypeScript-only exports:
-
-```ts
-import type { CommitMode, KafkaEventName, PartitionPosition, SecurityProtocol } from 'kafka-crab-js'
-```
-
-Use literal values at runtime:
-
-```ts
-const commitMode: CommitMode = 'Sync'
-const securityProtocol: SecurityProtocol = 'Plaintext'
-```
-
-## OpenTelemetry
-
-OpenTelemetry support lives in the separate `kafka-crab-js-otel` package. The core package emits diagnostic-channel
-events when `diagnostics !== false`; the OTEL package subscribes to those events.
-
-Install the instrumentation package and OpenTelemetry dependencies:
-
-```bash
-npm install kafka-crab-js-otel @opentelemetry/api @opentelemetry/sdk-node
-```
-
-Enable instrumentation before creating `KafkaClient`:
-
-```ts
-import { KafkaClient } from 'kafka-crab-js'
-import { enableOtelInstrumentation, endSpan } from 'kafka-crab-js-otel'
-
-enableOtelInstrumentation({
-  metrics: { enabled: true },
-})
-
-const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  clientId: 'orders-worker',
-  diagnostics: true,
-})
-
-const consumer = client.createConsumer({ groupId: 'orders-worker' })
-await consumer.subscribe('orders')
-
-const message = await consumer.recv()
-if (message) {
+} finally {
+  process.off('SIGINT', stop)
+  process.off('SIGTERM', stop)
   try {
-    await processOrder(message.payload)
+    await reader.cancel()
   } finally {
-    endSpan(message)
+    reader.releaseLock()
+    await consumer.disconnect()
   }
 }
 ```
 
-See the [OpenTelemetry package README](../kafka-crab-js-otel/README.md) for full tracing and metrics setup.
+Run `node consumer.mjs` and then `node producer.mjs` in another terminal. Consumers
+sharing a group split assigned partitions; use another group for an independent
+subscription. `earliest` applies when there is no valid committed offset.
 
-## Performance Benchmarks
+A failed handler prevents that batch's commits, so records can be replayed. Make
+side effects idempotent and never commit past unfinished work in the same partition.
+The signal handler cancels future reads while the already handed-out batch finishes;
+cancellation can abandon prefetched work. See [shutdown semantics](docs/api.md#position-flow-control-and-shutdown)
+when the application needs to drain collected work instead.
 
-The repository includes a benchmark suite that compares `kafka-crab-js` with KafkaJS and `@platformatic/kafka`. The
-latest captured run in [BENCHMARKS.md](../../BENCHMARKS.md) was recorded on May 25, 2026 on a MacBook Pro with Apple M1,
-Node.js `v24.16.0`, and a local three-broker `apache/kafka:4.0.0` cluster.
+## Choose your API
+
+| Your workload                                     | Start with                                                         | Delivered to your code                         |
+| ------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------- |
+| Bulk database writes, ingestion, analytics        | `createWebStreamConsumer({ batchSize: 64, batchTimeout: 5, ... })` | `Message[]` per read                           |
+| Sequential business logic, message-level handling | `createWebStreamConsumer({ groupId, ... })`                        | One `Message` per read, with internal prefetch |
+| Existing Node.js pipelines                        | `createStreamConsumer({ groupId, batchSize: 64, ... })`            | Individual `Message` objects in object mode    |
+| A custom polling or scheduling loop               | `createConsumer()` + `recvBatch(size, timeoutMs)`                  | Up to `size` messages per call                 |
+| One direct blocking receive                       | `createConsumer()` + `recv()`                                      | One message, or `null` after disconnect        |
+
+Start with a batch size of **64 and a 5 ms timeout** for evaluation, then measure
+with your payload sizes and handler. Larger batches amortize per-delivery work;
+smaller batches reduce collection delay and the amount of work held by the handler.
+The throughput comparison uses 4,096/2 ms for its small-message scenario, which is
+not a universal production preset.
+
+For serial Web Streams, `serialPrefetchSize` and `serialPrefetchTimeout` control
+internal collection without changing the one-message public interface. A Node
+batch stream still emits individual messages; choose the Web batch API when your
+application needs arrays. Await handlers with a reader loop, async iteration, or
+a pipeline sink so downstream processing applies backpressure.
+
+## Benchmarks
+
+**September 12, 2026 · Apple M4 · Node 24.20.0 · local Kafka · 120 runs per scenario.**
+Two full runs used opposite crab pair orders, fresh processes per block, explicit
+warmup, and all samples. Throughput is total measured messages / total measured
+time. Heap and RSS are maximum sampled lifecycle values across four processes.
+
+| Consumer                      | Interface                    |    Messages/s | Peak JS heap |      Peak RSS |
+| ----------------------------- | ---------------------------- | ------------: | -----------: | ------------: |
+| **kafka-crab-js development** | **Web Stream batch**         | **1,663,382** | **29.0 MiB** | **266.3 MiB** |
+| @platformatic/kafka 2.11.0    | Message stream               |       998,122 |     87.0 MiB |     256.7 MiB |
+| **kafka-crab-js development** | **Web Stream serial**        |   **915,664** | **21.9 MiB** | **178.9 MiB** |
+| KafkaJS 2.2.4                 | `eachBatch`                  |       841,194 |     71.7 MiB |     238.9 MiB |
+| KafkaJS 2.2.4                 | `eachMessage`                |       655,365 |     77.8 MiB |     245.6 MiB |
+| KafkaJS 2.2.4                 | `eachMessage`, concurrency 3 |       646,613 |     83.2 MiB |     246.7 MiB |
+
+For this workload, current batch throughput was **1.98× KafkaJS `eachBatch`**;
+current serial was **1.40× KafkaJS `eachMessage`**. Platformatic's message stream
+was faster than crab serial. Crab batch used less JS heap than the measured JS clients
+but more total RSS; native allocations are outside the JS heap.
+
+These are consumer delivery rates for small, already published messages, without
+application processing, manual commit costs, or end-to-end producer latency.
+They are not a universal ranking. The topic has three partitions, two nonempty;
+KafkaJS concurrency 3 therefore does not imply three active message partitions.
+Crab uses its default fetch queue backoff of 20 ms. Cluster observations and other
+measurement limits are recorded in the full report.
+
+[Full results, percentiles, configuration, and reproduction](../../BENCHMARKS.md) ·
+[Comparison with the previous release](../../BENCHMARKS.md#comparison-with-the-previous-release) ·
+[Portable evidence: all 960 measurements](docs/rfc/review/evidence/consumer-comparison-2026-09-12.json)
+
+## How it compares
+
+Choose the client that matches your processing model and deployment constraints.
+
+| Decision                   | kafka-crab-js                                                                | KafkaJS                                                     | @platformatic/kafka                                       |
+| -------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------- |
+| Implementation             | Rust + NAPI-RS + librdkafka                                                  | JavaScript                                                  | TypeScript/JavaScript                                     |
+| Consumer style             | Direct receive, Node streams, serial/batch Web Streams                       | `eachMessage` and `eachBatch` callbacks                     | Node streams and events                                   |
+| Best reason to evaluate it | Native batch throughput, explicit delivery/offset control, librdkafka tuning | JavaScript-only deployment and callback-oriented processing | JavaScript-only deployment and stream-oriented processing |
+| Configuration model        | Typed wrapper plus librdkafka properties                                     | KafkaJS options                                             | Platformatic options                                      |
+| Installation consideration | Prebuilt native targets, Node 24                                             | No native addon                                             | No native addon                                           |
+
+Competitor API descriptions come from the official
+[KafkaJS documentation](https://kafka.js.org/docs/consuming) and
+[Platformatic repository](https://github.com/platformatic/kafka). The comparison
+covers these interfaces, not every feature or every client in the Kafka ecosystem.
+
+`kafka-crab-js` is a strong fit for ingestion workers, event-driven services, and
+bulk processing where you can benefit from native batch delivery. If you need
+Kafka transactions, a built-in schema registry client, or a broad administrative
+API, account for the current public API's scope before migrating.
+
+### Coming from KafkaJS
+
+| KafkaJS concept                            | kafka-crab-js equivalent                                       |
+| ------------------------------------------ | -------------------------------------------------------------- |
+| `new Kafka({ brokers: [...] })`            | `new KafkaClient({ brokers: 'host:9092,...' })`                |
+| `kafka.producer()`                         | `client.createProducer()`                                      |
+| `producer.send({ messages: [{ value }] })` | `producer.send({ messages: [{ payload: Buffer.from(...) }] })` |
+| `eachMessage`                              | Serial Web Stream + an awaited message handler                 |
+| `eachBatch`                                | Batch Web Stream + an awaited batch handler                    |
+| Commit after successful work               | `consumer.commitMessage(message, 'Sync')`                      |
+
+This is an API migration, not an import-only replacement. Review message encoding,
+partition ordering, commit policy, retries, and shutdown. Start by replaying a
+representative topic into an independent group and compare throughput, latency,
+RSS, and verified processing outcomes. The [API reference](docs/api.md) describes
+individual contracts and partial-failure behavior.
+
+## Production recommendations
+
+**Commit after the work succeeds.** Disable automatic commits/offset storage when
+application completion defines delivery. Commit the last successfully processed
+message per topic/partition. Keep side effects idempotent so replay is safe. For
+Async commits, observe `CommitCallback`; resolving the scheduling promise is not
+broker confirmation.
+
+**Budget memory across the entire process.** The current native batch queue's
+32 MiB accounted-byte budget includes headers and keys, with an oversized-batch
+exception. It does not cap RSS or librdkafka's separate prefetch queues. Bound
+application concurrency and retained messages, and monitor RSS alongside JS heap.
+
+**Use a smaller prefetch profile for large headers and reader stalls.** Evaluate
+these consumer properties against your own workload:
+
+```js
+const configuration = {
+  'queued.max.messages.kbytes': 65536,
+  'queued.min.messages': 256,
+  'fetch.max.bytes': 8 * 1024 * 1024,
+  'max.partition.fetch.bytes': 1024 * 1024,
+  'fetch.queue.backoff.ms': 20,
+}
+```
+
+In the [concurrent workload](docs/rfc/review/performance.md#concurrent-workload-with-natural-gc--2026-09-12),
+640,000 new records totaling 12.736 GiB passed byte/order checks and broker-verified
+commits with zero final backlog. Using this profile reduced the worst observed
+consumer RSS by **50.1% serial / 54.3% batch** versus the 100,000-message threshold.
+Normal p95 stayed around 60 ms; p99 and recovery time increased. Each consumer ran
+for two minutes on macOS with natural GC. This validates a specific profile, not
+long-term stability, a hard memory ceiling, or production failure recovery.
+
+**Tune for your application.** Larger fetches can help small-message throughput;
+large batches can raise memory and latency. Use the
+[benchmark harness](../../benchmarks/kafka/README.md) and your own handler to find
+the useful tradeoff. Keep confirmed send/commit costs in end-to-end measurements.
+
+**Connect and shut down deliberately.** Use TLS/SASL appropriate to your cluster,
+keep credentials in a secret store, and retain certificate validation. Finish
+accepted work before committing/closing. Await sends and manual flushes; cancel
+and release Web readers or destroy Node streams and await close. Details and
+examples are in the [API reference](docs/api.md).
+
+## Observability
+
+Install `kafka-crab-js-otel` when you need OpenTelemetry tracing and metrics.
+Configure your SDK/exporter, enable instrumentation before creating clients, and
+keep client diagnostics enabled. Consumer processing spans should end after the
+handler completes.
+
+[OTEL setup](../kafka-crab-js-otel/README.md) ·
+[Runnable tracing and metrics examples](../../examples/kafka/README.md)
+
+## Documentation and development
+
+- [API reference](docs/api.md): configuration, producer, consumer, streams, commits, and shutdown.
+- [Examples](../../examples/kafka/README.md): direct APIs, streams, retries, and observability.
+- [Benchmarks](../../BENCHMARKS.md): measured comparisons and reproducible commands.
+- [Engineering docs](docs/README.md): RFCs, validation evidence, and remaining release checks.
+- [Issues and feature requests](https://github.com/flash-tecnologia/crab-js/issues): share reproductions and proposals.
 
 From the repository root:
 
-```bash
-podman compose up -d
-
-cd benchmarks/kafka
-
-# Set up benchmark data. Requires Kafka running locally.
-KAFKA_BROKERS=127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094 vp run setup:consumer
-
-# Run the default isolated-process memory benchmark.
-KAFKA_BROKERS=127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094 vp run benchmark
+```sh
+pnpm install
+pnpm --filter kafka-crab-js build
+pnpm --filter kafka-crab-js test
+RUN_KAFKA_INTEGRATION=true pnpm --filter kafka-crab-js test:integration
 ```
 
-The default benchmark runs one child Node.js process per selected scenario. This avoids carrying V8 heap pages, native
-allocator arenas, sockets, librdkafka state, and Kafka metadata from one client into the next client's measurement.
-
-### Consumer Benchmark Snapshot
-
-The captured run below is equivalent to:
-
-```bash
-cd benchmarks/kafka
-KAFKA_BROKERS=127.0.0.1:9092,127.0.0.1:9093,127.0.0.1:9094 vp run benchmark
-```
-
-The run uses the default isolated-process lifecycle-memory benchmark mode.
-
-![Consumer benchmark snapshot](./assets/consumer-benchmark-snapshot.svg)
-
-#### Throughput
-
-| Rank | Scenario                            |                Result | Relative |
-| ---: | ----------------------------------- | --------------------: | -------: |
-|    1 | `kafka-crab-js v4 (stream, batch)`  | `1,167,396.71 op/sec` | `100.0%` |
-|    2 | `@platformatic/kafka`               |   `653,355.35 op/sec` |  `56.0%` |
-|    3 | `kafka-crab-js v4 (stream, serial)` |   `558,968.71 op/sec` |  `47.9%` |
-|    4 | `KafkaJS (eachBatch)`               |   `478,411.67 op/sec` |  `41.0%` |
-|    5 | `KafkaJS (eachMessage)`             |   `431,519.93 op/sec` |  `37.0%` |
-|    6 | `KafkaJS (eachMessage, concurrent)` |   `427,265.29 op/sec` |  `36.6%` |
-
-`kafka-crab-js v4 (stream, batch)` is the fastest scenario in this run. It is about `78.7%` faster than
-`@platformatic/kafka` and about `144.0%` faster than `KafkaJS (eachBatch)`. Its tolerance was `+/- 4.40%`, so the exact
-gap should still be treated as a benchmark snapshot rather than a universal constant.
-
-For message-by-message consumption, `kafka-crab-js v4 (stream, serial)` is close to KafkaJS throughput while using much
-less lifecycle memory. In this run it is about `29.5%` faster than `KafkaJS (eachMessage)` and about `30.8%` faster
-than the concurrent KafkaJS `eachMessage` scenario.
-
-#### Memory And GC
-
-| Scenario                            |   RSS delta |  Peak heap |    GC time | GC share | Notes                                      |
-| ----------------------------------- | ----------: | ---------: | ---------: | -------: | ------------------------------------------ |
-| `kafka-crab-js v4 (stream, serial)` |  `64.7 MiB` | `14.6 MiB` | `30.46 ms` |  `3.41%` | Lowest lifecycle RSS and heap.             |
-| `kafka-crab-js v4 (stream, batch)`  | `106.0 MiB` | `29.5 MiB` | `21.69 ms` |  `5.06%` | Best throughput, efficiency, and GC time.  |
-| `KafkaJS (eachMessage, concurrent)` | `178.3 MiB` | `72.2 MiB` | `83.77 ms` |  `7.16%` | Concurrency did not improve this workload. |
-| `KafkaJS (eachMessage)`             | `186.3 MiB` | `91.6 MiB` | `90.15 ms` |  `7.78%` | Highest peak heap and max GC pause.        |
-| `KafkaJS (eachBatch)`               | `193.4 MiB` | `83.8 MiB` | `63.05 ms` |  `6.03%` | KafkaJS batch baseline.                    |
-| `@platformatic/kafka`               | `216.0 MiB` | `87.4 MiB` | `74.27 ms` |  `9.71%` | Fastest non-crab competitor.               |
-
-Lifecycle memory includes module loading, client creation, subscription, consumption, cleanup, and retained RSS after
-cleanup. GC metrics use the narrower first-to-last-message window used for throughput.
-
-The most important memory result is efficiency, not just raw RSS. `kafka-crab-js v4 (stream, batch)` delivered
-`11016 op/sec/MiB`, the best score in the run. `kafka-crab-js v4 (stream, serial)` delivered `8635 op/sec/MiB`, ahead
-of `@platformatic/kafka` at `3025 op/sec/MiB` and `KafkaJS (eachBatch)` at `2474 op/sec/MiB`.
-
-### Benchmark Interpretation
-
-- Use `kafka-crab-js v4 (stream, batch)` when raw throughput or memory efficiency is the priority.
-- Use `kafka-crab-js v4 (stream, serial)` when message-by-message processing needs the lowest lifecycle RSS and heap
-  pressure.
-- Compare batch scenarios with batch scenarios and message scenarios with message scenarios.
-- `@platformatic/kafka` is the strongest non-crab throughput competitor in this run, but it used more RSS, heap, and GC
-  time than both v4 scenarios.
-- KafkaJS `eachMessage` concurrency did not help this workload.
-
-### Benchmark Configuration
-
-Captured benchmark settings:
-
-```bash
-BENCHMARK_ITERATIONS=100000
-BENCHMARK_RUNS=5
-BENCHMARK_FETCH_MIN_BYTES=1
-BENCHMARK_FETCH_WAIT_MS=10
-BENCHMARK_MAX_BYTES=2048
-BENCHMARK_BATCH_SIZE=4096
-BENCHMARK_BATCH_TIMEOUT_MS=2
-BENCHMARK_KAFKAJS_EACH_MESSAGE_CONCURRENCY=3
-BENCHMARK_MEMORY=1
-BENCHMARK_MEMORY_SAMPLE_MS=100
-BENCHMARK_MEMORY_SETTLE_MS=100
-BENCHMARK_TOPIC=benchmarks
-BENCHMARK_PARTITIONS=3
-```
-
-See [BENCHMARKS.md](../../BENCHMARKS.md) for the latest captured run and the
-[benchmark README](../../benchmarks/kafka/README.md) for the full benchmark methodology and environment variables.
-
-## Migration Notes
-
-### v4 Type-Only Runtime Exports
-
-`CommitMode`, `KafkaEventName`, `PartitionPosition`, and `SecurityProtocol` are no longer runtime exports from
-`kafka-crab-js`.
-
-Before:
-
-```ts
-import { CommitMode, SecurityProtocol } from 'kafka-crab-js'
-```
-
-After:
-
-```ts
-import type { CommitMode, SecurityProtocol } from 'kafka-crab-js'
-
-const commitMode: CommitMode = 'Sync'
-const securityProtocol: SecurityProtocol = 'Plaintext'
-```
-
-### v3 OpenTelemetry Split
-
-OpenTelemetry instrumentation moved from the core package to `kafka-crab-js-otel` in v3. This keeps the core package
-small and makes tracing/metrics opt-in.
-
-## Troubleshooting
-
-### The Consumer Does Not Receive Existing Messages
-
-Use an offset reset policy and a fresh consumer group:
-
-```ts
-const consumer = client.createConsumer({
-  groupId: `orders-worker-${Date.now()}`,
-  configuration: {
-    'auto.offset.reset': 'earliest',
-  },
-})
-```
-
-Or subscribe with an explicit starting position:
-
-```ts
-await consumer.subscribe([{ topic: 'orders', allOffsets: { position: 'Beginning' } }])
-```
-
-### The Process Hangs On Shutdown
-
-Direct consumers should call `disconnect()`:
-
-```ts
-await consumer.disconnect()
-```
-
-Node stream consumers should call `destroy()`:
-
-```ts
-stream.destroy()
-```
-
-Web stream consumers should cancel the reader and disconnect the underlying consumer:
-
-```ts
-await reader.cancel()
-await webConsumer.consumer.disconnect()
-```
-
-### Localhost Resolves To IPv6 But Kafka Listens On IPv4
-
-Set `brokerAddressFamily: 'v4'`:
-
-```ts
-const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  brokerAddressFamily: 'v4',
-})
-```
-
-### Need Advanced Kafka Settings
-
-Pass librdkafka settings through `configuration`:
-
-```ts
-const client = new KafkaClient({
-  brokers: 'localhost:9092',
-  configuration: {
-    'socket.keepalive.enable': true,
-    'metadata.max.age.ms': 300000,
-  },
-})
-```
-
-Consumer and producer configuration objects also accept their own `configuration` maps.
-
-### `fetch.max.bytes` Must Be At Least `message.max.bytes`
-
-librdkafka validates fetch limits at consumer creation time. If you tune fetch sizes for benchmarks or production and
-set `message.max.bytes` higher than `fetch.max.bytes`, the consumer will fail to start with an error similar to:
-
-```text
-`fetch.max.bytes` must be >= `message.max.bytes`
-```
-
-Keep the fetch caps aligned:
-
-```ts
-const consumer = client.createConsumer({
-  groupId: 'orders-worker',
-  configuration: {
-    'message.max.bytes': 1_000_000,
-    'fetch.max.bytes': 1_048_576,
-    'max.partition.fetch.bytes': 1_048_576,
-  },
-})
-```
-
-### Benchmark Numbers Move Between Runs
-
-Kafka benchmarks are sensitive to CPU frequency, power mode, broker state, topic data already in page cache, and V8 heap
-history. The benchmark package defaults to isolated child processes for memory mode to reduce cross-scenario
-contamination, but you should still compare multiple runs and focus on large, repeatable gaps.
-
-## Development
-
-From the repository root:
-
-```bash
-vp install
-vp run build
-vp run test
-vp run test:integration
-vp check
-```
-
-Useful package-local commands:
-
-```bash
-vp run --filter kafka-crab-js build
-vp run --filter kafka-crab-js test
-vp run --filter kafka-crab-js test:integration
-```
-
-Integration tests require Kafka at `localhost:9092` unless `KAFKA_BROKERS` is set.
+Building from source requires Rust and the native build prerequisites. Kafka must
+be running for integration tests. See [test infrastructure](js-tests/integration/README.md)
+for the Compose setup and broker requirements. The [release review](docs/rfc/review/README.md) tracks
+validation separately from the performance claims above.
 
 ## License
 
-MIT
+[MIT](https://opensource.org/licenses/MIT)

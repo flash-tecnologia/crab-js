@@ -41,6 +41,18 @@ jobs:
           node-version: 24
           cache: 'pnpm'
 
+      - name: Verify release tag matches package version
+        if: startsWith(github.ref, 'refs/tags/kafka-crab-js@')
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const { version } = JSON.parse(readFileSync('packages/kafka-crab-js/package.json', 'utf8'))
+          const expected = `refs/tags/kafka-crab-js@${version}`
+          if (process.env.GITHUB_REF !== expected) {
+            throw new Error(`Release tag ${process.env.GITHUB_REF} does not match package version ${version}`)
+          }
+          NODE
+
       - name: Install
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -59,6 +71,14 @@ jobs:
       - name: Clippy
         working-directory: packages/kafka-crab-js
         run: cargo clippy
+
+      - name: Rust unit tests
+        working-directory: packages/kafka-crab-js
+        run: cargo test --locked
+
+      - name: Native drain regressions
+        working-directory: packages/kafka-crab-js
+        run: cargo test --locked --manifest-path js-tests/native-drain/Cargo.toml
 
   build:
     strategy:
@@ -196,7 +216,7 @@ jobs:
           cache: pnpm
           architecture: ${{ matrix.settings.architecture }}
       - name: Install dependencies
-        run: pnpm install --filter kafka-crab-js
+        run: pnpm install --filter kafka-crab-js --cpu=${{ matrix.settings.architecture }}
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
@@ -279,6 +299,55 @@ jobs:
           options: -v ${{ steps.docker.outputs.PNPM_STORE_PATH }}:${{ steps.docker.outputs.PNPM_STORE_PATH }} -v ${{ github.workspace }}:${{ github.workspace }} -w ${{ github.workspace }}/packages/kafka-crab-js --platform ${{ steps.docker.outputs.PLATFORM }}
           args: npm run test
 
+  integration-kafka:
+    name: Integration Kafka (lifecycle + manual commit + send failure)
+    runs-on: ubuntu-latest
+    services:
+      kafka:
+        image: apache/kafka:3.8.0
+        ports:
+          - 9092:9092
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+          KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+          CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: pnpm install --filter kafka-crab-js
+      - name: Build
+        run: pnpm build
+        working-directory: packages/kafka-crab-js
+      - name: Integration tests (Kafka)
+        run: node --test js-tests/integration/stream-lifecycle-real.test.mjs js-tests/integration/consumer-manual-commit.test.mjs js-tests/integration/producer-send-failure.test.mjs
+        working-directory: packages/kafka-crab-js
+        env:
+          KAFKA_BROKERS: localhost:9092
+
   publish-kafka-crab-js:
     name: Publish kafka-crab-js
     runs-on: ubuntu-latest
@@ -287,6 +356,7 @@ jobs:
       - lint
       - test-macOS-windows-binding
       - test-linux-binding
+      - integration-kafka
     steps:
       - uses: actions/checkout@v6
       - name: setup pnpm

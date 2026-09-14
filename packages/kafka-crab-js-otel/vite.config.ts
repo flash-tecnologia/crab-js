@@ -1,6 +1,19 @@
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite-plus'
 import type { OxlintConfig } from 'vite-plus/lint'
 import { sharedFmtConfig, sharedLintConfig, sharedTestLintRules } from '../../vite.shared.mjs'
+
+const packageInfo: unknown = JSON.parse(readFileSync(new URL('package.json', import.meta.url), 'utf8'))
+if (
+  !packageInfo ||
+  typeof packageInfo !== 'object' ||
+  !('name' in packageInfo) ||
+  typeof packageInfo.name !== 'string' ||
+  !('version' in packageInfo) ||
+  typeof packageInfo.version !== 'string'
+) {
+  throw new Error('Package name and version are required for OTEL instrumentation metadata')
+}
 
 const externalDependencies = [
   'kafka-crab-js',
@@ -81,8 +94,8 @@ export default defineConfig({
       legacyCjs: false,
     },
     define: {
-      __PACKAGE_NAME__: JSON.stringify('kafka-crab-js-otel'),
-      __PACKAGE_VERSION__: JSON.stringify('1.2.1'),
+      __PACKAGE_NAME__: JSON.stringify(packageInfo.name),
+      __PACKAGE_VERSION__: JSON.stringify(packageInfo.version),
     },
     deps: {
       neverBundle: externalDependencies,

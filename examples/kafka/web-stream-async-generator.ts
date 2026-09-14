@@ -103,7 +103,7 @@ try {
       })
     }
 
-    await webConsumer.consumer.commitMessage(message, 'Async')
+    await webConsumer.consumer.commitMessage(message, 'Sync')
 
     if (received >= messageCount) {
       break

@@ -90,7 +90,8 @@
     "@emnapi/core": "catalog:",
     "@emnapi/runtime": "catalog:",
     "@napi-rs/cli": "catalog:",
-    "@napi-rs/wasm-runtime": "catalog:"
+    "@napi-rs/wasm-runtime": "catalog:",
+    "emnapi": "catalog:"
   },
   "napi": {
     "binaryName": "html-to-pdf-crab-js",

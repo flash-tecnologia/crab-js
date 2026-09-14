@@ -14,6 +14,8 @@ pub struct ConsumerConfiguration {
   pub group_id: String,
   pub enable_auto_commit: Option<bool>,
   pub configuration: Option<HashMap<String, serde_json::Value>>,
+  /// Metadata timeout in ms (default 2000, clamped to 1–300000). Zero is not
+  /// fail-fast: it falls back to the default. Negative values are rejected.
   pub fetch_metadata_timeout: Option<i64>,
 }
 

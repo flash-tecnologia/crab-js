@@ -1,6 +1,7 @@
 import {
   type Attributes,
   type Context,
+  type Link,
   context,
   diag,
   propagation,
@@ -150,7 +151,7 @@ export function getMessageAttributes(
   }
 
   // Conditionally Required: tombstone detection
-  if (!isDefined(message.payload)) {
+  if (message.isTombstone === true || !isDefined(message.payload)) {
     attributes[KAFKA_SEMANTIC_CONVENTIONS.MESSAGING_KAFKA_TOMBSTONE] = true
   }
 
@@ -230,42 +231,13 @@ export function injectTraceContext(
     // Clone headers to avoid mutating caller input
     const targetHeaders: Record<string, HeaderValue> = { ...headers }
 
-    // Convert existing headers to string format for OpenTelemetry propagation
-    const stringHeaders: Record<string, string | string[] | undefined> = {}
-    for (const [key, value] of Object.entries(targetHeaders)) {
-      if (value === undefined || value === null) {
-        stringHeaders[key] = undefined
-      } else if (Buffer.isBuffer(value)) {
-        stringHeaders[key] = value.toString('utf8')
-      } else if (Array.isArray(value)) {
-        stringHeaders[key] = value
-      } else {
-        stringHeaders[key] = String(value)
-      }
-    }
-
-    // Inject trace context using OpenTelemetry propagation API
-    propagation.inject(activeContext, stringHeaders, {
-      set: (carrier: Record<string, string | string[] | undefined>, key: string, value: string) => {
-        carrier[key] = value
+    // Only propagation fields are text. Existing Kafka headers may contain arbitrary bytes.
+    const inputHasBuffers = Object.values(targetHeaders).some((value) => Buffer.isBuffer(value))
+    propagation.inject(activeContext, targetHeaders, {
+      set: (carrier: Record<string, HeaderValue>, key: string, value: string) => {
+        carrier[key] = inputHasBuffers ? Buffer.from(value, 'utf8') : value
       },
     })
-
-    // Mutate cloned headers object with injected trace context
-    // Keep the same type format as the input (Buffer headers stay as Buffer)
-    const inputHasBuffers = Object.values(targetHeaders).some((headerValue) => Buffer.isBuffer(headerValue))
-    for (const [key, value] of Object.entries(stringHeaders)) {
-      if (value !== undefined) {
-        if (inputHasBuffers) {
-          // Convert back to Buffer for Kafka native binding compatibility
-          const stringValue = Array.isArray(value) ? value.join(',') : value
-          targetHeaders[key] = Buffer.from(stringValue, 'utf8')
-        } else {
-          // Keep as string for user-facing API
-          targetHeaders[key] = value
-        }
-      }
-    }
 
     return targetHeaders
   } catch (error) {
@@ -318,32 +290,10 @@ export function getCapturedHeaderAttributes(
 }
 
 // Extract trace context from Kafka headers (supports both Buffer and string headers)
-// Returns root context when traceparent is missing to avoid inheriting unrelated ambient spans
+// Extract from root so missing, invalid, or failed propagation cannot inherit unrelated ambient spans
 export function extractTraceContext(headers: Record<string, Buffer | string | string[] | undefined> = {}): Context {
-  const hasTraceparent = Object.entries(headers).some(([key, value]) => {
-    if (key.toLowerCase() !== 'traceparent') {
-      return false
-    }
-
-    if (Array.isArray(value)) {
-      return value.some((headerValue) => String(headerValue).trim().length > 0)
-    }
-
-    if (Buffer.isBuffer(value)) {
-      return value.toString('utf8').trim().length > 0
-    }
-
-    if (value === undefined || value === null) {
-      return false
-    }
-
-    return String(value).trim().length > 0
-  })
-
-  const extractionBase = hasTraceparent ? context.active() : ROOT_CONTEXT
-
   try {
-    return propagation.extract(extractionBase, headers, {
+    return propagation.extract(ROOT_CONTEXT, headers, {
       get: (carrier: Record<string, Buffer | string | string[] | undefined>, key: string) => {
         let value = carrier[key]
         if (value === undefined) {
@@ -366,11 +316,8 @@ export function extractTraceContext(headers: Record<string, Buffer | string | st
       keys: (carrier: Record<string, Buffer | string | string[] | undefined>) => Object.keys(carrier),
     })
   } catch (error) {
-    diag.warn(
-      `Failed to extract trace context from headers, using ${hasTraceparent ? 'active' : 'root'} context:`,
-      error,
-    )
-    return extractionBase
+    diag.warn('Failed to extract trace context from headers, using root context:', error)
+    return ROOT_CONTEXT
   }
 }
 
@@ -442,6 +389,7 @@ export function createProducerSpan(
 
 // Options for creating consumer spans
 export interface ConsumerSpanOptions {
+  links?: Link[]
   operationName?: string
   operationType?: string
   parentContext?: Context
@@ -482,6 +430,7 @@ export function createConsumerSpan(tracer: Tracer, message: Message, options: Co
   const spanOptions = {
     kind: SpanKind.CONSUMER,
     attributes,
+    links: options.links,
   }
 
   // Start span with parent context if provided
@@ -494,6 +443,7 @@ export function createConsumerSpan(tracer: Tracer, message: Message, options: Co
 
 // Options for creating batch spans
 export interface BatchSpanOptions {
+  links?: Link[]
   topic?: string
   operationName?: string
   parentContext?: Context
@@ -548,6 +498,7 @@ export function createBatchSpan(tracer: Tracer, batchSize: number, options: Batc
   const spanOptions = {
     kind: SpanKind.CONSUMER,
     attributes,
+    links: options.links,
   }
 
   if (parentContext) {
@@ -555,4 +506,19 @@ export function createBatchSpan(tracer: Tracer, batchSize: number, options: Batc
   }
 
   return tracer.startSpan(spanName, spanOptions)
+}
+
+/** Attribute an aggregate only when every record shares the destination. */
+export function getCommonDestination(messages: { topic: string; partition?: number }[]): {
+  topic?: string
+  partition?: number
+} {
+  const [first] = messages
+  if (!first || !messages.every((message) => message.topic === first.topic)) {
+    return {}
+  }
+  return {
+    topic: first.topic,
+    partition: messages.every((message) => message.partition === first.partition) ? first.partition : undefined,
+  }
 }

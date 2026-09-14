@@ -1,26 +1,21 @@
-use std::{
-  collections::HashSet,
-  sync::{
-    atomic::{AtomicU64, Ordering},
-    Arc,
-  },
-  time::Duration,
-};
-
-use dashmap::DashMap;
-
-use nanoid::nanoid;
 use napi::{Error, Result, Status};
+use rdkafka::message::{DeliveryResult, OwnedHeaders};
+use rdkafka::producer::Partitioner;
+use rdkafka::producer::ThreadedProducer;
 use rdkafka::{
   error::KafkaError,
-  message::{OwnedHeaders, OwnedMessage},
-  producer::{BaseRecord, DeliveryResult, NoCustomPartitioner, Partitioner, ThreadedProducer},
+  producer::{BaseRecord, NoCustomPartitioner},
   ClientConfig, ClientContext, Message, Statistics,
 };
 use rdkafka::{
   message::ToBytes,
   producer::{Producer, ProducerContext},
 };
+use std::{
+  sync::{Arc, Mutex},
+  time::Duration,
+};
+use tokio::sync::oneshot;
 use tracing::{debug, info};
 
 use crate::kafka::kafka_util::{convert_config_values_to_strings, hashmap_to_kafka_headers};
@@ -30,25 +25,27 @@ use super::model::{
 };
 
 const DEFAULT_QUEUE_TIMEOUT: i64 = 5000;
-// Message ID generation constants for optimal string allocation
-const PREFIX_ID_LEN: usize = 5; // nanoid!(5) generates 5 characters
-const MAX_U64_DIGITS: usize = 20; // Maximum digits in u64::MAX
-const CAPACITY: usize = PREFIX_ID_LEN + 1 + MAX_U64_DIGITS; // prefix + "_" + counter = 26
 
-type ProducerDeliveryResult = (OwnedMessage, Option<KafkaError>, Arc<String>);
+/// Per-message delivery result moved through a `oneshot` channel owned by the
+/// send (auto mode) or the manual pending list (manual mode). A dropped
+/// receiver (timeout, shutdown) turns the late callback into a harmless no-op:
+/// there is no shared map to leak or to steal from.
+#[derive(Debug)]
+struct DeliveryResultData {
+  topic: String,
+  partition: i32,
+  offset: i64,
+  error: Option<KafkaError>,
+}
 
 #[derive(Clone)]
 struct CollectingContext<Part: Partitioner = NoCustomPartitioner> {
-  results: Arc<DashMap<String, ProducerDeliveryResult>>,
   partitioner: Option<Part>,
 }
 
 impl CollectingContext {
   fn new() -> CollectingContext {
-    CollectingContext {
-      results: Arc::new(DashMap::new()),
-      partitioner: None,
-    }
+    CollectingContext { partitioner: None }
   }
 }
 
@@ -59,16 +56,32 @@ impl<Part: Partitioner + Send + Sync> ClientContext for CollectingContext<Part> 
 }
 
 impl<Part: Partitioner + Send + Sync> ProducerContext<Part> for CollectingContext<Part> {
-  type DeliveryOpaque = Arc<String>;
+  type DeliveryOpaque = Box<oneshot::Sender<DeliveryResultData>>;
 
   fn delivery(&self, delivery_result: &DeliveryResult, delivery_opaque: Self::DeliveryOpaque) {
-    let (message, err) = match *delivery_result {
-      Ok(ref message) => (message.detach(), None),
-      Err((ref err, ref message)) => (message.detach(), Some(err.clone())),
+    let (topic, partition, offset, err) = match *delivery_result {
+      Ok(ref message) => (
+        message.topic().to_string(),
+        message.partition(),
+        message.offset(),
+        None,
+      ),
+      Err((ref err, ref message)) => (
+        message.topic().to_string(),
+        message.partition(),
+        message.offset(),
+        Some(err.clone()),
+      ),
     };
-    self
-      .results
-      .insert((*delivery_opaque).clone(), (message, err, delivery_opaque));
+    // `Err` means the receiver is gone (timeout or shutdown): the result has
+    // no owner anymore and is dropped. This is the late-callback path, and it
+    // needs no map lookup, expiry, or eviction to be safe.
+    let _ = delivery_opaque.send(DeliveryResultData {
+      topic,
+      partition,
+      offset,
+      error: err,
+    });
   }
 
   fn get_custom_partitioner(&self) -> Option<&Part> {
@@ -98,11 +111,14 @@ where
 pub struct KafkaProducer {
   queue_timeout: Duration,
   auto_flush: bool,
-  context: CollectingContext,
-  producer: ThreadedProducer<CollectingContext>,
-  counter: Arc<AtomicU64>,
-  // Pre-calculated prefix for efficient message ID generation (nanoid(5) + "_")
-  id_prefix: String,
+  producer: Arc<ThreadedProducer<CollectingContext>>,
+  /// Receivers stashed by `send()` in manual mode, drained by `flush()`.
+  /// Each receiver has exactly one owner at a time, so concurrent operations
+  /// cannot steal each other's confirmations.
+  manual_pending: Arc<Mutex<Vec<oneshot::Receiver<DeliveryResultData>>>>,
+  /// Last confirmed batch, kept for the `getLastDeliveryResults()` compat API.
+  /// Exact for serial use; concurrent native-direct sends may overwrite it.
+  last_delivery_results: Arc<Mutex<Vec<RecordMetadata>>>,
 }
 
 #[napi]
@@ -134,18 +150,35 @@ impl KafkaProducer {
 
     let context = CollectingContext::new();
     let producer: ThreadedProducer<CollectingContext> =
-      threaded_producer_with_context(context.clone(), producer_config)?;
-
-    let id_prefix = format!("{}_", nanoid!(PREFIX_ID_LEN));
+      threaded_producer_with_context(context, producer_config)?;
 
     Ok(KafkaProducer {
       queue_timeout,
       auto_flush,
-      context,
-      producer,
-      counter: Arc::new(AtomicU64::new(1)),
-      id_prefix,
+      producer: Arc::new(producer),
+      manual_pending: Arc::new(Mutex::new(Vec::new())),
+      last_delivery_results: Arc::new(Mutex::new(Vec::new())),
     })
+  }
+
+  /// Pumps the librdkafka queue off the async runtime.
+  async fn flush_queue(&self) -> Result<()> {
+    let producer = self.producer.clone();
+    let queue_timeout = self.queue_timeout;
+    let join = tokio::task::spawn_blocking(move || producer.flush(queue_timeout)).await;
+    let inner = match join {
+      Ok(result) => result,
+      Err(e) => {
+        return Err(Error::new(
+          Status::GenericFailure,
+          format!("Flush task join error: {e}"),
+        ))
+      }
+    };
+    match inner {
+      Ok(()) => Ok(()),
+      Err(e) => Err(Error::new(Status::GenericFailure, e.to_string())),
+    }
   }
 
   /// Returns the number of messages that are currently in-flight (sent but not yet acknowledged).
@@ -153,6 +186,14 @@ impl KafkaProducer {
   #[napi]
   pub fn in_flight_count(&self) -> Result<i32> {
     Ok(self.producer.in_flight_count())
+  }
+  #[napi]
+  pub fn get_last_delivery_results(&self) -> Vec<RecordMetadata> {
+    self
+      .last_delivery_results
+      .lock()
+      .unwrap_or_else(|e| e.into_inner())
+      .clone()
   }
 
   /// Flushes all pending messages to the Kafka broker and waits for delivery confirmation.
@@ -162,10 +203,77 @@ impl KafkaProducer {
   #[napi]
   pub async fn flush(&self) -> Result<Vec<RecordMetadata>> {
     if self.auto_flush {
+      self.flush_queue().await?;
       Ok(vec![])
     } else {
-      self.flush_delivery_results()
+      let receivers = std::mem::take(
+        &mut *self
+          .manual_pending
+          .lock()
+          .unwrap_or_else(|e| e.into_inner()),
+      );
+      self.flush_receivers(receivers).await
     }
+  }
+
+  /// Pumps the queue, then gathers owned confirmations. Used by manual `flush()`.
+  async fn flush_receivers(
+    &self,
+    receivers: Vec<oneshot::Receiver<DeliveryResultData>>,
+  ) -> Result<Vec<RecordMetadata>> {
+    let deadline = tokio::time::Instant::now() + self.queue_timeout;
+    let flush_res = self.flush_queue().await;
+    let (result, last_err) = Self::gather(receivers, deadline).await;
+
+    *self
+      .last_delivery_results
+      .lock()
+      .unwrap_or_else(|e| e.into_inner()) = result.clone();
+
+    if let Err(e) = flush_res {
+      if result.is_empty() {
+        return Err(e);
+      }
+      return Err(Error::new(
+        Status::GenericFailure,
+        format!(
+          "Flush completed with error ({} messages confirmed): {}",
+          result.len(),
+          e
+        ),
+      ));
+    }
+
+    if let Some(e) = last_err {
+      return Err(Error::new(
+        Status::GenericFailure,
+        format!("Message delivery failed: {e}"),
+      ));
+    }
+
+    Ok(result)
+  }
+
+  /// Awaits owned receivers within `deadline`, in order. Unconfirmed results
+  /// are abandoned by dropping their receivers: expiry needs no eviction pass
+  /// because nothing is shared.
+  async fn gather(
+    receivers: Vec<oneshot::Receiver<DeliveryResultData>>,
+    deadline: tokio::time::Instant,
+  ) -> (Vec<RecordMetadata>, Option<KafkaError>) {
+    let mut result = Vec::with_capacity(receivers.len());
+    let mut last_err = None;
+    for rx in receivers {
+      // Anything else (sender dropped, budget expired) abandons the
+      // confirmation: expiry needs no eviction pass because nothing is shared.
+      if let Ok(Ok(data)) = tokio::time::timeout_at(deadline, rx).await {
+        if let Some(err) = data.error.as_ref() {
+          last_err = Some(err.clone());
+        }
+        result.push(to_record_metadata(&data));
+      }
+    }
+    (result, last_err)
   }
 
   /// Sends one or more messages to a Kafka topic.
@@ -175,45 +283,99 @@ impl KafkaProducer {
   #[napi]
   pub async fn send(&self, producer_record: ProducerRecord) -> Result<Vec<RecordMetadata>> {
     let topic = producer_record.topic.as_str();
+    let total = producer_record.messages.len();
+    let deadline = tokio::time::Instant::now() + self.queue_timeout;
 
-    // Pre-allocate HashSet capacity for better performance
-    let mut ids = HashSet::with_capacity(producer_record.messages.len());
-    for _ in &producer_record.messages {
-      ids.insert(self.generate_message_id());
+    let mut receivers = Vec::with_capacity(total);
+    let mut send_err = None;
+
+    for message in producer_record.messages {
+      let (tx, rx) = oneshot::channel();
+      match self.send_single_message(topic, &message, Box::new(tx)) {
+        Ok(()) => receivers.push(rx),
+        // Both halves are dropped: the message was never enqueued, so no
+        // callback will ever arrive for it.
+        Err(e) => {
+          send_err = Some(e);
+          break;
+        }
+      }
     }
+    let enqueued = receivers.len();
 
-    for (message, record_id) in producer_record.messages.into_iter().zip(ids.iter()) {
-      self.send_single_message(topic, &message, record_id)?;
+    if let Some(err) = send_err {
+      if self.auto_flush && !receivers.is_empty() {
+        let flush_res = self.flush_queue().await;
+        let (confirmed, _) = Self::gather(receivers, deadline).await;
+        *self
+          .last_delivery_results
+          .lock()
+          .unwrap_or_else(|e| e.into_inner()) = confirmed.clone();
+        let underlying_err = flush_res
+          .err()
+          .map(|e| e.reason)
+          .unwrap_or_else(|| err.to_string());
+        return Err(send_failure_error(
+          enqueued,
+          total,
+          confirmed,
+          &underlying_err,
+        ));
+      }
+      if !self.auto_flush {
+        // Live receivers stay owned by the manual pending list for a later flush.
+        self
+          .manual_pending
+          .lock()
+          .unwrap_or_else(|e| e.into_inner())
+          .append(&mut receivers);
+        *self
+          .last_delivery_results
+          .lock()
+          .unwrap_or_else(|e| e.into_inner()) = Vec::new();
+      }
+      return Err(send_failure_error(
+        enqueued,
+        total,
+        Vec::new(),
+        &err.to_string(),
+      ));
     }
 
     if self.auto_flush {
-      self.flush_delivery_results_with_filter(&ids)
+      let flush_res = self.flush_queue().await;
+      let (confirmed, delivery_err) = Self::gather(receivers, deadline).await;
+      *self
+        .last_delivery_results
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = confirmed.clone();
+      if let Err(e) = flush_res {
+        return Err(send_failure_error(enqueued, total, confirmed, &e.reason));
+      }
+      if let Some(e) = delivery_err {
+        return Err(send_failure_error(
+          enqueued,
+          total,
+          confirmed,
+          &format!("Message delivery failed: {e}"),
+        ));
+      }
+      Ok(confirmed)
     } else {
+      self
+        .manual_pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .append(&mut receivers);
       Ok(vec![])
     }
-  }
-
-  /// Generates a fast, unique message ID using atomic counter and pre-allocated prefix
-  /// This is ~2-3x faster than the previous format!() approach for high-throughput scenarios
-  fn generate_message_id(&self) -> String {
-    let id = self.counter.fetch_add(1, Ordering::Relaxed);
-
-    // Use pre-allocated prefix and efficient string building with constant capacity
-    let mut result = String::with_capacity(CAPACITY);
-    result.push_str(&self.id_prefix);
-
-    // Use write! macro for efficient integer formatting directly into the string
-    use std::fmt::Write;
-    let _ = write!(result, "{id}"); // write! to String never fails
-
-    result
   }
 
   fn send_single_message(
     &self,
     topic: &str,
     message: &MessageProducer,
-    record_id: &str,
+    opaque: Box<oneshot::Sender<DeliveryResultData>>,
   ) -> Result<()> {
     let headers = message
       .headers
@@ -223,11 +385,23 @@ impl KafkaProducer {
     // Preserve Kafka semantics: None => no key (round-robin), Some => hashed partition
     let key = message.key.as_deref().map(ToBytes::to_bytes);
 
-    let opaque = Arc::new(record_id.to_string());
-    let mut record: BaseRecord<'_, [u8], [u8], Arc<String>> =
-      BaseRecord::with_opaque_to(topic, opaque)
-        .payload(message.payload.to_bytes())
-        .headers(headers);
+    let mut record: BaseRecord<'_, [u8], [u8], Box<oneshot::Sender<DeliveryResultData>>> =
+      BaseRecord::with_opaque_to(topic, opaque).headers(headers);
+
+    if message.is_tombstone == Some(true) && message.payload.is_some() {
+      return Err(Error::new(
+        Status::InvalidArg,
+        "isTombstone: true cannot be combined with a payload; omit the payload for tombstones"
+          .to_string(),
+      ));
+    }
+
+    let is_tombstone = message.is_tombstone.unwrap_or(false) || message.payload.is_none();
+    if !is_tombstone {
+      if let Some(ref payload) = message.payload {
+        record = record.payload(payload.as_ref());
+      }
+    }
 
     if let Some(key) = key {
       record = record.key(key);
@@ -240,60 +414,67 @@ impl KafkaProducer {
 
     Ok(())
   }
-
-  fn flush_delivery_results(&self) -> Result<Vec<RecordMetadata>> {
-    self
-      .producer
-      .flush(self.queue_timeout)
-      .map_err(|e| Error::new(Status::GenericFailure, e))?;
-
-    let delivery_results = &self.context.results;
-    let result: Vec<RecordMetadata> = delivery_results
-      .iter()
-      .map(|entry| {
-        let (message, error, _) = entry.value();
-        to_record_metadata(message, error)
-      })
-      .collect();
-    delivery_results.clear();
-    Ok(result)
-  }
-
-  fn flush_delivery_results_with_filter(
-    &self,
-    ids: &HashSet<String>,
-  ) -> Result<Vec<RecordMetadata>> {
-    self
-      .producer
-      .flush(self.queue_timeout)
-      .map_err(|e| Error::new(Status::GenericFailure, e))?;
-
-    let delivery_results = &self.context.results;
-    let result: Vec<RecordMetadata> = delivery_results
-      .iter()
-      .filter(|entry| ids.contains(entry.key()))
-      .map(|entry| {
-        let (message, error, _) = entry.value();
-        to_record_metadata(message, error)
-      })
-      .collect();
-
-    // Remove processed entries
-    delivery_results.retain(|key, _| !ids.contains(key));
-    Ok(result)
-  }
 }
 
-fn to_record_metadata(message: &OwnedMessage, error: &Option<KafkaError>) -> RecordMetadata {
+fn to_record_metadata(data: &DeliveryResultData) -> RecordMetadata {
   RecordMetadata {
-    topic: message.topic().to_string(),
-    partition: message.partition(),
-    offset: message.offset(),
-    error: error.as_ref().map(|err| KafkaCrabError {
+    topic: data.topic.clone(),
+    partition: data.partition,
+    offset: data.offset,
+    error: data.error.as_ref().map(|err| KafkaCrabError {
       code: err
         .rdkafka_error_code()
         .unwrap_or(rdkafka::types::RDKafkaErrorCode::Unknown) as i32,
       message: err.to_string(),
     }),
   }
+}
+/// Keep in sync with `SEND_FAILURE_PAYLOAD_MARKER` in js-src/send-failure.ts.
+const SEND_FAILURE_PAYLOAD_MARKER: &str = "\n--kafka-crab-send-failure--\n";
+
+/// Human prefix is pinned by the M06 partial-failure regression
+/// (`enqueued X of Y, confirmed Z`). Confirmed metadata travels in the
+/// trailing JSON payload so JS does not re-read the shared compat slot.
+fn partial_send_error_message(
+  enqueued: usize,
+  total: usize,
+  confirmed: usize,
+  underlying: &str,
+) -> String {
+  format!("Failed to send all messages (enqueued {enqueued} of {total}, confirmed {confirmed}): {underlying}")
+}
+
+fn send_failure_error(
+  enqueued: usize,
+  total: usize,
+  confirmed: Vec<RecordMetadata>,
+  underlying: &str,
+) -> Error {
+  let confirmed_count = confirmed.len();
+  let human = partial_send_error_message(enqueued, total, confirmed_count, underlying);
+  let payload = serde_json::json!({
+    "enqueuedCount": enqueued,
+    "totalCount": total,
+    "confirmedCount": confirmed_count,
+    "confirmedMessages": confirmed.iter().map(record_metadata_json).collect::<Vec<_>>(),
+  });
+  match serde_json::to_string(&payload) {
+    Ok(json) => Error::new(
+      Status::GenericFailure,
+      format!("{human}{SEND_FAILURE_PAYLOAD_MARKER}{json}"),
+    ),
+    Err(_) => Error::new(Status::GenericFailure, human),
+  }
+}
+
+fn record_metadata_json(meta: &RecordMetadata) -> serde_json::Value {
+  serde_json::json!({
+    "topic": meta.topic,
+    "partition": meta.partition,
+    "offset": meta.offset,
+    "error": meta.error.as_ref().map(|err| serde_json::json!({
+      "code": err.code,
+      "message": err.message,
+    })),
+  })
 }

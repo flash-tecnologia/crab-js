@@ -278,17 +278,17 @@ await test('Consumer Stream Integration Tests', async (t) => {
 
   await t.test('Stream Consumer: Unsubscribe functionality', async () => {
     const { topic } = await setupTestEnvironment()
+    const newTopic = createTestTopic('after-unsubscribe')
+    const seed = [{ payload: Buffer.from('unsubscribe-seed') }]
+
+    // allOffsets uses assign() and needs metadata; create the topics first.
+    await producer.send({ topic, messages: seed })
+    await producer.send({ topic: newTopic, messages: seed })
 
     const streamConsumer = client.createStreamConsumer(createConsumerConfig('unsubscribe-test'))
 
-    // Subscribe first
     await streamConsumer.subscribe([{ topic, allOffsets: { position: 'Beginning' } }])
-
-    // Then unsubscribe
     streamConsumer.unsubscribe()
-
-    // Should be able to subscribe to different topic after unsubscribe
-    const newTopic = createTestTopic('after-unsubscribe')
     await streamConsumer.subscribe([{ topic: newTopic, allOffsets: { position: 'Beginning' } }])
 
     await cleanupConsumer(streamConsumer)

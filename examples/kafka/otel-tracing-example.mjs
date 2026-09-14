@@ -85,13 +85,10 @@ console.log('🔧 Creating Kafka client with OpenTelemetry enabled...\n')
 
 // Enable OTEL instrumentation with the kafka-crab-js-otel package
 enableOtelInstrumentation({
-  enabled: true, // Enable OTEL instrumentation (default: true)
-
   // Span configuration
-  captureMessagePayload: true, // Include message payload in spans (default: false)
-  maxPayloadSize: 1024, // Max payload size to capture in bytes (default: 1024)
-  captureMessageHeaders: true, // Include message headers in spans (default: true)
-  enableBatchInstrumentation: true, // Enable batch operation instrumentation (default: true)
+  captureMessagePayload: true, // Record body size, never contents (default: false)
+  maxPayloadSize: 1024, // Largest payload with a body-size attribute (bytes)
+  captureMessageHeaders: true, // Record header names and count, never values (default: true)
 
   // Topic filtering
   ignoreTopics: ['__consumer_offsets'], // Topics to exclude from tracing
@@ -265,7 +262,7 @@ async function consumeMessagesWithTracing() {
       await new Promise((resolve) => setTimeout(resolve, 100))
 
       // Commit the offset
-      await consumer.commitMessage(message, 'Async')
+      await consumer.commitMessage(message, 'Sync')
 
       processingSpan.setStatus({ code: SpanStatusCode.OK })
     } catch (error) {

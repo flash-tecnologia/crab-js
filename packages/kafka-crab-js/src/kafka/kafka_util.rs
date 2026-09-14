@@ -89,37 +89,25 @@ fn borrowed_headers_to_message_headers_small(
 }
 
 #[inline]
-pub fn create_message(message: &BorrowedMessage<'_>, payload: &[u8]) -> Message {
+pub fn create_message(message: &BorrowedMessage<'_>, payload: Option<&[u8]>) -> Message {
   let topic = message.topic().to_owned();
   let partition = message.partition();
   let offset = message.offset();
-  match (message.key(), message.headers()) {
-    (None, None) => Message::new(payload.into(), None, None, topic, partition, offset),
-    (Some(key), None) => Message::new(
-      payload.into(),
-      Some(key.into()),
-      None,
-      topic,
-      partition,
-      offset,
-    ),
-    (None, Some(headers)) => Message::new(
-      payload.into(),
-      None,
-      borrowed_headers_to_message_headers(headers),
-      topic,
-      partition,
-      offset,
-    ),
-    (Some(key), Some(headers)) => Message::new(
-      payload.into(),
-      Some(key.into()),
-      borrowed_headers_to_message_headers(headers),
-      topic,
-      partition,
-      offset,
-    ),
-  }
+  let is_tombstone = if payload.is_none() { Some(true) } else { None };
+  let payload_buf = Buffer::from(payload.unwrap_or(&[]));
+  let key = message.key().map(Into::into);
+  let headers = message
+    .headers()
+    .and_then(borrowed_headers_to_message_headers);
+  Message::new(
+    payload_buf,
+    key,
+    headers,
+    topic,
+    partition,
+    offset,
+    is_tombstone,
+  )
 }
 
 pub fn convert_config_values_to_strings(
@@ -141,10 +129,9 @@ pub fn convert_config_values_to_strings(
 
 #[cfg(test)]
 mod tests {
-  use std::collections::HashMap;
-
   use napi::bindgen_prelude::Buffer;
-  use rdkafka::message::{Header, Headers};
+  use rdkafka::message::Headers;
+  use std::collections::HashMap;
 
   use crate::kafka::kafka_util::hashmap_to_kafka_headers;
 
@@ -157,20 +144,14 @@ mod tests {
 
     let rd_headers = hashmap_to_kafka_headers(&hash_map);
 
-    assert_eq!(
-      rd_headers.get(0),
-      Header {
-        key: "key_a",
-        value: Some("A".as_ref())
-      }
-    );
+    assert_eq!(rd_headers.count(), 2);
+    let mut header_pairs = Vec::new();
+    for i in 0..rd_headers.count() {
+      let header = rd_headers.get(i);
+      header_pairs.push((header.key, header.value));
+    }
 
-    assert_eq!(
-      rd_headers.get(1),
-      Header {
-        key: "key_b",
-        value: Some("B".as_ref())
-      }
-    );
+    assert!(header_pairs.contains(&("key_a", Some("A".as_bytes()))));
+    assert!(header_pairs.contains(&("key_b", Some("B".as_bytes()))));
   }
 }

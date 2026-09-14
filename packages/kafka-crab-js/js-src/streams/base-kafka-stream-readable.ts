@@ -19,7 +19,11 @@ export abstract class BaseKafkaStreamReadable extends Readable {
   public constructor(streamOptions: KafkaStreamReadableOptions) {
     const { kafkaConsumer, ...opts } = streamOptions
 
-    super(opts)
+    if (opts.objectMode === false) {
+      throw new Error('Kafka stream requires objectMode: true to emit Message objects')
+    }
+
+    super({ ...opts, objectMode: true })
 
     if (!kafkaConsumer) {
       throw new Error('A valid KafkaConsumer instance is required.')

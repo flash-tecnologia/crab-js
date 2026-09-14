@@ -57,3 +57,5 @@ export {
 } from './utils.js'
 
 export { enableOtelInstrumentation, getOtelAdapter, OtelAdapter, resetOtelAdapter } from './otel-adapter.js'
+
+export type { OtelAdapterConfig } from './otel-adapter.js'
