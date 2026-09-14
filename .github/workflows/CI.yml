@@ -343,7 +343,7 @@ jobs:
         run: pnpm build
         working-directory: packages/kafka-crab-js
       - name: Integration tests (Kafka)
-        run: node --test js-tests/integration/stream-lifecycle-real.test.mjs js-tests/integration/consumer-manual-commit.test.mjs js-tests/integration/producer-send-failure.test.mjs
+        run: node --test js-tests/integration/stream-lifecycle-real.test.mjs js-tests/integration/consumer-manual-commit.test.mjs js-tests/integration/producer-send-failure.test.mjs js-tests/integration/delete-records-partial-failure.test.mjs
         working-directory: packages/kafka-crab-js
         env:
           KAFKA_BROKERS: localhost:9092

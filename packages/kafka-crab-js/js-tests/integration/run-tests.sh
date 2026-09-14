@@ -125,6 +125,7 @@ TEST_FILES=(
     "consumer.test.mjs" 
     "consumer-stream.test.mjs"
     "consumer-manual-commit.test.mjs"
+    "delete-records-partial-failure.test.mjs"
     "consumer-stream-batch.test.mjs"
     "batch-size-limits.test.mjs"
     "stream-cleanup.test.mjs"
