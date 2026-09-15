@@ -135,7 +135,7 @@ In each npm package's **Settings → Trusted publishing**, select **GitHub Actio
 | `kafka-crab-js-linux-arm64-musl` | `CI.yml`          |
 | `kafka-crab-js-otel`             | `CI-otel.yml`     |
 
-The publish jobs use the GitHub-hosted `flash-static-ip-ubuntu-24` runner, npm 11, and `id-token: write`. Its runner group
+The publish jobs use the GitHub-hosted `crab-js-static-ip` runner, npm 11, and `id-token: write`. Its runner group
 must allow this public repository and the release workflows. Kafka's `prepublishOnly` hook publishes the platform
 packages with `--no-gh-release`, so npm publication does not create or upload assets to a GitHub Release.
 Kafka and OTEL publishing do not use `NPM_TOKEN`; the PDF workflows still reference that secret.

@@ -349,7 +349,7 @@ jobs:
 
   publish-kafka-crab-js:
     name: Publish kafka-crab-js
-    runs-on: flash-static-ip-ubuntu-24
+    runs-on: crab-js-static-ip
     permissions:
       contents: read
       id-token: write
