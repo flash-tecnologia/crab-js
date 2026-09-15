@@ -117,7 +117,7 @@ jobs:
     name: Publish validated kafka-crab-js-otel artifact
     if: startsWith(github.ref, 'refs/tags/kafka-crab-js-otel@')
     needs: validate-otel
-    runs-on: flash-static-ip-ubuntu-24
+    runs-on: crab-js-static-ip
     timeout-minutes: 10
     permissions:
       contents: read
