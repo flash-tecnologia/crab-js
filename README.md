@@ -115,8 +115,13 @@ Focused commands are documented in the owning project READMEs:
 
 ## Publishing Kafka packages
 
-Kafka and OTEL releases use [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) with GitHub Actions OIDC.
-In each npm package's **Settings → Trusted publishing**, select **GitHub Actions** and configure:
+Kafka and OTEL publish steps receive the repository's `NPM_TOKEN` secret as `NODE_AUTH_TOKEN`.
+Use a valid granular token with read/write access to all packages listed below and bypass 2FA enabled for automated
+publishing. Package publishing settings must allow token authentication; any token IP restrictions must allow the runner.
+
+The workflows also support [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) with GitHub Actions OIDC.
+npm tries OIDC before falling back to the token. To configure OIDC, open each npm package's **Settings → Trusted publishing**,
+select **GitHub Actions**, and configure:
 
 - Organization or user: `flash-tecnologia`
 - Repository: `crab-js`
@@ -138,7 +143,7 @@ In each npm package's **Settings → Trusted publishing**, select **GitHub Actio
 The publish jobs use the GitHub-hosted `crab-js-static-ip` runner, npm 11, and `id-token: write`. Its runner group
 must allow this public repository and the release workflows. Kafka's `prepublishOnly` hook publishes the platform
 packages with `--no-gh-release`, so npm publication does not create or upload assets to a GitHub Release.
-Kafka and OTEL publishing do not use `NPM_TOKEN`; the PDF workflows still reference that secret.
+The PDF workflows also reference `NPM_TOKEN`.
 
 Release tags must match the package versions: `kafka-crab-js@<version>` and `kafka-crab-js-otel@<version>`.
 After correcting npm-side publisher settings, failed publish jobs can be rerun. Workflow or package-script changes

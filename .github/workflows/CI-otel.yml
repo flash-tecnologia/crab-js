@@ -137,6 +137,8 @@ jobs:
           name: kafka-crab-js-otel-release
           path: artifacts/otel
       - name: Publish release artifact
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION=${GITHUB_REF#refs/tags/kafka-crab-js-otel@}
           if [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
