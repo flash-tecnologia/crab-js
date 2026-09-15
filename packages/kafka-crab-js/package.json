@@ -46,7 +46,7 @@
     "lint": "vp lint",
     "lint:fix": "vp lint --fix",
     "build": "node build.mjs",
-    "prepublishOnly": "napi prepublish -t npm",
+    "prepublishOnly": "napi prepublish -t npm --no-gh-release",
     "test": "vp test run js-tests/unit",
     "test:integration": "node --test js-tests/integration/*.test.mjs"
   },

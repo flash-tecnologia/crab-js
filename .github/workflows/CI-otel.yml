@@ -117,28 +117,26 @@ jobs:
     name: Publish validated kafka-crab-js-otel artifact
     if: startsWith(github.ref, 'refs/tags/kafka-crab-js-otel@')
     needs: validate-otel
-    runs-on: ubuntu-latest
+    runs-on: flash-static-ip-ubuntu-24
     timeout-minutes: 10
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v6
-      - name: Setup pnpm from packageManager
-        uses: pnpm/action-setup@v6
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11
       - name: Download validated release artifact
         uses: actions/download-artifact@v8
         with:
           name: kafka-crab-js-otel-release
           path: artifacts/otel
       - name: Publish release artifact
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION=${GITHUB_REF#refs/tags/kafka-crab-js-otel@}
           if [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -152,5 +150,5 @@ jobs:
           else
             DIST_TAG=next
           fi
-          pnpm publish "artifacts/otel/kafka-crab-js-otel-${VERSION}.tgz" \
-            --tag "$DIST_TAG" --access public --provenance --no-git-checks
+          npm publish "artifacts/otel/kafka-crab-js-otel-${VERSION}.tgz" \
+            --tag "$DIST_TAG" --access public --provenance
