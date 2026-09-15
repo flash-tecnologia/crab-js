@@ -85,7 +85,7 @@
     "lint": "vp lint",
     "lint:fix": "vp lint --fix",
     "prepack": "node build.mjs --js-only",
-    "prepublishOnly": "napi prepublish -t npm",
+    "prepublishOnly": "napi prepublish -t npm --no-gh-release",
     "test": "pnpm run build && pnpm run test:unit",
     "test:wasm": "pnpm run build:wasm && NAPI_RS_WASI_FLAVOR=wasm32-wasip1 node js-tests/wasm-smoke.mjs",
     "test:wasm-threaded": "pnpm run build:wasm-threaded && NAPI_RS_WASI_FLAVOR=wasm32-wasi node js-tests/wasm-smoke.mjs",
