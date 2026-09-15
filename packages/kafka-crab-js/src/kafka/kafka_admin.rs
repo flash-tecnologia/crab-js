@@ -6,6 +6,7 @@ use rdkafka::{
   config::ClientConfig,
   consumer::{BaseConsumer, Consumer},
   error::KafkaError,
+  topic_partition_list::TopicPartitionList,
   types::RDKafkaErrorCode,
 };
 use tracing::{debug, error, trace, warn};
@@ -111,6 +112,41 @@ impl<'a> KafkaAdmin<'a> {
         Ok(HashMap::new()) // Return empty config, will use defaults
       }
     }
+  }
+
+  /// Deletes records before the requested offset in each topic partition.
+  pub async fn delete_records(
+    &self,
+    offsets: &TopicPartitionList,
+  ) -> anyhow::Result<TopicPartitionList> {
+    let result = self
+      .admin_client
+      .delete_records(offsets, &AdminOptions::default())
+      .await
+      .map_err(anyhow::Error::new)?;
+
+    let partition_errors = result
+      .elements()
+      .into_iter()
+      .filter_map(|tp| {
+        tp.error().err().map(|cause| {
+          format!(
+            "topic '{}' partition {}: {cause}",
+            tp.topic(),
+            tp.partition()
+          )
+        })
+      })
+      .collect::<Vec<_>>();
+
+    if !partition_errors.is_empty() {
+      return Err(anyhow::anyhow!(
+        "Failed to delete Kafka records for partition(s): {}. DeleteRecords may have partially succeeded; retry the failed partitions individually.",
+        partition_errors.join(", ")
+      ));
+    }
+
+    Ok(result)
   }
 
   pub async fn create_topic(

@@ -1,14 +1,23 @@
 use std::{collections::HashMap, fmt, str::FromStr, sync::Once};
 
 use napi::{bindgen_prelude::*, Result};
-use rdkafka::config::{ClientConfig, RDKafkaLogLevel};
+use rdkafka::{
+  config::{ClientConfig, RDKafkaLogLevel},
+  topic_partition_list::TopicPartitionList,
+  Offset,
+};
 
 use tracing::{trace, warn, Level};
 
-use crate::kafka::kafka_util::convert_config_values_to_strings;
+use crate::kafka::kafka_util::{convert_config_values_to_strings, IntoNapiError};
 
 use super::{
-  consumer::{kafka_consumer::KafkaConsumer, model::ConsumerConfiguration},
+  consumer::{
+    consumer_helper::convert_tpl_to_array_of_topic_partition,
+    kafka_consumer::KafkaConsumer,
+    model::{ConsumerConfiguration, TopicPartition},
+  },
+  kafka_admin::KafkaAdmin,
   producer::{kafka_producer::KafkaProducer, model::ProducerConfiguration},
 };
 
@@ -162,6 +171,74 @@ impl KafkaClientConfig {
       Ok(producer) => Ok(producer),
       Err(e) => Err(Error::new(Status::GenericFailure, e.to_string())),
     }
+  }
+
+  /// Deletes all records before the requested offset for each topic partition.
+  /// Kafka does not delete an individual record directly: passing offset `N`
+  /// deletes records with offsets lower than `N`.
+  #[napi]
+  pub async fn delete_records(
+    &self,
+    topic_partitions: Vec<TopicPartition>,
+  ) -> Result<Vec<TopicPartition>> {
+    if topic_partitions.is_empty() {
+      return Err(Error::new(
+        Status::InvalidArg,
+        "deleteRecords requires at least one topic partition".to_string(),
+      ));
+    }
+
+    let mut offsets = TopicPartitionList::new();
+    for topic_partition in &topic_partitions {
+      if topic_partition.partition_offset.is_empty() {
+        return Err(Error::new(
+          Status::InvalidArg,
+          format!(
+            "deleteRecords requires at least one partition offset for topic '{}'",
+            topic_partition.topic
+          ),
+        ));
+      }
+
+      for partition_offset in &topic_partition.partition_offset {
+        let Some(offset) = partition_offset.offset.offset else {
+          return Err(Error::new(
+            Status::InvalidArg,
+            format!(
+              "deleteRecords requires an explicit offset for topic '{}' partition {}",
+              topic_partition.topic, partition_offset.partition
+            ),
+          ));
+        };
+        if offset < 0 {
+          return Err(Error::new(
+            Status::InvalidArg,
+            format!(
+              "deleteRecords offset must be non-negative for topic '{}' partition {}",
+              topic_partition.topic, partition_offset.partition
+            ),
+          ));
+        }
+        offsets
+          .add_partition_offset(
+            &topic_partition.topic,
+            partition_offset.partition,
+            Offset::Offset(offset),
+          )
+          .map_err(|error| {
+            error.into_napi_error("Failed to add delete records partition offset")
+          })?;
+      }
+    }
+
+    let admin = KafkaAdmin::new(&self.rdkafka_client_config, None)
+      .map_err(|error| error.into_napi_error("Failed to create Kafka admin client"))?;
+    let result = admin
+      .delete_records(&offsets)
+      .await
+      .map_err(|error| error.into_napi_error("Failed to delete Kafka records"))?;
+
+    Ok(convert_tpl_to_array_of_topic_partition(&result))
   }
 
   /// Creates a new Kafka consumer with the specified configuration.

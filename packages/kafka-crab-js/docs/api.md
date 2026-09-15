@@ -8,13 +8,13 @@ Generated declarations in `dist/` are the definitive TypeScript signatures.
 ## KafkaClient
 
 ```ts
-import { KafkaClient } from 'kafka-crab-js'
+import { KafkaClient } from "kafka-crab-js";
 
 const client = new KafkaClient({
-  brokers: 'localhost:9092,localhost:9093',
-  clientId: 'orders-service',
+  brokers: "localhost:9092,localhost:9093",
+  clientId: "orders-service",
   diagnostics: true,
-})
+});
 ```
 
 | Client option         | Default       | Purpose                                                                           |
@@ -32,26 +32,27 @@ properties pass through to librdkafka for validation. Prefer producer- or
 consumer-specific properties on the corresponding factory rather than sharing
 incompatible settings between both.
 
-| Factory                            | Result                                                        |
-| ---------------------------------- | ------------------------------------------------------------- |
-| `createProducer(options?)`         | `KafkaProducer`                                               |
-| `createConsumer(options)`          | `KafkaConsumer`                                               |
-| `createWebStreamConsumer(options)` | `{ mode, consumer, stream }`, with serial or batch Web Stream |
-| `createStreamConsumer(options)`    | Node.js `KafkaStreamReadable` or `KafkaBatchStreamReadable`   |
+| Factory                            | Result                                                          |
+| ---------------------------------- | --------------------------------------------------------------- |
+| `createProducer(options?)`         | `KafkaProducer`                                                 |
+| `createConsumer(options)`          | `KafkaConsumer`                                                 |
+| `createWebStreamConsumer(options)` | `{ mode, consumer, stream }`, with serial or batch Web Stream   |
+| `createStreamConsumer(options)`    | Node.js `KafkaStreamReadable` or `KafkaBatchStreamReadable`     |
+| `deleteRecords(topicPartitions)`   | `Promise<TopicPartition[]>`; deletes records before each offset |
 
 ### Secure connections
 
 ```ts
 const secureClient = new KafkaClient({
   brokers: process.env.KAFKA_BROKERS!,
-  clientId: 'orders-service',
-  securityProtocol: 'SaslSsl',
+  clientId: "orders-service",
+  securityProtocol: "SaslSsl",
   configuration: {
-    'sasl.mechanism': 'PLAIN',
-    'sasl.username': process.env.KAFKA_USERNAME!,
-    'sasl.password': process.env.KAFKA_PASSWORD!,
+    "sasl.mechanism": "PLAIN",
+    "sasl.username": process.env.KAFKA_USERNAME!,
+    "sasl.password": process.env.KAFKA_PASSWORD!,
   },
-})
+});
 ```
 
 Load credentials from the deployment's secret store and configure trusted CA
@@ -67,11 +68,11 @@ const producer = client.createProducer({
   queueTimeout: 5000,
   autoFlush: true,
   configuration: {
-    'enable.idempotence': true,
-    acks: 'all',
-    'compression.type': 'lz4',
+    "enable.idempotence": true,
+    acks: "all",
+    "compression.type": "lz4",
   },
-})
+});
 ```
 
 `queueTimeout` defaults to 5,000 ms and controls queue/flush waiting.
@@ -107,13 +108,16 @@ producer retries; it does not make application processing exactly once.
 ### Manual flush
 
 ```ts
-const bufferedProducer = client.createProducer({ autoFlush: false })
+const bufferedProducer = client.createProducer({ autoFlush: false });
 await bufferedProducer.send({
-  topic: 'orders',
-  messages: [{ payload: Buffer.from('first') }, { payload: Buffer.from('second') }],
-})
-const results = await bufferedProducer.flush()
-console.log(results)
+  topic: "orders",
+  messages: [
+    { payload: Buffer.from("first") },
+    { payload: Buffer.from("second") },
+  ],
+});
+const results = await bufferedProducer.flush();
+console.log(results);
 ```
 
 With `autoFlush: false`, `send()` enqueues records and returns an empty array.
@@ -126,9 +130,9 @@ exiting. The current producer API has no `disconnect()` or `close()` method.
 
 ```ts
 await producer.send({
-  topic: 'compacted-orders',
-  messages: [{ key: Buffer.from('order-42'), isTombstone: true }],
-})
+  topic: "compacted-orders",
+  messages: [{ key: Buffer.from("order-42"), isTombstone: true }],
+});
 ```
 
 Omitting `payload` produces a tombstone. An empty `Buffer` is an ordinary empty
@@ -155,14 +159,14 @@ consumer configuration supplies it. Registry version 4.1.3 uses librdkafka's
 
 ```ts
 const consumer = client.createConsumer({
-  groupId: 'orders-workers',
+  groupId: "orders-workers",
   enableAutoCommit: false,
   configuration: {
-    'enable.auto.offset.store': false,
-    'auto.offset.reset': 'earliest',
+    "enable.auto.offset.store": false,
+    "auto.offset.reset": "earliest",
   },
-})
-await consumer.subscribe('orders')
+});
+await consumer.subscribe("orders");
 ```
 
 A string or an array of plain `{ topic }` entries uses group subscription.
@@ -170,9 +174,12 @@ Explicit offsets use manual assignment:
 
 ```ts
 await consumer.subscribe([
-  { topic: 'orders', allOffsets: { position: 'Beginning' } },
-  { topic: 'payments', partitionOffset: [{ partition: 0, offset: { offset: 100 } }] },
-])
+  { topic: "orders", allOffsets: { position: "Beginning" } },
+  {
+    topic: "payments",
+    partitionOffset: [{ partition: 0, offset: { offset: 100 } }],
+  },
+]);
 ```
 
 Every entry in one call must use the same mode. Mixed group/manual entries reject.
@@ -180,6 +187,24 @@ Manual assignment covers exactly the specified partitions, or all partitions for
 `allOffsets`; it does not use group balancing to distribute that assignment.
 Metadata validates topic/partition references. Invalid entries and explicitly
 empty partition lists reject without replacing the prior assignment.
+
+### Deleting records
+
+```ts
+await client.deleteRecords([
+  {
+    topic: "orders-dlq",
+    partitionOffset: [{ partition: 0, offset: { offset: 42 } }],
+  },
+]);
+```
+
+`deleteRecords` uses Kafka's `DeleteRecords` admin operation. For each partition,
+Kafka deletes records with offsets lower than the requested offset; passing `42`
+therefore removes records through offset `41`. The operation requires explicit,
+non-negative offsets and returns the broker's resulting low-water marks. This is a
+physical deletion from the log and requires the Kafka ACL permission for deleting
+records. It is not equivalent to committing a consumer offset.
 
 For local setup, an entry can include `createTopic: true`, `numPartitions`, and
 `replicas`. Topic-creation failures are returned after remaining topics have been
@@ -223,11 +248,11 @@ subscriber lags; use Sync when the application needs a simple confirmed boundary
 
 ```ts
 consumer.onEvents((error, event) => {
-  if (error) console.error(error)
-  if (event?.name === 'CommitCallback') {
-    console.log(event.payload.tpl, event.payload.error)
+  if (error) console.error(error);
+  if (event?.name === "CommitCallback") {
+    console.log(event.payload.tpl, event.payload.error);
   }
-})
+});
 ```
 
 Other event names are `'PreRebalance'` and `'PostRebalance'`. They are string
@@ -261,12 +286,12 @@ Do not treat cancellation as proof that every prefetched message was processed.
 
 ```ts
 const batchSource = client.createWebStreamConsumer({
-  groupId: 'orders-batch',
+  groupId: "orders-batch",
   enableAutoCommit: false,
   batchSize: 64,
   batchTimeout: 5,
-  configuration: { 'enable.auto.offset.store': false },
-})
+  configuration: { "enable.auto.offset.store": false },
+});
 // batchSource.mode === 'batch'; stream chunks are Message[].
 ```
 
@@ -296,11 +321,11 @@ do not assume the same byte-budget contract for every receive API.
 
 ```ts
 const nodeStream = client.createStreamConsumer({
-  groupId: 'orders-node-stream',
+  groupId: "orders-node-stream",
   batchSize: 64,
   batchTimeout: 5,
   streamOptions: { highWaterMark: 16 },
-})
+});
 ```
 
 Both `KafkaStreamReadable` and `KafkaBatchStreamReadable` emit individual `Message`
@@ -324,7 +349,7 @@ flag alone does not mean teardown has finished. Handle stream errors too.
 ## Types
 
 ```ts
-import type { Message, RecordMetadata, SendFailureError } from 'kafka-crab-js'
+import type { Message, RecordMetadata, SendFailureError } from "kafka-crab-js";
 ```
 
 | Type                   | Fields                                                                                         |

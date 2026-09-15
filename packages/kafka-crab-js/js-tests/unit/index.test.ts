@@ -69,6 +69,12 @@ test('KafkaClient can create a producer', () => {
   equal(typeof producer.inFlightCount(), 'number', 'Producer should report an in-flight count')
 })
 
+test('KafkaClient exposes deleteRecords', () => {
+  const client = createClient(TEST_CLIENT_ID)
+
+  equal(typeof client.deleteRecords, 'function')
+})
+
 test('KafkaClient can create a consumer', () => {
   const client = createClient(TEST_CLIENT_ID)
   const consumer = client.createConsumer({
