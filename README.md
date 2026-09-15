@@ -113,6 +113,37 @@ Focused commands are documented in the owning project READMEs:
 - Kafka broker access only for Kafka integration tests, Kafka examples, and Kafka benchmarks.
 - No separate librdkafka install is required for published Kafka binaries.
 
+## Publishing Kafka packages
+
+Kafka and OTEL releases use [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) with GitHub Actions OIDC.
+In each npm package's **Settings → Trusted publishing**, select **GitHub Actions** and configure:
+
+- Organization or user: `flash-tecnologia`
+- Repository: `crab-js`
+- Environment name: leave empty; these workflows do not use a GitHub environment.
+- Allowed actions: enable direct publishing with `npm publish`.
+- Workflow filename: use the exact filename below, without `.github/workflows/`.
+
+| npm package                     | Workflow filename |
+| ------------------------------- | ----------------- |
+| `kafka-crab-js`                  | `CI.yml`          |
+| `kafka-crab-js-darwin-x64`       | `CI.yml`          |
+| `kafka-crab-js-darwin-arm64`     | `CI.yml`          |
+| `kafka-crab-js-linux-x64-gnu`    | `CI.yml`          |
+| `kafka-crab-js-linux-x64-musl`   | `CI.yml`          |
+| `kafka-crab-js-linux-arm64-gnu`  | `CI.yml`          |
+| `kafka-crab-js-linux-arm64-musl` | `CI.yml`          |
+| `kafka-crab-js-otel`             | `CI-otel.yml`     |
+
+The publish jobs use the GitHub-hosted `flash-static-ip-ubuntu-24` runner, npm 11, and `id-token: write`. Its runner group
+must allow this public repository and the release workflows. Kafka's `prepublishOnly` hook publishes the platform
+packages with `--no-gh-release`, so npm publication does not create or upload assets to a GitHub Release.
+Kafka and OTEL publishing do not use `NPM_TOKEN`; the PDF workflows still reference that secret.
+
+Release tags must match the package versions: `kafka-crab-js@<version>` and `kafka-crab-js-otel@<version>`.
+After correcting npm-side publisher settings, failed publish jobs can be rerun. Workflow or package-script changes
+require a release execution containing the updated commit: rerunning an older workflow uses its original tag and SHA.
+
 ## License
 
 MIT
