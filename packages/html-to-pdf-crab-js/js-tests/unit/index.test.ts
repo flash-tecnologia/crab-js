@@ -1,9 +1,12 @@
 import { equal, match, ok, rejects } from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { test } from 'vite-plus/test'
 
 import * as pdfHtmlCrab from '../../index.js'
 import { createPdfFromHtml } from '../../index.js'
+
+const font = readFileSync(new URL('../../../../examples/html-to-pdf-crab-js/assets/Tuffy.ttf', import.meta.url))
 
 function assertPdfBuffer(pdf: Buffer): void {
   ok(Buffer.isBuffer(pdf))
@@ -70,9 +73,12 @@ test('createPdfFromHtml validates blank HTML', async () => {
 
 test('createPdfFromHtml accepts a language for PDF/UA without an HTML lang attribute', async () => {
   const pdf = await createPdfFromHtml({
+    css: 'body { font-family: Tuffy; }',
+    fonts: [font],
     html: '<!doctype html><html><body><h1>Language PDF</h1></body></html>',
     lang: 'pt-BR',
     pdfUa: true,
+    systemFonts: false,
     title: 'Language PDF',
   })
 
@@ -94,9 +100,12 @@ test('createPdfFromHtml prioritizes the configured language over HTML lang', asy
 test('createPdfFromHtml falls back to HTML lang when the configured language is omitted or blank', async () => {
   for (const lang of [undefined, '   ']) {
     const pdf = await createPdfFromHtml({
+      css: 'body { font-family: Tuffy; }',
+      fonts: [font],
       html: '<!doctype html><html lang="en"><body><h1>HTML language</h1></body></html>',
       lang,
       pdfUa: true,
+      systemFonts: false,
       title: 'HTML language',
     })
 
