@@ -177,6 +177,7 @@ jobs:
           name: bindings-wasm
           path: |
             packages/pdf-crab-js/${{ env.APP_NAME }}.*
+            packages/pdf-crab-js/index.js
             packages/pdf-crab-js/browser*.js
             packages/pdf-crab-js/wasi-worker*.mjs
           if-no-files-found: error
@@ -286,6 +287,47 @@ jobs:
           options: -v ${{ steps.docker.outputs.PNPM_STORE_PATH }}:${{ steps.docker.outputs.PNPM_STORE_PATH }} -v ${{ github.workspace }}:${{ github.workspace }} -w ${{ github.workspace }}/packages/pdf-crab-js --platform ${{ steps.docker.outputs.PLATFORM }}
           args: sh -lc 'npm run build:js && npm run test:unit'
 
+  test-package:
+    name: Test packed distribution
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      - build-wasm
+      - test-macOS-windows-binding
+      - test-linux-binding
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --filter pdf-crab-js
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Restore WASI wrappers
+        run: |
+          cp artifacts/bindings-wasm/${APP_NAME}.* packages/pdf-crab-js/
+          if compgen -G 'artifacts/bindings-wasm/wasi-worker*.mjs' > /dev/null; then
+            cp artifacts/bindings-wasm/wasi-worker*.mjs packages/pdf-crab-js/
+          fi
+      - name: Build JavaScript package
+        run: pnpm --filter pdf-crab-js build:js
+      - name: Create npm dirs
+        run: pnpm napi create-npm-dirs
+        working-directory: packages/pdf-crab-js
+      - name: Move artifacts
+        run: pnpm napi artifacts --output-dir ../../artifacts
+        working-directory: packages/pdf-crab-js
+      - name: Test packed distribution in an isolated installation
+        run: pnpm --filter pdf-crab-js test:package
+
   publish-pdf-crab-js:
     name: Publish pdf-crab-js
     runs-on: crab-js-static-ip
@@ -295,9 +337,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/pdf-crab-js@')
     needs:
       - lint
-      - build-wasm
-      - test-macOS-windows-binding
-      - test-linux-binding
+      - test-package
     steps:
       - uses: actions/checkout@v6
       - name: setup pnpm
@@ -337,25 +377,23 @@ jobs:
         working-directory: packages/pdf-crab-js
         run: |
           pnpm napi pre-publish -t npm --dry-run
-          npm pack --dry-run
-      - name: Test packed distribution in an isolated installation
-        run: pnpm --filter pdf-crab-js test:package
+          pnpm pack --dry-run
       - name: Publish pdf-crab-js
         working-directory: packages/pdf-crab-js
         run: |
-          npm config set provenance true
           TAG_NAME=${GITHUB_REF#refs/tags/pdf-crab-js@}
           echo "Publishing pdf-crab-js version: $TAG_NAME"
           if [[ $TAG_NAME =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            npm publish --access public
+            pnpm publish --access public --provenance --no-git-checks
           elif [[ $TAG_NAME =~ alpha ]]; then
-            npm publish --tag alpha --access public
+            pnpm publish --tag alpha --access public --provenance --no-git-checks
           elif [[ $TAG_NAME =~ beta ]]; then
-            npm publish --tag beta --access public
+            pnpm publish --tag beta --access public --provenance --no-git-checks
           elif [[ $TAG_NAME =~ rc ]]; then
-            npm publish --tag rc --access public
+            pnpm publish --tag rc --access public --provenance --no-git-checks
           else
-            npm publish --tag next --access public
+            pnpm publish --tag next --access public --provenance --no-git-checks
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'

@@ -26,6 +26,10 @@ function cloneWithDescriptors<TValue extends object>(value: TValue): TValue {
   }
 }
 
+function toInstrumentedMessage(message: Message): InstrumentedMessage {
+  return cloneWithDescriptors(message) as InstrumentedMessage
+}
+
 function endMessageSpan(message: Message | InstrumentedMessage | null | undefined, error?: Error): void {
   if (!message) {
     return
@@ -135,9 +139,6 @@ export class KafkaCrabInstrumentation {
         endMessageSpan(message, error)
       }
     }
-
-    const toInstrumentedMessage = (message: Message): InstrumentedMessage =>
-      cloneWithDescriptors(message) as InstrumentedMessage
 
     const toInstrumentedBatch = (batch: Message[]): InstrumentedMessageBatch => {
       const cloned = batch.map((message) => toInstrumentedMessage(message)) as InstrumentedMessageBatch

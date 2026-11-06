@@ -685,7 +685,8 @@ The threaded entry point requires the normal COOP/COEP cross-origin isolation se
 entry points expose the same PDF API, but file path sources are Node-only.
 
 The root package carries the browser artifacts and declares their JavaScript runtimes as production
-dependencies. The matching WASI flavor packages are installed automatically as optional dependencies;
+dependencies. The matching WASI flavor packages are installed automatically as optional dependencies
+on all supported host architectures;
 keep optional dependencies enabled when using the generated Workerd entry point. The generated
 threadless WASI package can also be installed separately for direct access to the low-level binding:
 
@@ -922,8 +923,10 @@ pnpm --filter pdf-crab-js test:wasm
 
 The release pipeline also runs `pnpm --filter pdf-crab-js test:package` after gathering the native and
 WASM artifacts for all configured targets. This prepares and packs a temporary copy without publishing,
-then installs the tarballs in an isolated consumer. It checks ESM, CommonJS, the Workerd loader lifecycle,
-and production builds of both browser entry points without relying on workspace dependencies.
+then installs the tarballs in an isolated consumer. It checks native ESM and CommonJS, the Workerd
+loader lifecycle and production builds of both browser entry points after a normal npm install,
+without relying on workspace dependencies or CPU overrides.
 
-Production runtime dependencies use explicit versions so that the `npm publish` workflow ships valid
-dependency specifiers. Keep those versions aligned with the WASM toolchain in `pnpm-workspace.yaml`.
+The release workflow uses `pnpm pack` and `pnpm publish` to resolve workspace catalog references to
+concrete versions in the distributed manifest. The isolated package test packs with pnpm and installs
+with npm to verify that consumers do not need the workspace catalog.

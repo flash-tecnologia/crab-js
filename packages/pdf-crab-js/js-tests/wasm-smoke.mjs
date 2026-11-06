@@ -3,9 +3,9 @@ import { readFile } from 'node:fs/promises'
 
 import { configurePdfRuntime, PdfDocument, renderPdf } from '../dist/api.js'
 
-const binding = await import(
-  process.env.PDF_CRAB_WASM_THREADED === '1' ? '../pdf-crab-js.wasi.cjs' : '../pdf-crab-js.wasip1.cjs'
-)
+const wasiFlavor = process.env.NAPI_RS_WASI_FLAVOR ?? 'wasm32-wasip1'
+const binding = await import(wasiFlavor === 'wasm32-wasi' ? '../pdf-crab-js.wasi.cjs' : '../pdf-crab-js.wasip1.cjs')
+equal(binding.__napiBindingTarget, wasiFlavor)
 
 const imageBytes = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',

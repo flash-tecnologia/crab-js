@@ -9,14 +9,14 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Default enable napi4 feature, see https://nodejs.org/api/n-api.html#node-api-version-matrix
-napi = { version = "3.12.1", default-features = false, features = [
+napi = { version = "3.16.1", default-features = false, features = [
   "napi9",
   "napi10",
   "tokio_rt",
   "serde-json",
   "web_stream",
 ] }
-napi-derive = "3.6.3"
+napi-derive = "3.7.0"
 
 anyhow = { version = "1.0", features = ["backtrace"] }
 
@@ -37,10 +37,10 @@ futures-util = "0.3"
 [dev-dependencies]
 # The Rust test executable has no Node.js host to provide N-API symbols.
 # Enable dynamic symbol loading for tests while keeping production linkage unchanged.
-napi = { version = "3.12.1", default-features = false, features = ["dyn-symbols"] }
+napi = { version = "3.16.1", default-features = false, features = ["dyn-symbols"] }
 
 [build-dependencies]
-napi-build = { version = "2.4.1" }
+napi-build = { version = "2.6.0" }
 
 [profile.release]
 lto = true

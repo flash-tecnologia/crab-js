@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "browser": "pnpm run build:wasm && vite --host 127.0.0.1 --port 5173 --open /wasm/",
-    "browser:build": "pnpm run build:wasm && vite build",
-    "browser:preview": "vite preview --host 127.0.0.1 --port 4173 --open /wasm/",
+    "browser": "pnpm run build:wasm && vp dev --host 127.0.0.1 --port 5173 --open /wasm/",
+    "browser:build": "pnpm run build:wasm && vp build",
+    "browser:preview": "vp preview --host 127.0.0.1 --port 4173 --open /wasm/",
     "build:wasm": "pnpm --dir ../.. --filter html-to-pdf-crab-js build:wasm",
     "check": "vp check",
     "example": "tsx invoice.ts",

@@ -129,8 +129,8 @@ select **GitHub Actions**, and configure:
 - Allowed actions: enable direct publishing with `npm publish`.
 - Workflow filename: use the exact filename below, without `.github/workflows/`.
 
-| npm package                     | Workflow filename |
-| ------------------------------- | ----------------- |
+| npm package                      | Workflow filename |
+| -------------------------------- | ----------------- |
 | `kafka-crab-js`                  | `CI.yml`          |
 | `kafka-crab-js-darwin-x64`       | `CI.yml`          |
 | `kafka-crab-js-darwin-arm64`     | `CI.yml`          |

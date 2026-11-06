@@ -10,7 +10,7 @@ import { NapiCli } from '@napi-rs/cli'
 
 const source = fileURLToPath(new URL('..', import.meta.url))
 const temporary = await mkdtemp(join(tmpdir(), 'pdf-crab-package-smoke-'))
-const staging = join(temporary, 'package')
+const staging = join(temporary, 'packages', 'pdf-crab-js')
 const artifacts = join(temporary, 'artifacts')
 const consumer = join(temporary, 'consumer')
 const ignored = new Set(['node_modules', 'target', 'npm', '.git'])
@@ -25,8 +25,15 @@ function npm(args, cwd) {
 }
 
 function pack(cwd) {
-  const [result] = JSON.parse(npm(['pack', '--ignore-scripts', '--json', '--pack-destination', temporary], cwd))
-  return join(temporary, result.filename)
+  const result = JSON.parse(
+    execFileSync('pnpm', ['pack', '--ignore-scripts', '--json', '--pack-destination', temporary], {
+      cwd,
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+  )
+  return result.filename
 }
 
 function runNode(code, commonjs = false) {
@@ -39,34 +46,46 @@ function runNode(code, commonjs = false) {
 
 let passed = false
 try {
+  // Preserve workspace catalog resolution while packing the temporary copy.
+  await mkdir(join(temporary, 'packages'))
+  await cp(join(source, '../../pnpm-workspace.yaml'), join(temporary, 'pnpm-workspace.yaml'))
   await cp(source, staging, {
     recursive: true,
-    filter: (file) =>
-      !relative(source, file)
-        .split(/[\\/]/)
-        .some((part) => ignored.has(part)),
+    filter: (file) => {
+      const path = relative(source, file)
+      return path !== 'index.js' && path !== 'index.d.cts' && !path.split(/[\\/]/).some((part) => ignored.has(part))
+    },
   })
   await mkdir(artifacts)
   for (const entry of await readdir(staging, { withFileTypes: true })) {
-    if (entry.isFile() && (entry.name.startsWith('pdf-crab-js.') || entry.name.startsWith('wasi-worker'))) {
+    if (
+      entry.isFile() &&
+      (entry.name.startsWith('pdf-crab-js.') ||
+        entry.name.startsWith('wasi-worker') ||
+        (entry.name.startsWith('browser') && entry.name.endsWith('.js')))
+    ) {
       await cp(join(staging, entry.name), join(artifacts, entry.name))
     }
   }
+  // Exercise the uploaded WASI root entry without relying on an untracked index.js in the checkout.
+  await cp(join(staging, 'js-binding.js'), join(artifacts, 'index.js'))
 
   // Build tools are available only to preparation, never to the consumer installation.
   await symlink(join(source, 'node_modules'), join(staging, 'node_modules'), 'junction')
   const napi = new NapiCli()
   await napi.createNpmDirs({ cwd: staging })
-  await napi.artifacts({ cwd: staging, outputDir: artifacts, buildOutputDir: staging })
+  await napi.artifacts({ cwd: staging, outputDir: artifacts })
   // Materialize the publication manifest without publishing packages or creating a release.
   await napi.prePublish({ cwd: staging, tagStyle: 'npm', ghRelease: false, skipOptionalPublish: true })
 
   const rootTarball = pack(staging)
+  const rootManifest = JSON.parse(await readFile(join(staging, 'package.json'), 'utf8'))
   const overrides = {}
   for (const entry of await readdir(join(staging, 'npm'), { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
     const platform = join(staging, 'npm', entry.name)
     const manifest = JSON.parse(await readFile(join(platform, 'package.json'), 'utf8'))
+    equal(manifest.version, rootManifest.version)
     overrides[manifest.name] = `file:${pack(platform)}`
   }
 
@@ -82,15 +101,20 @@ try {
       overrides,
     }),
   )
-  npm(['install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false'], consumer)
+  const installArgs = ['install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false']
+  npm(installArgs, consumer)
 
   const installed = JSON.parse(await readFile(join(consumer, 'node_modules/pdf-crab-js/package.json'), 'utf8'))
-  const consumerRequire = createRequire(join(consumer, 'package.json'))
-  const installedRoot = await realpath(consumer)
-  for (const flavor of ['wasm32-wasip1', 'wasm32-wasi']) {
-    const manifest = consumerRequire(`pdf-crab-js-${flavor}/package.json`)
-    equal(manifest.version, installed.version)
+  for (const version of Object.values(installed.dependencies)) {
+    ok(!version.startsWith('catalog:'), 'Packed runtime dependencies must resolve workspace catalogs')
   }
+  const consumerRequire = createRequire(join(consumer, 'package.json'))
+  for (const flavor of ['wasm32-wasip1', 'wasm32-wasi']) {
+    const name = `pdf-crab-js-${flavor}`
+    equal(installed.optionalDependencies[name], installed.version)
+    equal(consumerRequire(`${name}/package.json`).version, installed.version)
+  }
+  const installedRoot = await realpath(consumer)
   for (const name of ['@emnapi/core', '@emnapi/runtime', '@napi-rs/wasm-runtime']) {
     ok(
       consumerRequire.resolve(name).startsWith(`${installedRoot}${sep}`),
@@ -106,6 +130,7 @@ try {
   `
   runNode(`import { PdfDocument } from 'pdf-crab-js'; ${render}`)
   runNode(`const { PdfDocument } = require('pdf-crab-js'); (async () => { ${render} })()`, true)
+
   runNode(`
     import { equal, notStrictEqual, strictEqual } from 'node:assert/strict'
     import { readFile } from 'node:fs/promises'

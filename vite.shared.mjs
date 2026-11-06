@@ -129,6 +129,7 @@ export const sharedLintConfig = {
 export const sharedTestLintRules = {
   'no-process-exit': 'allow',
   'id-length': 'allow',
+  '@typescript-eslint/no-unsafe-enum-comparison': 'off',
   '@typescript-eslint/no-unsafe-type-assertion': 'allow',
   'no-undefined': 'off',
   'no-async-await': 'off',

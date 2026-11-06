@@ -9,13 +9,13 @@ allowBuilds:
   protobufjs: true
 
 catalog:
-  '@emnapi/core': 2.0.0-alpha.4
-  '@emnapi/runtime': 2.0.0-alpha.4
-  '@napi-rs/cli': 3.9.1
-  '@napi-rs/wasm-runtime': 1.2.4
-  '@types/node': 26.5.1
-  emnapi: 2.0.0-alpha.4
-  'nanoid': 6.0.1
+  '@emnapi/core': 2.0.0-beta.3
+  '@emnapi/runtime': 2.0.0-beta.3
+  '@napi-rs/cli': 3.10.12
+  '@napi-rs/wasm-runtime': 1.2.7
+  '@types/node': 26.6.6
+  emnapi: 2.0.0-beta.3
+  'nanoid': 6.0.2
   '@faker-js/faker': 10.6.0
   '@opentelemetry/api': 1.9.0
   '@opentelemetry/context-async-hooks': 2.5.1
@@ -28,10 +28,11 @@ catalog:
   '@opentelemetry/exporter-metrics-otlp-grpc': 0.57.2
   '@opentelemetry/exporter-trace-otlp-grpc': 0.57.2
   '@opentelemetry/sdk-node': 0.57.2
+  'vite-plus': 1.5.0
 
 overrides:
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.1
-  vitest: 4.1.11
+  vite: npm:@voidzero-dev/vite-plus-core@1.5.0
+  vitest: 5.0.3
 
 peerDependencyRules:
   allowedVersions:

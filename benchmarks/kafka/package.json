@@ -33,7 +33,7 @@
     "benchmark:profile:v8": "mkdir -p .profiles && rm -f .profiles/isolate-*-benchmark-v8.log .profiles/v8-processed.txt && BENCHMARK_MEMORY=0 BENCHMARK_ONLY=${BENCHMARK_ONLY:-crab-batch} node --prof --logfile=.profiles/benchmark-v8.log --expose-gc --import tsx consumer.ts && node --prof-process .profiles/isolate-*-benchmark-v8.log > .profiles/v8-processed.txt && echo \"Processed V8 profile: .profiles/v8-processed.txt\""
   },
   "dependencies": {
-    "@platformatic/kafka": "^2.11.0",
+    "@platformatic/kafka": "^2.14.0",
     "kafka-crab-js": "workspace:*",
     "kafka-crab-js-previous": "npm:kafka-crab-js@4.1.3",
     "kafkajs": "^2.2.4"

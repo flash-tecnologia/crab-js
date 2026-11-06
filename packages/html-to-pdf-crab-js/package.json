@@ -1,6 +1,6 @@
 {
   "name": "html-to-pdf-crab-js",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "keywords": [
     "N-API",
     "Rust",
@@ -45,7 +45,8 @@
   "exports": {
     ".": {
       "types": "./index.d.ts",
-      "import": "./index.js"
+      "import": "./index.js",
+      "require": "./index.js"
     },
     "./browser": {
       "types": "./index.d.ts",
@@ -82,20 +83,23 @@
     "lint:fix": "vp lint --fix",
     "prepublishOnly": "napi prepublish -t npm",
     "test": "vp test run js-tests/unit",
+    "test:package": "node js-tests/package-smoke.mjs",
     "test:wasm": "pnpm run build:wasm && NAPI_RS_WASI_FLAVOR=wasm32-wasip1 node js-tests/wasm-smoke.mjs",
     "test:wasm-threaded": "pnpm run build:wasm-threaded && NAPI_RS_WASI_FLAVOR=wasm32-wasi node js-tests/wasm-smoke.mjs",
     "test:workerd": "pnpm run build:wasm && node js-tests/workerd-smoke.mjs"
   },
-  "devDependencies": {
+  "dependencies": {
     "@emnapi/core": "catalog:",
     "@emnapi/runtime": "catalog:",
+    "@napi-rs/wasm-runtime": "catalog:"
+  },
+  "devDependencies": {
     "@napi-rs/cli": "catalog:",
-    "@napi-rs/wasm-runtime": "catalog:",
     "emnapi": "catalog:"
   },
   "napi": {
     "binaryName": "html-to-pdf-crab-js",
-    "rootPublisher": "npm",
+    "rootPublisher": "pnpm",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-apple-darwin",
@@ -108,10 +112,11 @@
       "wasm32-wasip1-threads"
     ],
     "wasm": {
-      "optionalDependency": false
+      "optionalDependency": true,
+      "cpu": false
     }
   },
   "engines": {
-    "node": "24"
+    "node": ">=24"
   }
 }
