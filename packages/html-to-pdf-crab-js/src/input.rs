@@ -5,6 +5,7 @@ use napi_derive::napi;
 pub struct CreatePdfFromHtmlInput {
   pub html: String,
   pub title: Option<String>,
+  pub lang: Option<String>,
   #[napi(ts_type = "string | Array<string>")]
   pub css: Option<Either<String, Vec<String>>>,
   pub base_path: Option<String>,
@@ -55,6 +56,7 @@ pub struct HtmlPdfImageInput {
 pub(crate) struct RenderPdfFromHtmlInput {
   pub html: String,
   pub title: Option<String>,
+  pub lang: Option<String>,
   pub css: Option<Either<String, Vec<String>>>,
   pub base_path: Option<String>,
   pub system_fonts: Option<bool>,
@@ -86,6 +88,7 @@ impl From<CreatePdfFromHtmlInput> for RenderPdfFromHtmlInput {
     Self {
       html: input.html,
       title: input.title,
+      lang: input.lang,
       css: input.css,
       base_path: input.base_path,
       system_fonts: input.system_fonts,

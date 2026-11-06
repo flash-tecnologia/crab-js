@@ -26,6 +26,10 @@ pub(crate) fn create_pdf_from_html_bytes(input: RenderPdfFromHtmlInput) -> Resul
     builder = builder.title(title);
   }
 
+  if let Some(lang) = input.lang {
+    builder = builder.lang(lang);
+  }
+
   if let Some(page) = input.page {
     builder = apply_page(builder, page)?;
   }

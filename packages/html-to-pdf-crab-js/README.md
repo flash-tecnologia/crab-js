@@ -97,6 +97,7 @@ writeFileSync('invoice.pdf', pdf)
 | ------------- | ------------------------------------------------------------------------------------------------------------- |
 | `html`        | Required HTML document string. Must not be empty.                                                             |
 | `title`       | Optional PDF title.                                                                                           |
+| `lang`        | Optional document language as a BCP 47 tag, such as `pt-BR`.                                                  |
 | `css`         | Optional CSS string or array of CSS strings.                                                                  |
 | `basePath`    | Optional base path for resolving relative assets. Must not be empty when provided.                            |
 | `systemFonts` | Enables host system fonts when `true`; defaults to `true`. Use `false` for deterministic bundled-font output. |
@@ -105,7 +106,22 @@ writeFileSync('invoice.pdf', pdf)
 | `page`        | Optional page size, margins, and orientation.                                                                 |
 | `bookmarks`   | Enables or disables generated bookmarks when supported by the renderer.                                       |
 | `tagged`      | Enables or disables tagged PDF output when supported by the renderer.                                         |
-| `pdfUa`       | Enables or disables PDF/UA mode when supported by the renderer.                                               |
+| `pdfUa`       | Enables or disables PDF/UA mode. Requires a document language from `lang` or `<html lang="...">`.             |
+
+### Document Language and PDF/UA
+
+`lang` takes precedence over the HTML document's `<html lang="...">` attribute. If `lang` is omitted
+or contains only whitespace, the renderer uses the HTML attribute instead. PDF/UA mode requires a
+nonempty document language; other rendering modes allow it to be omitted.
+
+```js
+const pdf = await createPdfFromHtml({
+  html: '<h1>Relatório</h1><p>Documento em português.</p>',
+  lang: 'pt-BR',
+  pdfUa: true,
+  title: 'Relatório',
+})
+```
 
 ### Page Options
 
@@ -164,8 +180,10 @@ Cross-Origin-Opener-Policy: same-origin
 The combined Netlify browser sample lives in `examples/wasm-samples/` and demonstrates both
 packages using the threadless browser entries. Both browser entries expose the same API.
 
-The root package carries the threadless browser artifact. The generated WASI flavor package can be
-installed separately when a runtime needs the low-level binding directly:
+The root package carries the browser artifacts and their production runtime dependencies. The matching
+WASI flavor packages install as optional dependencies on all supported host architectures, so the
+generated Workerd entry point works with a normal install. Keep optional dependencies enabled. The
+threadless WASI package can also be installed separately for direct access to the low-level binding:
 
 ```bash
 npm install html-to-pdf-crab-js-wasm32-wasip1
@@ -259,4 +277,6 @@ request or isolate is complete.
 
 ## Release
 
-Native and WebAssembly package publishing is handled by `napi prepublish -t npm`.
+The root package is packed with `pnpm pack` and published with `pnpm publish`, which resolve workspace
+catalog references to concrete versions. Native and WebAssembly platform packages are prepared and
+published by `napi prepublish -t npm`; `-t npm` selects the Git tag format.

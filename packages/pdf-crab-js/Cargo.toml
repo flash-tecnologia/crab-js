@@ -3,7 +3,7 @@
 authors = ["Inaiat <inaiatgmail.com>"]
 edition = "2021"
 name = "pdf_crab_js"
-version = "1.1.1"
+version = "1.1.2"
 
 [lib]
 crate-type = ["cdylib"]
@@ -11,8 +11,8 @@ crate-type = ["cdylib"]
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 miniz_oxide = "0.9"
-napi = "3.12.1"
-napi-derive = "3.6.3"
+napi = "3.16.1"
+napi-derive = "3.7.0"
 pdf-writer = "0.15.0"
 rustybuzz = "0.20.1"
 subsetter = "0.2.6"
@@ -20,7 +20,7 @@ ttf-parser = "0.25.1"
 unicode-linebreak = "0.1.5"
 
 [build-dependencies]
-napi-build = { version = "2.4.1" }
+napi-build = { version = "2.6.0" }
 
 [profile.release]
 lto = true

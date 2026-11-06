@@ -117,4 +117,7 @@ dist
 *.node
 .pnp.*
 /npm
+# Temporary raw entrypoints emitted by WASI builds; the public API uses dist and js-binding.*.
+/index.js
+/index.d.cts
 examples/output/

@@ -4,15 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm run build:wasm && vite build",
+    "build": "pnpm run build:wasm && vp build",
     "build:wasm": "pnpm --dir ../.. --filter pdf-crab-js build:wasm && pnpm --dir ../.. --filter html-to-pdf-crab-js build:wasm",
     "check": "vp check",
-    "dev": "pnpm run build:wasm && vite --host 127.0.0.1 --port 5174",
+    "dev": "pnpm run build:wasm && vp dev --host 127.0.0.1 --port 5174",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
     "lint": "vp lint",
     "lint:fix": "vp lint --fix",
-    "preview": "vite preview --host 127.0.0.1 --port 4174"
+    "preview": "vp preview --host 127.0.0.1 --port 4174"
   },
   "dependencies": {
     "@emnapi/core": "catalog:",

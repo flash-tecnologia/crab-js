@@ -3,19 +3,19 @@
 authors = ["Inaiat <inaiatgmail.com>"]
 edition = "2021"
 name = "html_to_pdf_crab_js"
-version = "0.3.0"
+version = "0.5.0"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
 base64 = "0.23"
-fulgur = "0.40"
-napi = "3.12.1"
-napi-derive = "3.6.3"
+fulgur = "0.41"
+napi = "3.16.1"
+napi-derive = "3.7.0"
 
 [build-dependencies]
-napi-build = { version = "2.4.1" }
+napi-build = { version = "2.6.0" }
 
 [profile.release]
 lto = true

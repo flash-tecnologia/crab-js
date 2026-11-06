@@ -207,6 +207,7 @@ jobs:
             architecture: x64
         node:
           - '24'
+          - '26'
     runs-on: ${{ matrix.settings.host }}
     steps:
       - uses: actions/checkout@v6
@@ -245,6 +246,7 @@ jobs:
           - aarch64-unknown-linux-musl
         node:
           - '24'
+          - '26'
     runs-on: ${{ contains(matrix.target, 'aarch64') && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -291,15 +293,48 @@ jobs:
           options: -v ${{ steps.docker.outputs.PNPM_STORE_PATH }}:${{ steps.docker.outputs.PNPM_STORE_PATH }} -v ${{ github.workspace }}:${{ github.workspace }} -w ${{ github.workspace }}/packages/html-to-pdf-crab-js --platform ${{ steps.docker.outputs.PLATFORM }}
           args: npm run test
 
+  test-package:
+    name: Test packed html-to-pdf-crab-js
+    runs-on: ubuntu-latest
+    needs:
+      - build-wasm
+      - test-macOS-windows-binding
+      - test-linux-binding
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup pnpm
+        uses: pnpm/action-setup@v6
+      - name: Setup node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --filter html-to-pdf-crab-js
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Restore WASI wrappers
+        run: |
+          cp artifacts/bindings-wasm/${APP_NAME}.* packages/html-to-pdf-crab-js/
+          cp artifacts/bindings-wasm/wasi-worker*.mjs packages/html-to-pdf-crab-js/ || true
+      - name: Create npm dirs
+        run: pnpm napi create-npm-dirs
+        working-directory: packages/html-to-pdf-crab-js
+      - name: Move artifacts
+        run: pnpm napi artifacts --output-dir ../../artifacts
+        working-directory: packages/html-to-pdf-crab-js
+      - name: Test packed distribution in an isolated installation
+        run: pnpm --filter html-to-pdf-crab-js test:package
+
   publish-html-to-pdf-crab-js:
     name: Publish html-to-pdf-crab-js
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/html-to-pdf-crab-js@')
     needs:
       - lint
-      - build-wasm
-      - test-macOS-windows-binding
-      - test-linux-binding
+      - test-package
     steps:
       - uses: actions/checkout@v6
       - name: setup pnpm
@@ -332,25 +367,25 @@ jobs:
         working-directory: packages/html-to-pdf-crab-js
         run: |
           pnpm napi pre-publish -t npm --dry-run
-          npm pack --dry-run
+          pnpm pack --dry-run
       - name: Publish html-to-pdf-crab-js
         working-directory: packages/html-to-pdf-crab-js
         run: |
-          npm config set provenance true
           TAG_NAME=${GITHUB_REF#refs/tags/html-to-pdf-crab-js@}
           echo "Publishing html-to-pdf-crab-js version: $TAG_NAME"
           echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
           if [[ $TAG_NAME =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            npm publish --access public
+            pnpm publish --access public --provenance --no-git-checks
           elif [[ $TAG_NAME =~ alpha ]]; then
-            npm publish --tag alpha --access public
+            pnpm publish --tag alpha --access public --provenance --no-git-checks
           elif [[ $TAG_NAME =~ beta ]]; then
-            npm publish --tag beta --access public
+            pnpm publish --tag beta --access public --provenance --no-git-checks
           elif [[ $TAG_NAME =~ rc ]]; then
-            npm publish --tag rc --access public
+            pnpm publish --tag rc --access public --provenance --no-git-checks
           else
-            npm publish --tag next --access public
+            pnpm publish --tag next --access public --provenance --no-git-checks
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: 'true'

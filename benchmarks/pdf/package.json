@@ -19,7 +19,7 @@
     "pdfkit": "^0.20.2"
   },
   "devDependencies": {
-    "@types/pdfkit": "^0.17.6"
+    "@types/pdfkit": "^0.17.7"
   },
   "engines": {
     "node": "24"
