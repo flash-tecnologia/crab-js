@@ -44,6 +44,9 @@ supportedArchitectures:
   cpu:
     - current
     - wasm32
+  libc:
+    - glibc
+    - musl
 
 onlyBuiltDependencies:
   - '@platformatic/rdkafka'
