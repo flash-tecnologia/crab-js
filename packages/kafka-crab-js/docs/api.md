@@ -35,6 +35,7 @@ incompatible settings between both.
 | Factory                            | Result                                                          |
 | ---------------------------------- | --------------------------------------------------------------- |
 | `createProducer(options?)`         | `KafkaProducer`                                                 |
+| `createAdmin(options?)`            | `KafkaAdmin`; administrative queries and topic provisioning     |
 | `createConsumer(options)`          | `KafkaConsumer`                                                 |
 | `createWebStreamConsumer(options)` | `{ mode, consumer, stream }`, with serial or batch Web Stream   |
 | `createStreamConsumer(options)`    | Node.js `KafkaStreamReadable` or `KafkaBatchStreamReadable`     |
@@ -60,6 +61,55 @@ certificates for the broker. The mechanism must match the cluster; `PLAIN` above
 is an example over TLS. See the pinned
 [librdkafka configuration reference](https://github.com/confluentinc/librdkafka/blob/v2.12.1/CONFIGURATION.md)
 for certificate and authentication properties.
+
+## KafkaAdmin
+
+```ts
+const admin = client.createAdmin({ timeoutMs: 5000 })
+try {
+  const results = await admin.createTopics({
+    topics: [{ topic: 'orders', numPartitions: 3, replicationFactor: 1 }],
+  })
+  for (const result of results) {
+    if (result.error) throw new Error(`${result.topic}: ${result.error.message}`)
+  }
+  const watermarks = await admin.fetchTopicOffsets('orders')
+  const committed = await admin.fetchOffsets({ groupId: 'orders-service', topics: ['orders'] })
+  const groups = await admin.describeGroups(['orders-service'])
+} finally {
+  await admin.close()
+}
+```
+
+The admin inherits the client's brokers, TLS/SASL credentials, and configuration.
+`timeoutMs` defaults to 5,000 ms and bounds each operation, including all requested
+topics/partitions. Blocking native queries run outside the JavaScript thread.
+
+| Method                                      | Result and contract                                                                                                           |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `createTopics({ topics, waitForLeaders? })` | `Promise<AdminTopicResult[]>`; explicit partitions/replication, optional per-topic `config`. Waits for leaders by default.    |
+| `fetchTopicMetadata(topics)`                | `Promise<AdminTopicMetadata[]>`; partitions, leaders, replicas, ISR, and per-topic/partition errors.                          |
+| `fetchTopicOffsets(topic)`                  | `Promise<AdminTopicOffset[]>`; inclusive `low` and exclusive `high` watermarks per partition.                                 |
+| `fetchOffsets({ groupId, topics })`         | `Promise<AdminGroupOffsets[]>`; committed next offsets per partition.                                                         |
+| `describeGroups(groupIds)`                  | `Promise<AdminGroupDescription[]>`; state, protocol, and members with raw assignment/metadata buffers. Missing groups reject. |
+| `close()`                                   | `Promise<void>`; idempotent. Rejects new operations; already started operations may finish.                                   |
+
+Watermarks and committed offsets are decimal strings to preserve Kafka's full
+64-bit precision. A partition without a committed offset has no `offset` field;
+it is not converted to zero or resolved to a watermark. Watermark failures have
+an `error` and no `low`/`high`. Inspect result errors (`{ code, message }`) before
+using a topic/partition; transport/deadline failures reject the operation.
+
+Queries do not subscribe, join groups, commit, reset offsets, or auto-create
+topics. `createTopics` reports partial success per topic. An existing topic has
+`created: false` without an error and is not modified. Explicit replication
+factors are sent unchanged to Kafka; insufficient brokers produce an error.
+Topic creation does not require a broker configuration lookup. If waiting for
+leaders times out, successful creations are not rolled back.
+
+The existing `consumer.subscribe([{ createTopic: true, replicas }])` path retains
+its replication fallback to the available broker count and its existing request
+timeouts. Strict replication and `timeoutMs` apply to the new admin API.
 
 ## KafkaProducer
 
@@ -87,7 +137,9 @@ const producer = client.createProducer({
 | `getLastDeliveryResults()`  | Last collected result snapshot; concurrent operations can overwrite it.                                       |
 
 A message accepts `payload?: Buffer`, `key?: Buffer`,
-`headers?: Record<string, Buffer>`, and `isTombstone?: boolean`.
+`headers?: Record<string, Buffer>`, `isTombstone?: boolean`, and `partition?: number`.
+An explicit partition must be a non-negative 32-bit integer and overrides the
+configured partitioner. Omit it to retain normal key/partitioner routing.
 Encode JSON/strings explicitly with `Buffer.from(...)`.
 
 ### Delivery and partial failures

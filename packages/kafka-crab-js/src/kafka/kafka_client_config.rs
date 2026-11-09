@@ -18,6 +18,7 @@ use super::{
     model::{ConsumerConfiguration, TopicPartition},
   },
   kafka_admin::KafkaAdmin,
+  kafka_admin_model::AdminConfiguration,
   producer::{kafka_producer::KafkaProducer, model::ProducerConfiguration},
 };
 
@@ -171,6 +172,32 @@ impl KafkaClientConfig {
       Ok(producer) => Ok(producer),
       Err(e) => Err(Error::new(Status::GenericFailure, e.to_string())),
     }
+  }
+
+  /// Creates an administrative client. No group is joined by administrative reads.
+  #[napi]
+  pub fn create_admin(&self, configuration: Option<AdminConfiguration>) -> Result<KafkaAdmin> {
+    let timeout_ms = configuration
+      .and_then(|configuration| configuration.timeout_ms)
+      .unwrap_or(5000.0);
+    if !timeout_ms.is_finite()
+      || timeout_ms.fract() != 0.0
+      || timeout_ms <= 0.0
+      || timeout_ms > i32::MAX as f64
+    {
+      return Err(Error::new(
+        Status::InvalidArg,
+        "timeoutMs must be between 1 and 2147483647",
+      ));
+    }
+    let mut config = self.rdkafka_client_config.clone();
+    // Administrative reads must not create topics as a side effect.
+    config.set("allow.auto.create.topics", "false");
+    KafkaAdmin::new(
+      &config,
+      Some(std::time::Duration::from_millis(timeout_ms as u64)),
+    )
+    .map_err(|error| error.into_napi_error("Failed to create Kafka admin client"))
   }
 
   /// Deletes all records before the requested offset for each topic partition.

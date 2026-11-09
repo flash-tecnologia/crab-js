@@ -1,6 +1,18 @@
 export type {
+  AdminConfiguration,
+  AdminGroupDescription,
+  AdminGroupMember,
+  AdminGroupOffsets,
+  AdminPartitionMetadata,
+  AdminPartitionOffset,
+  AdminTopic,
+  AdminTopicMetadata,
+  AdminTopicOffset,
+  AdminTopicResult,
   CompactMessageBatch,
   ConsumerConfiguration,
+  CreateTopicsOptions,
+  FetchOffsetsOptions,
   KafkaConfiguration,
   KafkaCrabError,
   KafkaEvent,
@@ -16,7 +28,7 @@ export type {
   TopicPartitionConfig,
 } from '../js-binding.js'
 
-export { KafkaClientConfig, KafkaConsumer, KafkaProducer } from '../js-binding.js'
+export { KafkaAdmin, KafkaClientConfig, KafkaConsumer, KafkaProducer } from '../js-binding.js'
 export type { CommitMode, KafkaEventName, PartitionPosition, SecurityProtocol } from '../js-binding.js'
 export { KafkaClient } from './kafka-client.js'
 export { BaseKafkaStreamReadable } from './streams/base-kafka-stream-readable.js'

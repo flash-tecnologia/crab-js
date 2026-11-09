@@ -388,6 +388,20 @@ impl KafkaProducer {
     let mut record: BaseRecord<'_, [u8], [u8], Box<oneshot::Sender<DeliveryResultData>>> =
       BaseRecord::with_opaque_to(topic, opaque).headers(headers);
 
+    if let Some(partition) = message.partition {
+      if !partition.is_finite()
+        || partition.fract() != 0.0
+        || partition < 0.0
+        || partition > i32::MAX as f64
+      {
+        return Err(Error::new(
+          Status::InvalidArg,
+          "partition must be an integer between 0 and 2147483647",
+        ));
+      }
+      record = record.partition(partition as i32);
+    }
+
     if message.is_tombstone == Some(true) && message.payload.is_some() {
       return Err(Error::new(
         Status::InvalidArg,

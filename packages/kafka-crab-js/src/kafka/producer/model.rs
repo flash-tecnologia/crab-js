@@ -178,6 +178,8 @@ pub struct RecordMetadata {
 /// payload is rejected with `InvalidArg` instead of silently dropping bytes.
 #[napi(object)]
 pub struct MessageProducer {
+  /// Explicit target partition. Omit to use the configured partitioner.
+  pub partition: Option<f64>,
   pub payload: Option<Buffer>,
   pub key: Option<Buffer>,
   pub headers: Option<HashMap<String, Buffer>>,

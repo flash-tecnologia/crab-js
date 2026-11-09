@@ -1,5 +1,6 @@
 import type { ReadableOptions } from 'node:stream'
 import {
+  type AdminConfiguration,
   type CompactMessageBatch,
   type ConsumerConfiguration,
   KafkaClientConfig,
@@ -459,6 +460,11 @@ export class KafkaClient {
    */
   public deleteRecords(topicPartitions: TopicPartition[]) {
     return this.kafkaClientConfig.deleteRecords(topicPartitions)
+  }
+
+  /** Creates an administrative client. Call close() when finished. */
+  public createAdmin(configuration?: AdminConfiguration) {
+    return this.kafkaClientConfig.createAdmin(configuration)
   }
 
   /**

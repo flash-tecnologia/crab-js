@@ -30,7 +30,7 @@ and queued native events are destroyed through RAII. The native client stays ali
 until its queue reference is released. `'Sync'` continues to await the broker response
 in `spawn_blocking`; `'Async'` resolves after native scheduling.
 
-Overflow policy follows `tokio::sync::broadcast` (pinned `=1.53.1`): capacity 100 is rounded up
+Overflow policy follows `tokio::sync::broadcast` (pinned `=1.54.1`): capacity 100 is rounded up
 to 128 slots; a send on a full channel overwrites the oldest retained events instead of dropping
 the new one. `send()` itself only fails when no receiver exists. A lagging listener observes the
 loss as `Lagged(skipped)` on its next read, surfaced as a warning with the skipped count, and

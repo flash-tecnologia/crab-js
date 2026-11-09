@@ -7,6 +7,33 @@
  */
 export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-wasip1'
 
+export declare class KafkaAdmin {
+  /**
+   * Creates topics and returns one result per topic, including partial failures.
+   * Existing topics are successful with `created: false` and are not modified.
+   */
+  createTopics(options: CreateTopicsOptions): Promise<Array<AdminTopicResult>>
+  /** Fetches metadata without subscribing, joining a group, or auto-creating topics. */
+  fetchTopicMetadata(topics: Array<string>): Promise<Array<AdminTopicMetadata>>
+  /**
+   * Fetches inclusive low and exclusive high watermarks as decimal strings.
+   * Partition failures are returned alongside successful results.
+   */
+  fetchTopicOffsets(topic: string): Promise<Array<AdminTopicOffset>>
+  /**
+   * Reads a group's committed next offsets. Never subscribes, joins, or commits.
+   * Missing commits are absent rather than being resolved to the start or end.
+   */
+  fetchOffsets(options: FetchOffsetsOptions): Promise<Array<AdminGroupOffsets>>
+  /**
+   * Describes existing groups and their members without participating in them.
+   * Assignments and member metadata are raw protocol bytes.
+   */
+  describeGroups(groupIds: Array<string>): Promise<Array<AdminGroupDescription>>
+  /** Idempotently prevents new operations. In-flight operations may finish. */
+  close(): Promise<void>
+}
+
 export declare class KafkaClientConfig {
   /**
    * Creates a new KafkaClientConfig with the provided configuration.
@@ -25,6 +52,8 @@ export declare class KafkaClientConfig {
    * @returns A new KafkaProducer instance
    */
   createProducer(producerConfiguration: ProducerConfiguration): KafkaProducer
+  /** Creates an administrative client. No group is joined by administrative reads. */
+  createAdmin(configuration?: AdminConfiguration | undefined | null): KafkaAdmin
   /**
    * Deletes all records before the requested offset for each topic partition.
    * Kafka does not delete an individual record directly: passing offset `N`
@@ -168,6 +197,77 @@ export declare class KafkaProducer {
   send(producerRecord: ProducerRecord): Promise<Array<RecordMetadata>>
 }
 
+export interface AdminConfiguration {
+  /** Total deadline for each operation in milliseconds. Defaults to 5000. */
+  timeoutMs?: number
+}
+
+export interface AdminGroupDescription {
+  groupId: string
+  state: string
+  protocolType: string
+  protocol: string
+  members: Array<AdminGroupMember>
+}
+
+export interface AdminGroupMember {
+  memberId: string
+  clientId: string
+  clientHost: string
+  /** Raw bytes in the group's assignment protocol. */
+  assignment?: Buffer
+  metadata?: Buffer
+}
+
+export interface AdminGroupOffsets {
+  topic: string
+  partitions: Array<AdminPartitionOffset>
+}
+
+export interface AdminPartitionMetadata {
+  partition: number
+  leader: number
+  replicas: Array<number>
+  isr: Array<number>
+  error?: KafkaCrabError
+}
+
+export interface AdminPartitionOffset {
+  partition: number
+  /** The committed next offset as a decimal string. Absent when never committed. */
+  offset?: string
+  error?: KafkaCrabError
+}
+
+export interface AdminTopic {
+  topic: string
+  numPartitions: number
+  replicationFactor: number
+  config?: Record<string, string>
+}
+
+export interface AdminTopicMetadata {
+  topic: string
+  partitions: Array<AdminPartitionMetadata>
+  error?: KafkaCrabError
+}
+
+export interface AdminTopicOffset {
+  partition: number
+  /** Inclusive low watermark, encoded as a decimal string without precision loss. */
+  low?: string
+  /** Exclusive high watermark, encoded as a decimal string without precision loss. */
+  high?: string
+  error?: KafkaCrabError
+}
+
+export interface AdminTopicResult {
+  topic: string
+  /** False when the topic already existed or creation failed. */
+  created: boolean
+  error?: KafkaCrabError
+}
+
 export type CommitMode = 'Sync' | 'Async'
 
 export interface CompactMessageBatch {
@@ -196,6 +296,17 @@ export interface ConsumerConfiguration {
    * fail-fast: it falls back to the default. Negative values are rejected.
    */
   fetchMetadataTimeout?: number
+}
+
+export interface CreateTopicsOptions {
+  topics: Array<AdminTopic>
+  /** Wait for leaders of successful topics. Defaults to true. */
+  waitForLeaders?: boolean
+}
+
+export interface FetchOffsetsOptions {
+  groupId: string
+  topics: Array<string>
 }
 
 export interface KafkaConfiguration {
@@ -241,6 +352,8 @@ export interface Message {
  * payload is rejected with `InvalidArg` instead of silently dropping bytes.
  */
 export interface MessageProducer {
+  /** Explicit target partition. Omit to use the configured partitioner. */
+  partition?: number
   payload?: Buffer
   key?: Buffer
   headers?: Record<string, Buffer>

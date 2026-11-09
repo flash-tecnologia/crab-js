@@ -52,7 +52,7 @@ drain warning.
 ## Broadcast overflow policy
 
 Three tests pin the `tokio::sync::broadcast` semantics the event channel relies on
-(pinned `=1.53.1`): 100 requested slots round up to 128, overflow overwrites the oldest
+(pinned `=1.54.1`): 100 requested slots round up to 128, overflow overwrites the oldest
 retained events with an exact `Lagged(skipped)` report, late subscribers see no history,
 and `send()` only fails with no receivers.
 

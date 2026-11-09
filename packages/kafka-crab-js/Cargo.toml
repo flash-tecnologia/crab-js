@@ -2,7 +2,7 @@
 [package]
 edition = "2021"
 name = "kafka-crab-js"
-version = "5.0.0"
+version = "5.1.0"
 
 [lib]
 crate-type = ["cdylib"]
@@ -27,7 +27,7 @@ rdkafka = { version = "0.39", default-features = false, features = [
   "ssl-vendored",
   "curl-static",
 ] }
-tokio = { version = "1.53", features = ["full"] }
+tokio = { version = "1.54.1", features = ["full"] }
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json"] }
