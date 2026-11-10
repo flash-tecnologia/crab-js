@@ -1,4 +1,4 @@
-import { deepEqual, equal, ok } from 'node:assert/strict'
+import { deepEqual, equal, ok, rejects } from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 import { KafkaClient } from '../../dist/index.js'
@@ -53,7 +53,7 @@ test('pauses only the selected partition and resumes it without losing messages'
 })
 
 test(
-  'disconnect resolves only after leaving the group, including concurrent callers',
+  'disconnect interrupts receives and leaves the group even when a concurrent caller aborts',
   { timeout: 25_000 },
   async () => {
     const topic = `disconnect-group-${randomUUID()}`
@@ -72,7 +72,13 @@ test(
       const [before] = await admin.describeGroups([topic])
       equal(before.members.length, 1)
       const pending = consumer.recv()
+      const controller = new AbortController()
+      const reason = new Error('shutdown deadline')
+      const aborted = consumer.disconnect({ signal: controller.signal })
+      const rejected = rejects(aborted, (error) => error === reason)
+      controller.abort(reason)
       await Promise.all([consumer.disconnect(), consumer.disconnect()])
+      await rejected
       equal(await pending, null)
       const [after] = await admin.describeGroups([topic])
       equal(after.members.length, 0, 'disconnect must leave while the JS consumer object is still alive')

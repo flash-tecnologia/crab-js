@@ -42,14 +42,14 @@ test('aborting one caller preserves its reason, other listeners and concurrent c
   controller.signal.addEventListener('abort', (event) => {
     event.stopImmediatePropagation()
   })
-  const pendingReceive = consumer.recv()
+  // Receive interruption is covered with a live broker in partition-lifecycle.test.mjs.
+  // This unavailable broker can legitimately reject recv() before shutdown starts.
   try {
     const aborted = consumer.disconnect({ signal: controller.signal })
     const closed = consumer.disconnect()
     controller.abort(reason)
     await rejects(aborted, (error) => error === reason)
     equal(existingListenerCalls, 1)
-    equal(await pendingReceive, null)
     await closed
     equal(consumer.assignment().length, 0)
   } finally {
