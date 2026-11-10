@@ -1,10 +1,12 @@
 use napi::{Error, Result, Status};
-use rdkafka::message::{DeliveryResult, OwnedHeaders};
+use rdkafka::bindings;
+use rdkafka::message::DeliveryResult;
 use rdkafka::producer::Partitioner;
 use rdkafka::producer::ThreadedProducer;
 use rdkafka::{
   error::KafkaError,
   producer::{BaseRecord, NoCustomPartitioner},
+  types::RDKafkaErrorCode,
   ClientConfig, ClientContext, Message, Statistics,
 };
 use rdkafka::{
@@ -162,10 +164,19 @@ impl KafkaProducer {
   }
 
   /// Pumps the librdkafka queue off the async runtime.
-  async fn flush_queue(&self) -> Result<()> {
+  async fn flush_queue_until(&self, deadline: tokio::time::Instant) -> Result<()> {
     let producer = self.producer.clone();
-    let queue_timeout = self.queue_timeout;
-    let join = tokio::task::spawn_blocking(move || producer.flush(queue_timeout)).await;
+    let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+    let timeout_ms = remaining.as_millis().min(i32::MAX as u128) as i32;
+    let join = tokio::task::spawn_blocking(move || {
+      let err = unsafe { bindings::rd_kafka_flush(producer.client().native_ptr(), timeout_ms) };
+      if err == bindings::rd_kafka_resp_err_t::RD_KAFKA_RESP_ERR_NO_ERROR {
+        Ok(())
+      } else {
+        Err(KafkaError::Flush(err.into()))
+      }
+    })
+    .await;
     let inner = match join {
       Ok(result) => result,
       Err(e) => {
@@ -178,6 +189,18 @@ impl KafkaProducer {
     match inner {
       Ok(()) => Ok(()),
       Err(e) => Err(Error::new(Status::GenericFailure, e.to_string())),
+    }
+  }
+
+  async fn settle_after_confirmations(&self) {
+    for _ in 0..16 {
+      if self.producer.in_flight_count() == 0 {
+        return;
+      }
+      std::hint::spin_loop();
+    }
+    if self.producer.in_flight_count() > 0 {
+      tokio::task::yield_now().await;
     }
   }
 
@@ -203,7 +226,10 @@ impl KafkaProducer {
   #[napi]
   pub async fn flush(&self) -> Result<Vec<RecordMetadata>> {
     if self.auto_flush {
-      self.flush_queue().await?;
+      if self.producer.in_flight_count() > 0 {
+        let deadline = tokio::time::Instant::now() + self.queue_timeout;
+        self.flush_queue_until(deadline).await?;
+      }
       Ok(vec![])
     } else {
       let receivers = std::mem::take(
@@ -216,14 +242,26 @@ impl KafkaProducer {
     }
   }
 
-  /// Pumps the queue, then gathers owned confirmations. Used by manual `flush()`.
+  /// Gathers owned confirmations and pumps the queue if any remain unconfirmed. Used by manual `flush()`.
   async fn flush_receivers(
     &self,
     receivers: Vec<oneshot::Receiver<DeliveryResultData>>,
   ) -> Result<Vec<RecordMetadata>> {
+    let expected = receivers.len();
     let deadline = tokio::time::Instant::now() + self.queue_timeout;
-    let flush_res = self.flush_queue().await;
+    let mut flush_res = if self.producer.in_flight_count() > 0 {
+      self.flush_queue_until(deadline).await
+    } else {
+      Ok(())
+    };
     let (result, last_err) = Self::gather(receivers, deadline).await;
+    if flush_res.is_ok() {
+      if result.len() < expected && self.producer.in_flight_count() > 0 {
+        flush_res = self.flush_queue_until(deadline).await;
+      } else {
+        self.settle_after_confirmations().await;
+      }
+    }
 
     *self
       .last_delivery_results
@@ -256,7 +294,8 @@ impl KafkaProducer {
 
   /// Awaits owned receivers within `deadline`, in order. Unconfirmed results
   /// are abandoned by dropping their receivers: expiry needs no eviction pass
-  /// because nothing is shared.
+  /// because nothing is shared. Missing confirmations remain errors even if
+  /// the native queue drains before the fallback flush.
   async fn gather(
     receivers: Vec<oneshot::Receiver<DeliveryResultData>>,
     deadline: tokio::time::Instant,
@@ -264,13 +303,21 @@ impl KafkaProducer {
     let mut result = Vec::with_capacity(receivers.len());
     let mut last_err = None;
     for rx in receivers {
-      // Anything else (sender dropped, budget expired) abandons the
-      // confirmation: expiry needs no eviction pass because nothing is shared.
-      if let Ok(Ok(data)) = tokio::time::timeout_at(deadline, rx).await {
-        if let Some(err) = data.error.as_ref() {
-          last_err = Some(err.clone());
+      match tokio::time::timeout_at(deadline, rx).await {
+        Ok(Ok(data)) => {
+          if let Some(err) = data.error.as_ref() {
+            last_err = Some(err.clone());
+          }
+          result.push(to_record_metadata(&data));
         }
-        result.push(to_record_metadata(&data));
+        Ok(Err(_)) => {
+          last_err.get_or_insert(KafkaError::Canceled);
+        }
+        Err(_) => {
+          last_err.get_or_insert(KafkaError::MessageProduction(
+            RDKafkaErrorCode::OperationTimedOut,
+          ));
+        }
       }
     }
     (result, last_err)
@@ -305,8 +352,19 @@ impl KafkaProducer {
 
     if let Some(err) = send_err {
       if self.auto_flush && !receivers.is_empty() {
-        let flush_res = self.flush_queue().await;
+        let mut flush_res = if self.producer.in_flight_count() > 0 {
+          self.flush_queue_until(deadline).await
+        } else {
+          Ok(())
+        };
         let (confirmed, _) = Self::gather(receivers, deadline).await;
+        if flush_res.is_ok() {
+          if confirmed.len() < enqueued && self.producer.in_flight_count() > 0 {
+            flush_res = self.flush_queue_until(deadline).await;
+          } else {
+            self.settle_after_confirmations().await;
+          }
+        }
         *self
           .last_delivery_results
           .lock()
@@ -343,8 +401,19 @@ impl KafkaProducer {
     }
 
     if self.auto_flush {
-      let flush_res = self.flush_queue().await;
+      let mut flush_res = if self.producer.in_flight_count() > 0 {
+        self.flush_queue_until(deadline).await
+      } else {
+        Ok(())
+      };
       let (confirmed, delivery_err) = Self::gather(receivers, deadline).await;
+      if flush_res.is_ok() {
+        if confirmed.len() < enqueued && self.producer.in_flight_count() > 0 {
+          flush_res = self.flush_queue_until(deadline).await;
+        } else {
+          self.settle_after_confirmations().await;
+        }
+      }
       *self
         .last_delivery_results
         .lock()
@@ -377,16 +446,17 @@ impl KafkaProducer {
     message: &MessageProducer,
     opaque: Box<oneshot::Sender<DeliveryResultData>>,
   ) -> Result<()> {
-    let headers = message
-      .headers
-      .as_ref()
-      .map_or_else(OwnedHeaders::new, hashmap_to_kafka_headers);
-
     // Preserve Kafka semantics: None => no key (round-robin), Some => hashed partition
     let key = message.key.as_deref().map(ToBytes::to_bytes);
 
     let mut record: BaseRecord<'_, [u8], [u8], Box<oneshot::Sender<DeliveryResultData>>> =
-      BaseRecord::with_opaque_to(topic, opaque).headers(headers);
+      BaseRecord::with_opaque_to(topic, opaque);
+
+    if let Some(ref headers) = message.headers {
+      if !headers.is_empty() {
+        record = record.headers(hashmap_to_kafka_headers(headers));
+      }
+    }
 
     if let Some(partition) = message.partition {
       if !partition.is_finite()
@@ -491,4 +561,125 @@ fn record_metadata_json(meta: &RecordMetadata) -> serde_json::Value {
       "message": err.message,
     })),
   })
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use tokio::time::Instant;
+
+  fn delivery(offset: i64) -> DeliveryResultData {
+    DeliveryResultData {
+      topic: "confirmation-regression".to_owned(),
+      partition: 0,
+      offset,
+      error: None,
+    }
+  }
+
+  #[tokio::test]
+  async fn manual_flush_rejects_missing_confirmation_when_native_queue_is_empty() {
+    let producer = KafkaProducer::new(
+      ClientConfig::new(),
+      ProducerConfiguration {
+        queue_timeout: Some(0),
+        auto_flush: Some(false),
+        configuration: None,
+      },
+    )
+    .unwrap();
+    let (sender, receiver) = oneshot::channel();
+
+    // A late delivery can drain the native queue after its receiver expired.
+    // Keep that queue empty to make the fallback flush deterministically succeed.
+    producer.producer.poll(Duration::ZERO);
+    assert_eq!(producer.producer.in_flight_count(), 0);
+    let result = producer.flush_receivers(vec![receiver]).await;
+
+    assert!(
+      result.is_err(),
+      "A drained queue must not hide a missing confirmation"
+    );
+    assert!(producer.get_last_delivery_results().is_empty());
+    assert!(sender.send(delivery(1)).is_err());
+  }
+
+  #[tokio::test]
+  async fn gather_keeps_partial_metadata_and_reports_expired_confirmation() {
+    let (first_sender, first_receiver) = oneshot::channel();
+    let (late_sender, late_receiver) = oneshot::channel();
+    let (last_sender, last_receiver) = oneshot::channel();
+    first_sender.send(delivery(1)).unwrap();
+    last_sender.send(delivery(3)).unwrap();
+
+    let (confirmed, error) = KafkaProducer::gather(
+      vec![first_receiver, late_receiver, last_receiver],
+      Instant::now() - Duration::from_secs(1),
+    )
+    .await;
+
+    assert_eq!(
+      confirmed
+        .iter()
+        .map(|message| message.offset)
+        .collect::<Vec<_>>(),
+      vec![1, 3]
+    );
+    assert_eq!(
+      error,
+      Some(KafkaError::MessageProduction(
+        RDKafkaErrorCode::OperationTimedOut
+      ))
+    );
+    assert!(late_sender.send(delivery(2)).is_err());
+  }
+
+  #[tokio::test]
+  async fn gather_reports_closed_delivery_channel() {
+    let (sender, receiver) = oneshot::channel();
+    drop(sender);
+
+    let (confirmed, error) =
+      KafkaProducer::gather(vec![receiver], Instant::now() + Duration::from_secs(1)).await;
+
+    assert!(confirmed.is_empty());
+    assert_eq!(error, Some(KafkaError::Canceled));
+  }
+
+  #[tokio::test]
+  async fn gather_accepts_ready_confirmation_after_deadline() {
+    let (sender, receiver) = oneshot::channel();
+    sender.send(delivery(1)).unwrap();
+
+    let (confirmed, error) =
+      KafkaProducer::gather(vec![receiver], Instant::now() - Duration::from_secs(1)).await;
+
+    assert_eq!(confirmed.len(), 1);
+    assert_eq!(confirmed[0].offset, 1);
+    assert_eq!(error, None);
+  }
+
+  #[tokio::test]
+  async fn gather_preserves_delivery_error_when_another_confirmation_expires() {
+    let (failed_sender, failed_receiver) = oneshot::channel();
+    let (late_sender, late_receiver) = oneshot::channel();
+    let delivery_error = KafkaError::MessageProduction(RDKafkaErrorCode::TopicAuthorizationFailed);
+    let mut failed_delivery = delivery(1);
+    failed_delivery.error = Some(delivery_error.clone());
+    failed_sender.send(failed_delivery).unwrap();
+
+    let (confirmed, error) = KafkaProducer::gather(
+      vec![failed_receiver, late_receiver],
+      Instant::now() - Duration::from_secs(1),
+    )
+    .await;
+
+    assert_eq!(confirmed.len(), 1);
+    assert_eq!(
+      confirmed[0].error.as_ref().unwrap().code,
+      RDKafkaErrorCode::TopicAuthorizationFailed as i32
+    );
+    assert_eq!(error, Some(delivery_error));
+    assert!(late_sender.send(delivery(2)).is_err());
+  }
 }

@@ -1,6 +1,6 @@
-use futures_util::{stream, StreamExt};
+use futures_util::{stream, FutureExt, StreamExt};
 use std::{
-  collections::{HashMap, VecDeque},
+  collections::VecDeque,
   mem,
   sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -249,6 +249,16 @@ struct SerialStreamState {
   pending_error: Option<Error>,
 }
 
+enum KeyBatchState {
+  None,
+  Uniform(Buffer),
+  Dictionary {
+    values: Vec<Buffer>,
+    indexes: Vec<u8>,
+  },
+  PerMessage(Vec<Option<Buffer>>),
+}
+
 enum HeaderProjection<'a> {
   None,
   Single { key: &'a str, value: &'a [u8] },
@@ -257,6 +267,10 @@ enum HeaderProjection<'a> {
 
 enum HeaderBatchState {
   None,
+  UniformSingle {
+    key: String,
+    value: Buffer,
+  },
   SharedSingle {
     key: String,
     values: Vec<Option<Buffer>>,
@@ -266,7 +280,7 @@ enum HeaderBatchState {
 
 struct CompactBatchBuilder {
   payloads: Vec<Buffer>,
-  keys: Option<Vec<Option<Buffer>>>,
+  keys: KeyBatchState,
   topic: Option<String>,
   topics: Option<Vec<String>>,
   partitions: Vec<i32>,
@@ -281,7 +295,7 @@ impl CompactBatchBuilder {
   fn new(capacity: usize) -> Self {
     Self {
       payloads: Vec::new(),
-      keys: None,
+      keys: KeyBatchState::None,
       topic: None,
       topics: None,
       partitions: Vec::new(),
@@ -326,14 +340,12 @@ impl CompactBatchBuilder {
   #[inline]
   fn finish(self) -> CompactMessageBatch {
     let (keys, shared_key, key_dictionary, key_dictionary_indexes) =
-      encode_optional_dictionary_buffer(self.keys);
+      finish_keys(self.keys, self.capacity);
     let (shared_header_key, shared_header_value, shared_header_values, headers) = match self.headers
     {
       HeaderBatchState::None => (None, None, None, None),
-      HeaderBatchState::SharedSingle { key, values } => {
-        let (values, shared_value) = encode_optional_shared_buffer(Some(values));
-        (Some(key), shared_value, values, None)
-      }
+      HeaderBatchState::UniformSingle { key, value } => (Some(key), Some(value), None, None),
+      HeaderBatchState::SharedSingle { key, values } => (Some(key), None, Some(values), None),
       HeaderBatchState::Many(headers) => (None, None, None, Some(headers)),
     };
 
@@ -358,15 +370,59 @@ impl CompactBatchBuilder {
   #[inline]
   fn push_key(&mut self, key: Option<&[u8]>, previous_count: usize) {
     match (&mut self.keys, key) {
-      (Some(keys), Some(key)) => keys.push(Some(key.into())),
-      (Some(keys), None) => keys.push(None),
-      (None, Some(key)) => {
-        let mut keys = Vec::with_capacity(self.capacity);
-        keys.resize_with(previous_count, || None);
-        keys.push(Some(key.into()));
-        self.keys = Some(keys);
+      (KeyBatchState::None, None) => {}
+      (KeyBatchState::None, Some(key)) => {
+        if previous_count == 0 {
+          self.keys = KeyBatchState::Uniform(key.into());
+        } else {
+          let mut keys = Vec::with_capacity(self.capacity);
+          keys.resize_with(previous_count, || None);
+          keys.push(Some(key.into()));
+          self.keys = KeyBatchState::PerMessage(keys);
+        }
       }
-      (None, None) => {}
+      (KeyBatchState::Uniform(shared_key), Some(key)) if shared_key.as_ref() == key => {}
+      (KeyBatchState::Uniform(shared_key), Some(key)) => {
+        let first_key = mem::replace(shared_key, Buffer::from(&[][..]));
+        let mut values = Vec::with_capacity(8);
+        values.push(first_key);
+        values.push(key.into());
+        let mut indexes = Vec::with_capacity(self.capacity);
+        indexes.resize(previous_count, 0);
+        indexes.push(1);
+        self.keys = KeyBatchState::Dictionary { values, indexes };
+      }
+      (KeyBatchState::Uniform(shared_key), None) => {
+        let shared_slice = shared_key.as_ref();
+        let mut keys = Vec::with_capacity(self.capacity);
+        for _ in 0..previous_count {
+          keys.push(Some(Buffer::from(shared_slice)));
+        }
+        keys.push(None);
+        self.keys = KeyBatchState::PerMessage(keys);
+      }
+      (KeyBatchState::Dictionary { values, indexes }, Some(key)) => {
+        if let Some(index) = values.iter().position(|entry| entry.as_ref() == key) {
+          indexes.push(index as u8);
+          return;
+        }
+        if values.len() < BUFFER_DICTIONARY_MAX_UNIQUE_VALUES {
+          let index = values.len() as u8;
+          values.push(key.into());
+          indexes.push(index);
+          return;
+        }
+        let mut keys = materialize_dictionary_keys(values, indexes, self.capacity);
+        keys.push(Some(key.into()));
+        self.keys = KeyBatchState::PerMessage(keys);
+      }
+      (KeyBatchState::Dictionary { values, indexes }, None) => {
+        let mut keys = materialize_dictionary_keys(values, indexes, self.capacity);
+        keys.push(None);
+        self.keys = KeyBatchState::PerMessage(keys);
+      }
+      (KeyBatchState::PerMessage(keys), Some(key)) => keys.push(Some(key.into())),
+      (KeyBatchState::PerMessage(keys), None) => keys.push(None),
     }
   }
 
@@ -398,17 +454,71 @@ impl CompactBatchBuilder {
       HeaderBatchState::None => match project_headers(headers_input) {
         HeaderProjection::None => {}
         HeaderProjection::Single { key, value } => {
-          let mut values = Vec::with_capacity(self.capacity);
-          values.resize_with(previous_count, || None);
-          values.push(Some(value.into()));
-          self.headers = HeaderBatchState::SharedSingle {
-            key: key.to_owned(),
-            values,
-          };
+          if previous_count == 0 {
+            self.headers = HeaderBatchState::UniformSingle {
+              key: key.to_owned(),
+              value: value.into(),
+            };
+          } else {
+            let mut values = Vec::with_capacity(self.capacity);
+            values.resize_with(previous_count, || None);
+            values.push(Some(value.into()));
+            self.headers = HeaderBatchState::SharedSingle {
+              key: key.to_owned(),
+              values,
+            };
+          }
         }
         HeaderProjection::Many(message_headers) => {
           let mut header_batches = Vec::with_capacity(self.capacity);
           header_batches.resize_with(previous_count, || None);
+          header_batches.push(Some(message_headers));
+          self.headers = HeaderBatchState::Many(header_batches);
+        }
+      },
+      HeaderBatchState::UniformSingle { key, value } => match project_headers(headers_input) {
+        HeaderProjection::Single {
+          key: header_key,
+          value: next_value,
+        } if key == header_key && value.as_ref() == next_value => {}
+        HeaderProjection::Single {
+          key: header_key,
+          value: next_value,
+        } if key == header_key => {
+          let shared_slice = value.as_ref();
+          let mut values = Vec::with_capacity(self.capacity);
+          for _ in 0..previous_count {
+            values.push(Some(Buffer::from(shared_slice)));
+          }
+          values.push(Some(next_value.into()));
+          let key = mem::take(key);
+          self.headers = HeaderBatchState::SharedSingle { key, values };
+        }
+        HeaderProjection::None => {
+          let shared_slice = value.as_ref();
+          let mut values = Vec::with_capacity(self.capacity);
+          for _ in 0..previous_count {
+            values.push(Some(Buffer::from(shared_slice)));
+          }
+          values.push(None);
+          let key = mem::take(key);
+          self.headers = HeaderBatchState::SharedSingle { key, values };
+        }
+        HeaderProjection::Single {
+          key: header_key,
+          value: next_value,
+        } => {
+          let mut header_batches =
+            uniform_single_to_many(key, value.as_ref(), previous_count, self.capacity);
+          header_batches.push(Some(MessageHeaders::one(
+            header_key.to_owned(),
+            next_value.into(),
+          )));
+          self.headers = HeaderBatchState::Many(header_batches);
+        }
+        HeaderProjection::Many(message_headers) => {
+          let mut header_batches =
+            uniform_single_to_many(key, value.as_ref(), previous_count, self.capacity);
           header_batches.push(Some(message_headers));
           self.headers = HeaderBatchState::Many(header_batches);
         }
@@ -484,6 +594,25 @@ fn project_headers<'a>(headers: Option<&'a BorrowedHeaders>) -> HeaderProjection
 }
 
 #[inline]
+fn uniform_single_to_many(
+  shared_key: &str,
+  shared_value: &[u8],
+  previous_count: usize,
+  capacity: usize,
+) -> Vec<Option<MessageHeaders>> {
+  let mut headers = Vec::with_capacity(capacity.max(previous_count + 1));
+
+  for _ in 0..previous_count {
+    headers.push(Some(MessageHeaders::one(
+      shared_key.to_owned(),
+      Buffer::from(shared_value),
+    )));
+  }
+
+  headers
+}
+
+#[inline]
 fn shared_single_to_many(
   shared_values: Vec<Option<Buffer>>,
   shared_key: &str,
@@ -498,39 +627,6 @@ fn shared_single_to_many(
 }
 
 #[inline]
-fn encode_optional_shared_buffer(
-  values: Option<Vec<Option<Buffer>>>,
-) -> (Option<Vec<Option<Buffer>>>, Option<Buffer>) {
-  let Some(values) = values else {
-    return (None, None);
-  };
-
-  if values.is_empty() {
-    return (None, None);
-  }
-
-  let is_shared = match values.first() {
-    Some(Some(first_value)) => values.iter().all(|value| {
-      value
-        .as_ref()
-        .is_some_and(|value| value.as_ref() == first_value.as_ref())
-    }),
-    _ => false,
-  };
-
-  if is_shared {
-    let shared_value = values
-      .into_iter()
-      .next()
-      .flatten()
-      .expect("shared compact buffers must contain at least one value");
-    return (None, Some(shared_value));
-  }
-
-  (Some(values), None)
-}
-
-#[inline]
 fn should_dictionary_encode(total: usize, unique: usize) -> bool {
   unique > 1
     && unique <= BUFFER_DICTIONARY_MAX_UNIQUE_VALUES
@@ -538,66 +634,40 @@ fn should_dictionary_encode(total: usize, unique: usize) -> bool {
 }
 
 #[inline]
-fn encode_optional_dictionary_buffer(values: Option<Vec<Option<Buffer>>>) -> CompactKeyEncoding {
-  let Some(values) = values else {
-    return (None, None, None, None);
-  };
-
-  if values.is_empty() {
-    return (None, None, None, None);
+fn materialize_dictionary_keys(
+  values: &[Buffer],
+  indexes: &[u8],
+  capacity: usize,
+) -> Vec<Option<Buffer>> {
+  let mut keys = Vec::with_capacity(capacity.max(indexes.len()));
+  for &index in indexes {
+    let value = &values[index as usize];
+    keys.push(Some(Buffer::from(value.as_ref())));
   }
+  keys
+}
 
-  if values.iter().any(Option::is_none) {
-    return (Some(values), None, None, None);
-  }
-
-  let first_value = values[0]
-    .as_ref()
-    .expect("compact key dictionary buffers must contain at least one value");
-
-  if values.iter().all(|value| {
-    value
-      .as_ref()
-      .is_some_and(|value| value.as_ref() == first_value.as_ref())
-  }) {
-    let shared_value = values
-      .into_iter()
-      .next()
-      .flatten()
-      .expect("shared compact key buffers must contain at least one value");
-    return (None, Some(shared_value), None, None);
-  }
-
-  let mut dictionary_lookup: HashMap<Vec<u8>, u8> = HashMap::new();
-  let mut dictionary_values = Vec::new();
-  let mut dictionary_indexes = Vec::with_capacity(values.len());
-
-  for value in values.iter().flatten() {
-    if let Some(index) = dictionary_lookup.get(value.as_ref()) {
-      dictionary_indexes.push(*index);
-      continue;
+#[inline]
+fn finish_keys(keys: KeyBatchState, capacity: usize) -> CompactKeyEncoding {
+  match keys {
+    KeyBatchState::None => (None, None, None, None),
+    KeyBatchState::Uniform(shared_key) => (None, Some(shared_key), None, None),
+    KeyBatchState::Dictionary { values, indexes } => {
+      if should_dictionary_encode(indexes.len(), values.len()) {
+        (None, None, Some(values), Some(indexes))
+      } else {
+        let keys = materialize_dictionary_keys(&values, &indexes, capacity);
+        (Some(keys), None, None, None)
+      }
     }
-
-    if dictionary_values.len() >= BUFFER_DICTIONARY_MAX_UNIQUE_VALUES {
-      return (Some(values), None, None, None);
+    KeyBatchState::PerMessage(keys) => {
+      if keys.is_empty() {
+        (None, None, None, None)
+      } else {
+        (Some(keys), None, None, None)
+      }
     }
-
-    let index = dictionary_values.len() as u8;
-    dictionary_lookup.insert(value.as_ref().to_vec(), index);
-    dictionary_values.push(value.as_ref().into());
-    dictionary_indexes.push(index);
   }
-
-  if should_dictionary_encode(dictionary_indexes.len(), dictionary_values.len()) {
-    return (
-      None,
-      None,
-      Some(dictionary_values),
-      Some(dictionary_indexes),
-    );
-  }
-
-  (Some(values), None, None, None)
 }
 
 #[inline]
@@ -717,7 +787,40 @@ async fn collect_batch_messages(
   }
 
   // Phase B: fill remaining slots until size/deadline/disconnect/cancel.
-  for _ in 1..size {
+  for slot in 1..size {
+    if disconnect_signal.has_changed().unwrap_or(false) {
+      let _ = disconnect_signal.borrow_and_update();
+      disconnected = true;
+      break;
+    }
+    if let Some(cancel_rx) = cancel_signal.as_deref_mut() {
+      if *cancel_rx.borrow() || cancel_rx.has_changed().unwrap_or(false) {
+        let _ = cancel_rx.borrow_and_update();
+        disconnected = true;
+        break;
+      }
+    }
+    if (slot & 63) == 0 && tokio::time::Instant::now() >= deadline {
+      break;
+    }
+    if let Some(message) = message_stream.next().now_or_never() {
+      match message {
+        Some(Ok(kafka_message)) => {
+          let payload = kafka_message.payload();
+          messages.push(create_message(&kafka_message, payload));
+          continue;
+        }
+        Some(Err(error)) => {
+          pending_error = Some(error.into_napi_error("Failed to receive message from consumer"));
+          break;
+        }
+        None => {
+          disconnected = true;
+          break;
+        }
+      }
+    }
+
     if let Some(cancel_rx) = cancel_signal.as_deref_mut() {
       select! {
         biased;
@@ -858,7 +961,40 @@ async fn collect_batch_messages_compact(
   }
 
   // Phase B: fill remaining slots until size/deadline/disconnect/cancel.
-  for _ in 1..size {
+  for slot in 1..size {
+    if disconnect_signal.has_changed().unwrap_or(false) {
+      let _ = disconnect_signal.borrow_and_update();
+      disconnected = true;
+      break;
+    }
+    if let Some(cancel_rx) = cancel_signal.as_deref_mut() {
+      if *cancel_rx.borrow() || cancel_rx.has_changed().unwrap_or(false) {
+        let _ = cancel_rx.borrow_and_update();
+        disconnected = true;
+        break;
+      }
+    }
+    if (slot & 63) == 0 && tokio::time::Instant::now() >= deadline {
+      break;
+    }
+    if let Some(message) = message_stream.next().now_or_never() {
+      match message {
+        Some(Ok(kafka_message)) => {
+          let payload = kafka_message.payload();
+          batch.push(&kafka_message, payload);
+          continue;
+        }
+        Some(Err(error)) => {
+          pending_error = Some(error.into_napi_error("Failed to receive message from consumer"));
+          break;
+        }
+        None => {
+          disconnected = true;
+          break;
+        }
+      }
+    }
+
     if let Some(cancel_rx) = cancel_signal.as_deref_mut() {
       select! {
         biased;

@@ -7,6 +7,7 @@ import { test } from 'vite-plus/test'
 
 import {
   consumerReceiveEndChannel,
+  type CompactMessageBatch,
   KafkaClient,
   KafkaClientConfig,
   type KafkaConsumer,
@@ -468,6 +469,258 @@ test('M01: cancelling an idle serial stream stops it from consuming later messag
     broker.close()
   }
 })
+
+test('serial WebStream preserves order and metadata across compact batch boundaries', async () => {
+  const broker = await MockKafkaBroker.start()
+  const topic = `serial-batches-${crypto.randomUUID()}`
+  const messages: MockMessage[] = Array.from({ length: 33 }, (_, index) => ({
+    key: 'serial-key',
+    ...(index % 11 === 0 ? { isTombstone: true } : { payload: index % 7 === 0 ? '' : `serial-${index}` }),
+    headers: { trace: `trace-${index}` },
+  }))
+  const [seed] = await broker.send(topic, messages)
+  ok(seed)
+  const { consumer, stream } = createClient(broker.brokers).createWebStreamConsumer({
+    groupId: `serial-batches-${crypto.randomUUID()}`,
+    enableAutoCommit: false,
+    serialPrefetchSize: 8,
+    serialPrefetchTimeout: 5,
+  })
+  const reader = stream.getReader()
+
+  try {
+    await consumer.subscribe([
+      { topic, partitionOffset: [{ partition: seed.partition, offset: { offset: seed.offset } }] },
+    ])
+    for (const [index, expected] of messages.entries()) {
+      const { value, done } = await reader.read()
+      ok(!done && value)
+      equal(value.payload.toString(), expected.payload ?? '')
+      equal(value.isTombstone, expected.isTombstone ? true : undefined)
+      equal(value.key?.toString(), 'serial-key')
+      equal(value.headers?.trace?.toString(), `trace-${index}`)
+      equal(value.topic, topic)
+      equal(value.partition, seed.partition)
+      equal(value.offset, seed.offset + index)
+    }
+  } finally {
+    await reader.cancel()
+    await disconnect(consumer)
+    broker.close()
+  }
+})
+
+test('serial WebStream cancellation stops an idle read before later messages arrive', async () => {
+  const broker = await MockKafkaBroker.start()
+  const topic = `serial-web-cancel-${crypto.randomUUID()}`
+  const [seed] = await broker.send(topic, [{ payload: 'seed' }])
+  ok(seed)
+  const { consumer, stream } = createClient(broker.brokers).createWebStreamConsumer({
+    groupId: `serial-web-cancel-${crypto.randomUUID()}`,
+    enableAutoCommit: false,
+  })
+  const reader = stream.getReader()
+
+  try {
+    await consumer.subscribe([
+      { topic, partitionOffset: [{ partition: seed.partition, offset: { offset: seed.offset + 1 } }] },
+    ])
+    const pendingRead = reader.read()
+    await sleep(20)
+    await reader.cancel('stop serial reader')
+    equal((await pendingRead).done, true)
+
+    await broker.send(topic, [{ payload: 'after-web-cancel' }])
+    const messages = await consumer.recvBatch(1, 2000)
+    equal(messages.length, 1)
+    equal(messages[0]?.payload.toString(), 'after-web-cancel')
+  } finally {
+    await reader.cancel()
+    await disconnect(consumer)
+    broker.close()
+  }
+})
+
+test('serial WebStream drains its buffered messages before closing after disconnect', async () => {
+  const broker = await MockKafkaBroker.start()
+  const topic = `serial-web-drain-${crypto.randomUUID()}`
+  const count = 16
+  const [seed] = await broker.send(
+    topic,
+    Array.from({ length: count }, (_, index) => ({ payload: `buffered-${index}` })),
+  )
+  ok(seed)
+  const { consumer, stream } = createClient(broker.brokers).createWebStreamConsumer({
+    groupId: `serial-web-drain-${crypto.randomUUID()}`,
+    enableAutoCommit: false,
+    serialPrefetchSize: count,
+    serialPrefetchTimeout: 1000,
+  })
+  const reader = stream.getReader()
+
+  try {
+    await consumer.subscribe([
+      { topic, partitionOffset: [{ partition: seed.partition, offset: { offset: seed.offset } }] },
+    ])
+    equal((await reader.read()).value?.payload.toString(), 'buffered-0')
+    await consumer.disconnect()
+    for (let index = 1; index < count; index++) {
+      equal((await reader.read()).value?.payload.toString(), `buffered-${index}`)
+    }
+    equal((await reader.read()).done, true)
+  } finally {
+    await reader.cancel()
+    await disconnect(consumer)
+    broker.close()
+  }
+})
+
+test('compact stream keeps ordinary arrays in its public batch contract', async () => {
+  const broker = await MockKafkaBroker.start()
+  const topic = `compact-arrays-${crypto.randomUUID()}`
+  const client = createClient(broker.brokers)
+  const producer = client.createProducer()
+  const consumer = client.createConsumer({ groupId: crypto.randomUUID(), enableAutoCommit: false })
+  let reader: ReadableStreamDefaultReader<CompactMessageBatch> | undefined
+
+  try {
+    const sent = await producer.send({
+      topic,
+      messages: Array.from({ length: 16 }, (_, index) => ({
+        partition: 0,
+        payload: Buffer.from(`message-${index}`),
+        key: Buffer.from(`key-${index % 2}`),
+      })),
+    })
+    const first = sent[0]
+    ok(first)
+    await consumer.subscribe([
+      { topic, partitionOffset: [{ partition: first.partition, offset: { offset: first.offset } }] },
+    ])
+    reader = consumer.recvBatchStreamCompact(16, 2000).getReader()
+    const { value, done } = await reader.read()
+    ok(!done && value)
+    equal(value.payloads.length, 16)
+    ok(Array.isArray(value.partitions))
+    ok(Array.isArray(value.offsets))
+    ok(Array.isArray(value.keyDictionaryIndexes))
+    deepEqual(
+      value.partitions,
+      Array.from({ length: 16 }, () => first.partition),
+    )
+    deepEqual(
+      value.offsets,
+      Array.from({ length: 16 }, (_, index) => first.offset + index),
+    )
+    deepEqual(
+      value.keyDictionaryIndexes,
+      Array.from({ length: 16 }, (_, index) => index % 2),
+    )
+  } finally {
+    await reader?.cancel()
+    await disconnect(consumer)
+    broker.close()
+  }
+})
+
+for (const mode of ['serial', 'batch'] as const) {
+  test(`${mode} WebStream preserves absent headers and empty Buffer header values`, async () => {
+    const broker = await MockKafkaBroker.start()
+    try {
+      for (const startsWithoutHeaders of [false, true]) {
+        const topic = `optional-headers-${crypto.randomUUID()}`
+        const headers = [
+          startsWithoutHeaders ? undefined : { trace: '' },
+          { trace: '' },
+          undefined,
+          { trace: 'changed' },
+          undefined,
+          { trace: '' },
+        ]
+        const messages = headers.map((value, index) => ({
+          payload: `message-${index}`,
+          ...(value === undefined ? {} : { headers: value }),
+        }))
+        const [seed] = await broker.send(topic, messages)
+        ok(seed)
+        const client = createClient(broker.brokers)
+        const configuration = { groupId: crypto.randomUUID(), enableAutoCommit: false }
+        const web =
+          mode === 'batch'
+            ? client.createWebStreamConsumer({ ...configuration, batchSize: 6, batchTimeout: 1000 })
+            : client.createWebStreamConsumer({ ...configuration, serialPrefetchSize: 6, serialPrefetchTimeout: 1000 })
+        const reader = web.stream.getReader()
+        try {
+          await web.consumer.subscribe([
+            { topic, partitionOffset: [{ partition: seed.partition, offset: { offset: seed.offset } }] },
+          ])
+          const received: Message[] = []
+          while (received.length < messages.length) {
+            const { value, done } = await reader.read()
+            ok(!done && value)
+            received.push(...(Array.isArray(value) ? value : [value]))
+          }
+          for (const [index, expected] of headers.entries()) {
+            const actual = received[index]
+            ok(actual)
+            equal(actual.payload.toString(), `message-${index}`)
+            if (expected === undefined) {
+              equal(actual.headers, undefined, 'An absent header must not become a null-valued header')
+            } else {
+              ok(Buffer.isBuffer(actual.headers?.trace))
+              equal(actual.headers.trace.toString(), expected.trace)
+            }
+          }
+        } finally {
+          await reader.cancel()
+          await disconnect(web.consumer)
+        }
+      }
+    } finally {
+      broker.close()
+    }
+  })
+}
+
+for (const mode of ['serial', 'batch', 'compact'] as const) {
+  test(`disconnect settles ${mode} reader.closed without another read`, async () => {
+    const broker = await MockKafkaBroker.start()
+    const topic = `closed-${mode}-${crypto.randomUUID()}`
+    const [seed] = await broker.send(topic, [{ payload: 'last-message' }])
+    ok(seed)
+    const client = createClient(broker.brokers)
+    const configuration = { groupId: crypto.randomUUID(), enableAutoCommit: false }
+    let consumer: KafkaConsumer
+    let stream: ReadableStream<unknown>
+    if (mode === 'compact') {
+      consumer = client.createConsumer(configuration)
+      stream = consumer.recvBatchStreamCompact(1, 5)
+    } else {
+      const webStream =
+        mode === 'batch'
+          ? client.createWebStreamConsumer({ ...configuration, batchSize: 2, batchTimeout: 5 })
+          : client.createWebStreamConsumer({ ...configuration, serialPrefetchSize: 2, serialPrefetchTimeout: 5 })
+      consumer = webStream.consumer
+      stream = webStream.stream
+    }
+    const reader = stream.getReader()
+
+    try {
+      await consumer.subscribe([
+        { topic, partitionOffset: [{ partition: seed.partition, offset: { offset: seed.offset } }] },
+      ])
+      equal((await reader.read()).done, false)
+      await sleep(20)
+      await consumer.disconnect()
+      const closed = await Promise.race([reader.closed.then(() => true), sleep(500).then(() => false)])
+      ok(closed, `${mode}: disconnect must settle reader.closed without an extra read`)
+    } finally {
+      await reader.cancel()
+      await disconnect(consumer)
+      broker.close()
+    }
+  })
+}
 
 test('M01: cancelling during a partial batch read stops stream cleanly', async () => {
   const broker = await MockKafkaBroker.start()

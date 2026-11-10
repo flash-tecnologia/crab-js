@@ -203,6 +203,7 @@ jobs:
             architecture: arm64
         node:
           - '24'
+          - '26'
     runs-on: ${{ matrix.settings.host }}
     steps:
       - uses: actions/checkout@v6
@@ -242,6 +243,7 @@ jobs:
           - aarch64-unknown-linux-musl
         node:
           - '24'
+          - '26'
     runs-on: ${{ contains(matrix.target, 'aarch64') && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
@@ -299,7 +301,13 @@ jobs:
           args: npm run test
 
   integration-kafka:
-    name: Integration Kafka (lifecycle + manual commit + send failure)
+    name: Integration Kafka - node@${{ matrix.node }} (lifecycle + commits + send failure + recovery)
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - '24'
+          - '26'
     runs-on: ubuntu-latest
     services:
       kafka:
@@ -321,6 +329,7 @@ jobs:
           KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
           CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
         options: >-
+          --label codex.task=kafka-crab-readiness
           --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"
           --health-interval 10s
           --health-timeout 10s
@@ -332,7 +341,7 @@ jobs:
       - name: Setup node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: pnpm
       - name: Install
         uses: dtolnay/rust-toolchain@stable
@@ -346,6 +355,17 @@ jobs:
         working-directory: packages/kafka-crab-js
         env:
           KAFKA_BROKERS: localhost:9092
+
+      - name: Crash and recovery tests (isolated Kafka service)
+        timeout-minutes: 8
+        run: node --test --test-concurrency=1 js-tests/integration/production-readiness.test.mjs
+        working-directory: packages/kafka-crab-js
+        env:
+          KAFKA_BROKERS: localhost:9092
+          RUN_KAFKA_FAULT_TESTS: 'true'
+          KAFKA_CONTAINER_RUNTIME: docker
+          KAFKA_FAULT_CONTAINER: ${{ job.services.kafka.id }}
+          KAFKA_FAULT_CONTAINER_ID: ${{ job.services.kafka.id }}
 
   publish-kafka-crab-js:
     name: Publish kafka-crab-js
