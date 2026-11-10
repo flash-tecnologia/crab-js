@@ -1,4 +1,4 @@
-import { equal, ok } from 'node:assert/strict'
+import { deepEqual, equal, ok } from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -114,18 +114,27 @@ async function assertCommits(metadata) {
   details.committedOffsets = Object.fromEntries(expected)
 }
 
-function assertMessages(received, metadata, start = 0) {
+function assertMessages(received, metadata, start = 0, confirmationsInSendOrder = true) {
   equal(received.length, metadata.length)
   const expected = new Map(metadata.map((entry, index) => [`${entry.partition}:${entry.offset}`, start + index]))
   const seen = new Set()
+  const ids = []
   for (const message of received) {
     const key = `${message.partition}:${message.offset}`
-    equal(Number(message.payload.toString()), expected.get(key))
+    const id = Number(message.payload.toString())
+    ok(expected.has(key), `Unacknowledged delivery ${key}`)
+    if (confirmationsInSendOrder) equal(id, expected.get(key))
+    equal(message.partition, id % 3)
     equal(message.topic, topic)
     ok(!seen.has(key), `Duplicate delivery ${key}`)
     seen.add(key)
+    ids.push(id)
   }
   equal(seen.size, expected.size)
+  deepEqual(
+    ids.toSorted((left, right) => left - right),
+    Array.from({ length: metadata.length }, (_, index) => start + index),
+  )
 }
 
 function createStream() {
@@ -192,7 +201,9 @@ try {
       )
       return received.length >= 200
     }, 'acknowledged records after broker crash')
-    assertMessages(received, metadata, 6)
+    // Concurrent manual sends have no global confirmation-order contract.
+    // Reverse their confirmations deliberately to keep this assertion deterministic.
+    assertMessages(received, mode === 'manual' ? metadata.toReversed() : metadata, 6, mode === 'auto')
     const offsets = await admin.fetchTopicOffsets(topic)
     equal(
       offsets.reduce((sum, entry) => sum + Number(entry.high), 0),
