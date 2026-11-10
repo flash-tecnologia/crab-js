@@ -99,17 +99,21 @@ export declare class KafkaConsumer {
   pause(): void
   /** Resumes message consumption on all assigned partitions after a pause. */
   resume(): void
+  /** Pauses only these assigned partitions. Already delivered messages remain caller-owned. */
+  pausePartitions(partitions: Array<TopicPartitionId>): void
+  /** Resumes only these assigned partitions, leaving other paused partitions unchanged. */
+  resumePartitions(partitions: Array<TopicPartitionId>): void
   /**
    * Unsubscribes from all currently subscribed topics.
    * After calling this method, the consumer will no longer receive messages.
    */
   unsubscribe(): void
   /**
-   * Disconnects the consumer from the Kafka broker.
-   * This will unsubscribe from all topics and stop receiving messages.
-   * Any pending recv() or recvBatch() calls will return immediately.
+   * Disconnects the consumer and waits for native closure.
+   * An optional AbortSignal cancels only this call's wait, not native cleanup.
+   * Use AbortSignal.timeout(ms) to bound the wait. Pending receives are interrupted.
    */
-  disconnect(): Promise<void>
+  disconnect(options?: { signal?: AbortSignal }): Promise<void>
   /**
    * Seeks to a specific offset on a topic partition.
    * This allows repositioning the consumer to read from a specific point.
@@ -404,4 +408,10 @@ export interface TopicPartitionConfig {
   createTopic?: boolean
   numPartitions?: number
   replicas?: number
+}
+
+/** Partition identity without an offset, used by pause/resume controls. */
+export interface TopicPartitionId {
+  topic: string
+  partition: number
 }

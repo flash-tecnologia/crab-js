@@ -1436,6 +1436,8 @@ test('M13: Async commit is allowed after onEvents is registered', async () => {
   const consumer = createClient().createConsumer({
     groupId: 'async-commit-with-listener',
     enableAutoCommit: false,
+    // A queued commit against the unavailable broker expires at the session timeout.
+    configuration: { 'session.timeout.ms': '1000', 'heartbeat.interval.ms': '300' },
   })
 
   try {

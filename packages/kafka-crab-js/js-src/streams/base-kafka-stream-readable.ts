@@ -83,8 +83,8 @@ export abstract class BaseKafkaStreamReadable extends Readable {
   /**
    * Disconnects the Kafka consumer
    */
-  public async disconnect() {
-    await this.kafkaConsumer.disconnect()
+  public async disconnect(options?: { signal?: AbortSignal }) {
+    await this.kafkaConsumer.disconnect(options)
   }
 
   /**
