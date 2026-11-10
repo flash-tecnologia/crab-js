@@ -4,7 +4,7 @@ use std::{
   mem,
   sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
-    Arc,
+    Arc, OnceLock,
   },
   time::Duration,
 };
@@ -15,12 +15,13 @@ use tokio::sync::{
 };
 
 use napi::{
-  bindgen_prelude::{Buffer, Function, ReadableStream},
+  bindgen_prelude::{Buffer, FnArgs, Function, Object, PromiseRaw, ReadableStream},
   threadsafe_function::{ThreadsafeFunction, ThreadsafeFunctionCallMode},
   Either, Env, Error, JsValue, Result, Status,
 };
 
 use rdkafka::{
+  bindings as rdsys,
   consumer::{CommitMode as RdKfafkaCommitMode, Consumer},
   message::{BorrowedHeaders, BorrowedMessage, Headers},
   topic_partition_list::TopicPartitionList as RdTopicPartitionList,
@@ -45,13 +46,16 @@ use super::{
   context::{KafkaEvent, LoggingConsumer},
   model::{
     CommitMode, ConsumerConfiguration, OffsetModel, TopicPartition, TopicPartitionConfig,
-    DEFAULT_FETCH_METADATA_TIMEOUT,
+    TopicPartitionId, DEFAULT_FETCH_METADATA_TIMEOUT,
   },
 };
 
 use tokio::select;
 
 pub const DEFAULT_SEEK_TIMEOUT: i64 = 1500;
+type DisconnectObserver<'env> =
+  Function<'env, FnArgs<(PromiseRaw<'env, ()>, Option<Object<'env>>)>, PromiseRaw<'env, ()>>;
+
 const MAX_SEEK_TIMEOUT: i64 = 300000; // 5 minutes max
 const DEFAULT_BATCH_TIMEOUT: i64 = 1000;
 const MAX_BATCH_TIMEOUT_MS: i64 = 60_000;
@@ -1140,7 +1144,8 @@ pub struct KafkaConsumer {
   client_id: String,
   pending_error: Arc<std::sync::Mutex<Option<Error>>>,
   event_listeners_active: Arc<AtomicUsize>,
-  async_commit_queue: std::sync::Mutex<Option<Arc<AsyncCommitQueue>>>,
+  async_commit_queue: Arc<std::sync::Mutex<Option<Arc<AsyncCommitQueue>>>>,
+  disconnect_completion: OnceLock<watch::Receiver<Option<std::result::Result<(), String>>>>,
   /// Serializes terminal lifecycle mutations with subscription/assignment
   /// application. Metadata lookup itself remains outside this lock so
   /// disconnect is not held up by a blocking fetch.
@@ -1184,7 +1189,8 @@ impl KafkaConsumer {
       client_id: kafka_client.configuration().client_id,
       pending_error: Arc::new(std::sync::Mutex::new(None)),
       event_listeners_active: Arc::new(AtomicUsize::new(0)),
-      async_commit_queue: std::sync::Mutex::new(None),
+      async_commit_queue: Arc::new(std::sync::Mutex::new(None)),
+      disconnect_completion: OnceLock::new(),
       lifecycle_lock: Arc::new(Mutex::new(())),
       disconnected: Arc::new(AtomicBool::new(false)),
     })
@@ -1461,6 +1467,50 @@ impl KafkaConsumer {
     Ok(())
   }
 
+  fn selected_partitions(&self, partitions: Vec<TopicPartitionId>) -> Result<RdTopicPartitionList> {
+    self.ensure_connected()?;
+    let mut selected = RdTopicPartitionList::new();
+    for partition in partitions {
+      if partition.topic.is_empty() || partition.partition < 0 {
+        return Err(Error::new(Status::InvalidArg, "Invalid topic or partition"));
+      }
+      selected.add_partition(&partition.topic, partition.partition);
+    }
+    Ok(selected)
+  }
+
+  /// Pauses only these assigned partitions. Already delivered messages remain caller-owned.
+  #[napi]
+  pub fn pause_partitions(&self, partitions: Vec<TopicPartitionId>) -> Result<()> {
+    let selected = self.selected_partitions(partitions)?;
+    self
+      .stream_consumer
+      .pause(&selected)
+      .map_err(|e| e.into_napi_error("Failed to pause partitions"))?;
+    for partition in selected.elements() {
+      partition
+        .error()
+        .map_err(|e| e.into_napi_error("Failed to pause partition"))?;
+    }
+    Ok(())
+  }
+
+  /// Resumes only these assigned partitions, leaving other paused partitions unchanged.
+  #[napi]
+  pub fn resume_partitions(&self, partitions: Vec<TopicPartitionId>) -> Result<()> {
+    let selected = self.selected_partitions(partitions)?;
+    self
+      .stream_consumer
+      .resume(&selected)
+      .map_err(|e| e.into_napi_error("Failed to resume partitions"))?;
+    for partition in selected.elements() {
+      partition
+        .error()
+        .map_err(|e| e.into_napi_error("Failed to resume partition"))?;
+    }
+    Ok(())
+  }
+
   /// Unsubscribes from all currently subscribed topics.
   /// After calling this method, the consumer will no longer receive messages.
   #[napi]
@@ -1470,43 +1520,108 @@ impl KafkaConsumer {
     Ok(())
   }
 
-  /// Disconnects the consumer from the Kafka broker.
-  /// This will unsubscribe from all topics and stop receiving messages.
-  /// Any pending recv() or recvBatch() calls will return immediately.
-  #[napi]
-  pub async fn disconnect(&self) -> Result<()> {
-    info!("Disconnecting consumer - This will stop the consumer from receiving messages");
+  /// Disconnects the consumer and waits for native closure.
+  /// An optional AbortSignal cancels only this call's wait, not native cleanup.
+  /// Use AbortSignal.timeout(ms) to bound the wait. Pending receives are interrupted.
+  #[napi(
+    ts_args_type = "options?: { signal?: AbortSignal }",
+    ts_return_type = "Promise<void>"
+  )]
+  pub fn disconnect<'env>(
+    &self,
+    env: &'env Env,
+    options: Option<Object<'env>>,
+  ) -> Result<PromiseRaw<'env, ()>> {
+    let mut completion = self
+      .disconnect_completion
+      .get_or_init(|| {
+        let (sender, receiver) = watch::channel(None);
+        let consumer = self.stream_consumer.clone();
+        let lifecycle_lock = self.lifecycle_lock.clone();
+        let disconnected = self.disconnected.clone();
+        let disconnect_signal = self.disconnect_signal.0.clone();
+        let async_commit_queue = self.async_commit_queue.clone();
+        // This task owns native close independently of any caller's cancellation.
+        napi::bindgen_prelude::spawn(async move {
+          let result: Result<()> = async {
+            let lifecycle_guard = lifecycle_lock.lock().await;
+            disconnected.store(true, Ordering::Release);
+            info!("Disconnecting consumer - This will stop the consumer from receiving messages");
+            consumer.unsubscribe();
+            if disconnect_signal.send(()).is_err() {
+              warn!("Disconnect signal could not be sent - no active receivers");
+            }
+            async_commit_queue
+              .lock()
+              .unwrap_or_else(|e| e.into_inner())
+              .take();
 
-    // Serialize the terminal transition with the final subscription mutation.
-    // A pending metadata fetch may finish later, but it must observe the flag
-    // before it can call assign()/subscribe().
-    let _lifecycle_guard = self.lifecycle_lock.lock().await;
-    if self.disconnected.swap(true, Ordering::AcqRel) {
-      return Ok(());
-    }
+            // SAFETY: the Arc keeps the client alive. Queue/error handles are released
+            // synchronously, and no raw pointer is retained across an await.
+            unsafe {
+              let native = consumer.client().native_ptr();
+              let queue = rdsys::rd_kafka_queue_get_consumer(native);
+              let error = rdsys::rd_kafka_consumer_close_queue(native, queue);
+              rdsys::rd_kafka_queue_destroy(queue);
+              if !error.is_null() {
+                let message = std::ffi::CStr::from_ptr(rdsys::rd_kafka_error_string(error))
+                  .to_string_lossy()
+                  .into_owned();
+                rdsys::rd_kafka_error_destroy(error);
+                return Err(Error::new(Status::GenericFailure, message));
+              }
+            }
+            // Subscription mutations can now acquire the lock and reject the terminal state.
+            drop(lifecycle_guard);
+            while unsafe { rdsys::rd_kafka_consumer_closed(consumer.client().native_ptr()) == 0 } {
+              // StreamConsumer must keep serving rebalance events until close completes.
+              let _ = tokio::time::timeout(Duration::from_millis(100), consumer.recv()).await;
+            }
+            Ok(())
+          }
+          .await;
+          sender.send_replace(Some(result.map_err(|error| error.reason)));
+        });
+        receiver
+      })
+      .clone();
 
-    // First unsubscribe from topics
-    self.stream_consumer.unsubscribe();
-
-    // Then send disconnect signal - use non-blocking approach
-    // Note: watch channels have a single slot, so send() replaces the current value
-    // If there are no receivers, the send will succeed but the value will be ignored
-    let tx = self.disconnect_signal.0.clone();
-    if tx.send(()).is_err() {
-      // If send fails, it usually means no receivers are listening
-      // This is not necessarily an error during shutdown
-      warn!("Disconnect signal could not be sent - no active receivers");
-    }
-
-    // Responses for already scheduled commits are best-effort after disconnect.
-    // Release the reply queue; its poll task only holds a Weak reference.
-    self
-      .async_commit_queue
-      .lock()
-      .unwrap_or_else(|e| e.into_inner())
-      .take();
-
-    Ok(())
+    let closed = env.spawn_future(async move {
+      loop {
+        let outcome = completion.borrow().clone();
+        if let Some(result) = outcome {
+          return result.map_err(|reason| Error::new(Status::GenericFailure, reason));
+        }
+        completion.changed().await.map_err(|_| {
+          Error::new(
+            Status::GenericFailure,
+            "Native consumer close task stopped before completion",
+          )
+        })?;
+      }
+    })?;
+    // Keep AbortSignal handling on the JS thread and remove listeners on every outcome.
+    // Native close has its own task and continues even after this promise is aborted.
+    let observe: DisconnectObserver<'env> = env.run_script(
+      r#"
+        ((closed, options) => {
+          const signal = options?.signal;
+          if (signal === undefined) return closed;
+          return new Promise((resolve, reject) => {
+            let subscription;
+            const cleanup = () => subscription?.[Symbol.dispose]();
+            const abort = () => { cleanup(); reject(signal.reason); };
+            closed.then(
+              () => { cleanup(); resolve(); },
+              error => { cleanup(); reject(error); }
+            );
+            subscription = process.getBuiltinModule('node:events').addAbortListener(signal, abort);
+            if (signal.aborted) abort();
+          });
+        })
+      "#,
+    )?;
+    observe.call((closed, options).into())
   }
 
   /// Seeks to a specific offset on a topic partition.
@@ -1545,6 +1660,9 @@ impl KafkaConsumer {
   /// as part of the consumer group rebalancing.
   #[napi]
   pub fn assignment(&self) -> Result<Vec<TopicPartition>> {
+    if self.disconnected.load(Ordering::Acquire) {
+      return Ok(Vec::new());
+    }
     let assignment = self
       .stream_consumer
       .assignment()

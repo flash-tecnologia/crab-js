@@ -58,3 +58,11 @@ pub struct TopicPartition {
   pub topic: String,
   pub partition_offset: Vec<PartitionOffset>,
 }
+
+/// Partition identity without an offset, used by pause/resume controls.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct TopicPartitionId {
+  pub topic: String,
+  pub partition: i32,
+}

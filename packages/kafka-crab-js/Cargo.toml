@@ -2,7 +2,7 @@
 [package]
 edition = "2021"
 name = "kafka-crab-js"
-version = "5.1.1"
+version = "5.2.1"
 
 [lib]
 crate-type = ["cdylib"]

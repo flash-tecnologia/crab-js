@@ -25,6 +25,7 @@ export type {
   ProducerRecord,
   RecordMetadata,
   TopicPartition,
+  TopicPartitionId,
   TopicPartitionConfig,
 } from '../js-binding.js'
 

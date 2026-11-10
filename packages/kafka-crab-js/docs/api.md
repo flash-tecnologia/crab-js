@@ -310,15 +310,37 @@ offsets; `payload.action` and `payload.error` are optional.
 
 ### Position, flow control, and shutdown
 
-| Method                                          | Behavior                                                                                 |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `assignment()`                                  | Current assigned topic/partition entries.                                                |
-| `getSubscription()`                             | Current subscription entries.                                                            |
-| `getConfig()`                                   | Consumer configuration.                                                                  |
-| `pause()` / `resume()`                          | Pause/resume fetching on all assigned partitions; already buffered work can still exist. |
-| `seek(topic, partition, offsetModel, timeout?)` | Reposition an assigned partition; timeout defaults to 1,500 ms, maximum 300,000 ms.      |
-| `unsubscribe()`                                 | Remove the subscription.                                                                 |
-| `disconnect()`                                  | Terminal async teardown; create a new consumer to reconnect.                             |
+| Method                                                         | Behavior                                                                                              |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `assignment()`                                                 | Current assigned topic/partition entries.                                                             |
+| `getSubscription()`                                            | Current subscription entries.                                                                         |
+| `getConfig()`                                                  | Consumer configuration.                                                                               |
+| `pause()` / `resume()`                                         | Pause/resume fetching on all assigned partitions; already buffered work can still exist.              |
+| `pausePartitions(partitions)` / `resumePartitions(partitions)` | Control only the supplied `{ topic, partition }` entries. Already buffered work can still exist.      |
+| `seek(topic, partition, offsetModel, timeout?)`                | Reposition an assigned partition; timeout defaults to 1,500 ms, maximum 300,000 ms.                   |
+| `unsubscribe()`                                                | Remove the subscription.                                                                              |
+| `disconnect(options?)`                                         | Terminal async teardown; waits for native close. Optional `{ signal: AbortSignal }` cancels the wait. |
+
+Partition flow control leaves other assigned partitions running. The entries use
+the exported `TopicPartitionId` type. Empty topic names and negative partition
+numbers are rejected; librdkafka reports unassigned partition errors. These methods
+cannot retract messages already fetched into application queues.
+
+Use `consumer.disconnect({ signal: AbortSignal.timeout(5_000) })` to bound
+one caller's wait, or pass an `AbortController`'s signal. Without a signal, the
+call waits for native closure. Aborting rejects with the exact `signal.reason`;
+it does not undo the terminal transition or cancel native cleanup. This also
+applies to a signal that was already aborted when passed. Another caller can
+still await `consumer.disconnect()` to confirm closure. Abort listeners are
+removed when the wait settles. Stream consumers accept the same options.
+
+Repeated or concurrent `disconnect()` calls are safe. Pending receives are
+interrupted and `assignment()` returns an empty list after disconnection. Graceful
+disconnect serves rebalance events while waiting for native closure. Dynamic group
+members leave the group; static membership follows librdkafka's protocol rules.
+A killed process still relies on the broker's session timeout. With rust-rdkafka 0.39, its
+destructor can log a redundant queue-close error after an explicit native close;
+the disconnect promise already confirms closure before this diagnostic.
 
 For native batch streams, disconnect stops new collection and gives collected
 work a bounded 1,500 ms drain window. Keep reading during this drain if the
