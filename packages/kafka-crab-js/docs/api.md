@@ -331,6 +331,14 @@ It is appropriate when stopping immediately. For orderly shutdown, finish the
 application's accepted work, commit the corresponding offsets, then close resources.
 Do not treat cancellation as proof that every prefetched message was processed.
 
+A broker transport failure can error a stream. Handle the rejected read or async
+iteration, cancel the failed reader, and disconnect its consumer. Create a new
+consumer with the same `groupId` and subscribe without overriding the committed
+offsets to resume. With application-controlled commits, keep auto-commit and
+auto-offset-store disabled and commit only completed work. Work processed before
+a failure but not committed can be replayed, so downstream side effects should
+be idempotent.
+
 ## Web Streams
 
 ```ts

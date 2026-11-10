@@ -87,20 +87,12 @@ type DynamicBatchWebStreamConsumerConfiguration = Omit<WebStreamConsumerConfigur
   batchSize: number
 }
 
-function flattenBatchStream(batchStream: ReadableStream<Message[]>): ReadableStream<Message> {
-  const reader = batchStream.getReader()
-  let currentBatch: Message[] = []
-  let currentIndex = 0
+function flattenCompactBatchStream(compactStream: ReadableStream<CompactMessageBatch>): ReadableStream<Message> {
+  const reader = compactStream.getReader()
   let closed = false
 
   return new ReadableStream<Message>({
     async pull(controller) {
-      if (currentIndex < currentBatch.length) {
-        controller.enqueue(currentBatch[currentIndex]!)
-        currentIndex += 1
-        return
-      }
-
       if (closed) {
         controller.close()
         return
@@ -108,26 +100,29 @@ function flattenBatchStream(batchStream: ReadableStream<Message[]>): ReadableStr
 
       while (true) {
         const { value, done } = await reader.read()
+        if (closed) {
+          return
+        }
         if (done || !value) {
           closed = true
           controller.close()
           return
         }
 
-        if (value.length === 0) {
+        const messages = expandCompactBatch(value)
+        if (messages.length === 0) {
           continue
         }
 
-        currentBatch = value
-        currentIndex = 1
-        controller.enqueue(currentBatch[0]!)
+        // Queue one buffered batch per pull; expand the next only after this queue drains.
+        for (const message of messages) {
+          controller.enqueue(message)
+        }
         return
       }
     },
     async cancel(reason) {
       closed = true
-      currentBatch = []
-      currentIndex = 0
       // Await upstream teardown so cancel fully propagates before resolving.
       // This matches expandCompactBatchStream and never rejects downstream cancel.
       await reader.cancel(reason).catch(() => undefined)
@@ -172,48 +167,58 @@ export function expandCompactBatch(batch: CompactMessageBatch): Message[] {
 
   assertCompactBatchArrays(batch, payloads.length)
 
-  if (
-    topic !== undefined &&
-    topics === undefined &&
-    keyDictionary !== undefined &&
-    keyDictionaryIndexes !== undefined &&
-    sharedHeaderKey !== undefined &&
-    sharedHeaderValue !== undefined &&
-    sharedHeaderValues === undefined &&
-    headers === undefined
-  ) {
-    return expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
-      payloads,
-      keyDictionary,
-      keyDictionaryIndexes,
-      topic,
-      partitions,
-      offsets,
-      sharedHeaderKey,
-      sharedHeaderValue,
-      tombstones,
-    )
-  }
+  if (topic !== undefined && topics === undefined && sharedHeaderValues === undefined && headers === undefined) {
+    if (sharedHeaderKey !== undefined && sharedHeaderValue !== undefined) {
+      if (keyDictionary !== undefined && keyDictionaryIndexes !== undefined) {
+        return expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
+          payloads,
+          keyDictionary,
+          keyDictionaryIndexes,
+          topic,
+          partitions,
+          offsets,
+          sharedHeaderKey,
+          sharedHeaderValue,
+          tombstones,
+        )
+      }
 
-  if (
-    topic !== undefined &&
-    topics === undefined &&
-    sharedKey !== undefined &&
-    sharedHeaderKey !== undefined &&
-    sharedHeaderValue !== undefined &&
-    sharedHeaderValues === undefined &&
-    headers === undefined
-  ) {
-    return expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
-      payloads,
-      sharedKey,
-      topic,
-      partitions,
-      offsets,
-      sharedHeaderKey,
-      sharedHeaderValue,
-      tombstones,
-    )
+      if (sharedKey !== undefined) {
+        return expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
+          payloads,
+          sharedKey,
+          topic,
+          partitions,
+          offsets,
+          sharedHeaderKey,
+          sharedHeaderValue,
+          tombstones,
+        )
+      }
+    } else if (sharedHeaderKey === undefined && sharedHeaderValue === undefined) {
+      if (keyDictionary !== undefined && keyDictionaryIndexes !== undefined) {
+        return expandCompactBatchSharedTopicWithKeyDictionaryNoHeaders(
+          payloads,
+          keyDictionary,
+          keyDictionaryIndexes,
+          topic,
+          partitions,
+          offsets,
+          tombstones,
+        )
+      }
+
+      if (sharedKey !== undefined) {
+        return expandCompactBatchSharedTopicWithSharedKeyNoHeaders(
+          payloads,
+          sharedKey,
+          topic,
+          partitions,
+          offsets,
+          tombstones,
+        )
+      }
+    }
   }
 
   const messages = new Array<Message>(payloads.length)
@@ -226,7 +231,7 @@ export function expandCompactBatch(batch: CompactMessageBatch): Message[] {
     const sharedValue = sharedHeaderValue ?? sharedHeaderValues?.[index]
     const messageHeaders =
       headers?.[index] ??
-      (sharedHeaderKey !== undefined && sharedValue !== undefined ? { [sharedHeaderKey]: sharedValue } : undefined)
+      (sharedHeaderKey !== undefined && sharedValue ? { [sharedHeaderKey]: sharedValue } : undefined)
     const messageTopic = (topic ?? topics?.[index])!
     const partition = partitions[index]!
     const offset = offsets[index]!
@@ -241,24 +246,35 @@ export function expandCompactBatch(batch: CompactMessageBatch): Message[] {
 function expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
   payloads: Buffer[],
   keyDictionary: Buffer[],
-  keyDictionaryIndexes: number[],
+  keyDictionaryIndexes: ArrayLike<number>,
   topic: string,
-  partitions: number[],
-  offsets: number[],
+  partitions: ArrayLike<number>,
+  offsets: ArrayLike<number>,
   sharedHeaderKey: string,
   sharedHeaderValue: Buffer,
   tombstones?: boolean[],
 ): Message[] {
-  const messages = new Array<Message>(payloads.length)
+  const { length } = payloads
+  const messages = new Array<Message>(length)
 
-  assertSameLength('keyDictionaryIndexes', keyDictionaryIndexes.length, payloads.length)
-  assertSameLength('partitions', partitions.length, payloads.length)
-  assertSameLength('offsets', offsets.length, payloads.length)
-  assertSameLength('tombstones', tombstones?.length, payloads.length)
+  if (tombstones === undefined) {
+    for (let index = 0; index < length; index += 1) {
+      messages[index] = {
+        payload: payloads[index]!,
+        key: keyDictionary[keyDictionaryIndexes[index]!]!,
+        headers: {
+          [sharedHeaderKey]: sharedHeaderValue,
+        },
+        topic,
+        partition: partitions[index]!,
+        offset: offsets[index]!,
+      }
+    }
+    return messages
+  }
 
-  for (let index = 0; index < payloads.length; index += 1) {
-    const isTombstone = tombstones?.[index]
-    messages[index] = {
+  for (let index = 0; index < length; index += 1) {
+    const message: Message = {
       payload: payloads[index]!,
       key: keyDictionary[keyDictionaryIndexes[index]!]!,
       headers: {
@@ -267,8 +283,11 @@ function expandCompactBatchSharedTopicWithKeyDictionaryAndSharedHeaderValue(
       topic,
       partition: partitions[index]!,
       offset: offsets[index]!,
-      ...(isTombstone ? { isTombstone } : {}),
     }
+    if (tombstones[index]) {
+      message.isTombstone = true
+    }
+    messages[index] = message
   }
 
   return messages
@@ -278,21 +297,33 @@ function expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
   payloads: Buffer[],
   sharedKey: Buffer,
   topic: string,
-  partitions: number[],
-  offsets: number[],
+  partitions: ArrayLike<number>,
+  offsets: ArrayLike<number>,
   sharedHeaderKey: string,
   sharedHeaderValue: Buffer,
   tombstones?: boolean[],
 ): Message[] {
-  const messages = new Array<Message>(payloads.length)
+  const { length } = payloads
+  const messages = new Array<Message>(length)
 
-  assertSameLength('partitions', partitions.length, payloads.length)
-  assertSameLength('offsets', offsets.length, payloads.length)
-  assertSameLength('tombstones', tombstones?.length, payloads.length)
+  if (tombstones === undefined) {
+    for (let index = 0; index < length; index += 1) {
+      messages[index] = {
+        payload: payloads[index]!,
+        key: sharedKey,
+        headers: {
+          [sharedHeaderKey]: sharedHeaderValue,
+        },
+        topic,
+        partition: partitions[index]!,
+        offset: offsets[index]!,
+      }
+    }
+    return messages
+  }
 
-  for (let index = 0; index < payloads.length; index += 1) {
-    const isTombstone = tombstones?.[index]
-    messages[index] = {
+  for (let index = 0; index < length; index += 1) {
+    const message: Message = {
       payload: payloads[index]!,
       key: sharedKey,
       headers: {
@@ -301,8 +332,94 @@ function expandCompactBatchSharedTopicWithSharedKeyAndSharedHeaderValue(
       topic,
       partition: partitions[index]!,
       offset: offsets[index]!,
-      ...(isTombstone ? { isTombstone } : {}),
     }
+    if (tombstones[index]) {
+      message.isTombstone = true
+    }
+    messages[index] = message
+  }
+
+  return messages
+}
+
+function expandCompactBatchSharedTopicWithKeyDictionaryNoHeaders(
+  payloads: Buffer[],
+  keyDictionary: Buffer[],
+  keyDictionaryIndexes: ArrayLike<number>,
+  topic: string,
+  partitions: ArrayLike<number>,
+  offsets: ArrayLike<number>,
+  tombstones?: boolean[],
+): Message[] {
+  const { length } = payloads
+  const messages = new Array<Message>(length)
+
+  if (tombstones === undefined) {
+    for (let index = 0; index < length; index += 1) {
+      messages[index] = {
+        payload: payloads[index]!,
+        key: keyDictionary[keyDictionaryIndexes[index]!]!,
+        topic,
+        partition: partitions[index]!,
+        offset: offsets[index]!,
+      }
+    }
+    return messages
+  }
+
+  for (let index = 0; index < length; index += 1) {
+    const message: Message = {
+      payload: payloads[index]!,
+      key: keyDictionary[keyDictionaryIndexes[index]!]!,
+      topic,
+      partition: partitions[index]!,
+      offset: offsets[index]!,
+    }
+    if (tombstones[index]) {
+      message.isTombstone = true
+    }
+    messages[index] = message
+  }
+
+  return messages
+}
+
+function expandCompactBatchSharedTopicWithSharedKeyNoHeaders(
+  payloads: Buffer[],
+  sharedKey: Buffer,
+  topic: string,
+  partitions: ArrayLike<number>,
+  offsets: ArrayLike<number>,
+  tombstones?: boolean[],
+): Message[] {
+  const { length } = payloads
+  const messages = new Array<Message>(length)
+
+  if (tombstones === undefined) {
+    for (let index = 0; index < length; index += 1) {
+      messages[index] = {
+        payload: payloads[index]!,
+        key: sharedKey,
+        topic,
+        partition: partitions[index]!,
+        offset: offsets[index]!,
+      }
+    }
+    return messages
+  }
+
+  for (let index = 0; index < length; index += 1) {
+    const message: Message = {
+      payload: payloads[index]!,
+      key: sharedKey,
+      topic,
+      partition: partitions[index]!,
+      offset: offsets[index]!,
+    }
+    if (tombstones[index]) {
+      message.isTombstone = true
+    }
+    messages[index] = message
   }
 
   return messages
@@ -317,15 +434,22 @@ function createCompactMessage(
   offset: number,
   isTombstone?: boolean,
 ): Message {
-  return {
+  const message: Message = {
     payload,
-    ...(key === undefined ? {} : { key }),
-    ...(headers === undefined ? {} : { headers }),
     topic,
     partition,
     offset,
-    ...(isTombstone ? { isTombstone } : {}),
   }
+  if (key !== undefined) {
+    message.key = key
+  }
+  if (headers !== undefined) {
+    message.headers = headers
+  }
+  if (isTombstone) {
+    message.isTombstone = true
+  }
+  return message
 }
 
 function expandCompactBatchStream(compactStream: ReadableStream<CompactMessageBatch>): ReadableStream<Message[]> {
@@ -361,6 +485,14 @@ function createMetadataBatchStream(
   batchTimeout: number,
 ): ReadableStream<Message[]> {
   return expandCompactBatchStream(consumer.recvBatchStreamCompact(batchSize, batchTimeout))
+}
+
+function createMetadataSerialStream(
+  consumer: KafkaConsumerWithWebStream,
+  batchSize: number,
+  batchTimeout: number,
+): ReadableStream<Message> {
+  return flattenCompactBatchStream(consumer.recvBatchStreamCompact(batchSize, batchTimeout))
 }
 
 export interface KafkaClientConfiguration extends Omit<KafkaConfiguration, 'clientId'> {
@@ -526,12 +658,11 @@ export class KafkaClient {
       })
     }
 
-    const serialBatchStream = createMetadataBatchStream(
+    const serialStream = createMetadataSerialStream(
       webStreamConsumer,
       LEGACY_STREAM_SERIAL_COLLECTOR_SIZE,
       LEGACY_STREAM_SERIAL_COLLECTOR_TIMEOUT,
     )
-    const serialStream = flattenBatchStream(serialBatchStream)
     const instrumentedSerialStream = this._diagnosticsEnabled
       ? instrumentConsumerReadableStream(serialStream, consumerConfiguration.groupId, this._diagnosticsConfig)
       : serialStream
@@ -586,9 +717,7 @@ export class KafkaClient {
     const resolvedPrefetchSize =
       serialPrefetchSize && serialPrefetchSize > 1 ? serialPrefetchSize : DEFAULT_WEB_STREAM_SERIAL_PREFETCH_SIZE
     const resolvedPrefetchTimeout = serialPrefetchTimeout ?? DEFAULT_WEB_STREAM_SERIAL_PREFETCH_TIMEOUT
-    const serialStream = flattenBatchStream(
-      createMetadataBatchStream(webStreamConsumer, resolvedPrefetchSize, resolvedPrefetchTimeout),
-    )
+    const serialStream = createMetadataSerialStream(webStreamConsumer, resolvedPrefetchSize, resolvedPrefetchTimeout)
     const instrumentedStream = this._diagnosticsEnabled
       ? instrumentConsumerReadableStream(serialStream, consumerConfiguration.groupId, this._diagnosticsConfig)
       : serialStream

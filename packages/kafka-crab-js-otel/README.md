@@ -20,7 +20,8 @@ streams.
 pnpm add kafka-crab-js kafka-crab-js-otel @opentelemetry/api
 ```
 
-This package targets Node.js 24. It declares `kafka-crab-js >=3` and
+This package supports Node.js 24 and newer, with CI coverage for Node.js 24 and 26.
+It declares `kafka-crab-js >=3` and
 `@opentelemetry/api >=1.9` as peers. An application must also configure an
 OpenTelemetry SDK to export telemetry. Without a provider, the OpenTelemetry API
 uses its no-op implementation.
@@ -293,7 +294,7 @@ calls themselves. Exported `KAFKA_SEMANTIC_CONVENTIONS`, `KAFKA_METRICS` and
 
 ## Upgrading to 2.0
 
-Version 2.0 requires Node.js 24. Version 1.2.1 declared support for Node.js 22 and
+Version 2.0 requires Node.js 24 or newer. Version 1.2.1 declared support for Node.js 22 and
 newer; update service runtimes and container images before upgrading.
 
 Producer and consumer APIs remain the same. Batch traces now preserve independent
@@ -323,13 +324,13 @@ is unavailable when `KAFKA_REQUIRED=true` is set, as in CI; otherwise they skip.
 They cover binary headers, empty values, tombstones and trace continuity through direct, Web Stream and Node.js Stream consumers in both modes.
 
 The monorepo pins pnpm in the root `packageManager` field. Run `corepack enable`
-once and use Node.js 24; Corepack selects the pinned version for local commands.
+once and use Node.js 24 or newer; Corepack selects the pinned version for local commands.
 CI installs the same version with `pnpm/action-setup` and uses a frozen lockfile.
 
 The OTEL release workflow checks that `kafka-crab-js-otel@<version>` matches the
 package manifest, builds the native core, runs lint, formatting, unit tests and
-required Kafka integration tests, then packs the OTEL artifact. Publishing depends
-on those checks and uses that same tarball. Instrumentation name and version are
+required Kafka integration tests on Node.js 24 and 26, then packs the OTEL artifact.
+Publishing depends on those checks and uses that same tarball. Instrumentation name and version are
 read from `package.json` during the build.
 
 See [runnable telemetry examples](../../examples/kafka) for collector integration.

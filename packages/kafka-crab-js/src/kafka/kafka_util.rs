@@ -20,13 +20,16 @@ impl<E: std::fmt::Debug> IntoNapiError for E {
 }
 
 pub fn hashmap_to_kafka_headers(map: &HashMap<String, Buffer>) -> OwnedHeaders {
-  map.iter().fold(OwnedHeaders::new(), |acc, (key, value)| {
-    let value: &[u8] = value.as_ref();
-    acc.insert(Header {
-      key,
-      value: Some(value),
-    })
-  })
+  map.iter().fold(
+    OwnedHeaders::new_with_capacity(map.len()),
+    |acc, (key, value)| {
+      let value: &[u8] = value.as_ref();
+      acc.insert(Header {
+        key,
+        value: Some(value),
+      })
+    },
+  )
 }
 
 #[inline]

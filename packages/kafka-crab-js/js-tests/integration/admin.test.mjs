@@ -2,6 +2,7 @@ import { deepEqual, equal, ok, rejects, throws } from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
 import test from 'node:test'
+import { setTimeout as sleep } from 'node:timers/promises'
 
 import { KafkaAdmin, KafkaClient } from '../../dist/index.js'
 
@@ -46,7 +47,18 @@ test(
             partition.leader >= 0 && partition.replicas.length === 1 && partition.isr.length === 1 && !partition.error,
         ),
       )
-      const initial = await admin.fetchOffsets({ groupId, topics: [topic] })
+      // A fresh broker may still be electing the coordinator for __consumer_offsets.
+      let initial
+      const coordinatorDeadline = Date.now() + 5000
+      for (;;) {
+        try {
+          initial = await admin.fetchOffsets({ groupId, topics: [topic] })
+          break
+        } catch (error) {
+          if (!error.message.includes('NotCoordinator') || Date.now() >= coordinatorDeadline) throw error
+          await sleep(100)
+        }
+      }
       ok(
         initial[0].partitions.every((partition) => partition.offset === undefined && !partition.error),
         'uncommitted offsets remain absent',

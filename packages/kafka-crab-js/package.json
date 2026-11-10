@@ -1,6 +1,6 @@
 {
   "name": "kafka-crab-js",
-  "version": "5.1.0",
+  "version": "5.1.1",
   "keywords": [
     "N-API",
     "consumer",
@@ -66,6 +66,6 @@
     ]
   },
   "engines": {
-    "node": "24"
+    "node": ">=24"
   }
 }
