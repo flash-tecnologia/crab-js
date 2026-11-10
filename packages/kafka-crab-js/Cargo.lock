@@ -209,7 +209,7 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
 name = "kafka-crab-js"
-version = "5.2.0"
+version = "5.2.1"
 dependencies = [
  "anyhow",
  "futures-util",
