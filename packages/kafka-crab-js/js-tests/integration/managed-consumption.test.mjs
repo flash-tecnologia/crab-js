@@ -119,6 +119,8 @@ class Member {
     this.staleCommits = 0
     this.brokerCommitErrors = []
     this.next = new Map()
+    this.streams = new Map()
+    this.firstOffsets = new Map()
     this.stopped = false
   }
 
@@ -141,7 +143,16 @@ class Member {
   async handle(record) {
     if (record.kind === 'assign') {
       this.transitions.push(record)
-      for (const { partition, assignment } of record.partitions) {
+      for (const { partition, assignment, previousAssignment } of record.partitions) {
+        if (previousAssignment === undefined) {
+          if (this.streams.has(assignment)) {
+            this.violations.push(`identity ${assignment} was issued twice`)
+          }
+          // The messages delivered under one identity form one fetch stream.
+          this.streams.set(assignment, { partition, last: undefined })
+        } else if (previousAssignment !== assignment || this.owned.get(partition) !== assignment) {
+          this.violations.push(`assign of ${partition} does not retain ${this.owned.get(partition)}`)
+        }
         this.owned.set(partition, assignment)
       }
     } else if (record.kind === 'revoke') {
@@ -160,6 +171,22 @@ class Member {
       // is the one announced by the latest transition delivered before it.
       if (this.owned.get(message.partition) !== assignment) {
         this.violations.push(`message ${message.partition}@${message.offset} carries ${assignment}`)
+      }
+      // And against the assignment that really owned the offset: an identity
+      // belongs to one partition and its offsets are one contiguous stream
+      // that starts where that assignment started fetching. A message fetched
+      // under an earlier assignment but stamped with this identity would
+      // break the sequence.
+      const stream = this.streams.get(assignment)
+      if (stream?.partition !== message.partition) {
+        this.violations.push(`identity ${assignment} does not belong to partition ${message.partition}`)
+      } else if (stream.last !== undefined && message.offset !== stream.last + 1) {
+        this.violations.push(`${message.partition}@${message.offset} follows ${stream.last} under ${assignment}`)
+      } else {
+        stream.last = message.offset
+      }
+      if (!this.firstOffsets.has(message.partition)) {
+        this.firstOffsets.set(message.partition, message.offset)
       }
       const { id } = JSON.parse(message.payload.toString())
       if (message.headers?.id?.toString() !== String(id) || message.key?.toString() !== `key-${id}`) {
@@ -319,19 +346,41 @@ for (const strategy of ['cooperative-sticky', 'range']) {
         deepEqual(missing(env.produced, a, b), [])
         ok(env.produced.size >= 300, `${env.produced.size}`)
 
+        // Restart from the broker-confirmed offsets. A commit beyond processed
+        // work would leave a gap here; a commit behind it only replays.
         await a.stop()
-        const high = await env.highWatermarks()
-        for (const [partition, identity] of a.owned) {
-          await a.consumer.commitManaged(env.topic, partition, identity, Number(high.get(partition)))
+        const processed = new Map(a.next)
+        await env.produce(100)
+        await a.consumer.disconnect()
+        const committed = await env.committed()
+        for (const [partition, next] of processed) {
+          ok(Number(committed.get(partition) ?? 0) <= next, `partition ${partition} committed beyond processed work`)
         }
-        // Broker-confirmed offsets, not local state: zero lag on every partition.
-        deepEqual(await env.committed(), high)
+        const c = new Member(env.consumer(strategy), env.topic)
+        try {
+          await c.consumer.subscribe(env.topic)
+          c.start()
+          await until(() => missing(env.produced, a, b, c).length === 0, 'the restarted member', 60_000)
+          c.check()
+          equal(c.firstOffsets.size, partitions)
+          for (const [partition, first] of c.firstOffsets) {
+            equal(
+              first,
+              Number(committed.get(partition) ?? 0),
+              `partition ${partition} restarts at its committed offset`,
+            )
+          }
+          deepEqual(missing(env.produced, a, b, c), [])
+        } finally {
+          c.stopped = true
+          await c.consumer.disconnect()
+        }
         console.log(
           `[${strategy}] produced=${env.produced.size} ` +
-            `replays=${a.duplicates + b.duplicates + a.received.size + b.received.size - env.produced.size} ` +
+            `replays=${[a, b, c].reduce((sum, m) => sum + m.duplicates + m.received.size, 0) - env.produced.size} ` +
             `staleCommits=${a.staleCommits + b.staleCommits} ` +
             `brokerCommitErrors=${JSON.stringify([...a.brokerCommitErrors, ...b.brokerCommitErrors])} ` +
-            `transitions(a)=${a.transitions.length} purged(a)=${a.consumer.managedState().purgedMessages}`,
+            `transitions(a)=${a.transitions.length}`,
         )
       } finally {
         await stopTraffic()
@@ -547,10 +596,162 @@ test(
         a.commitManaged(env.topic, assignments[0].partition, assignments[0].assignment, 0),
         hasCode(MANAGED_ERROR_CODES.CONTROL_OVERFLOW),
       )
-      // The failed consumer leaves the group instead of holding partitions.
+      // The failed consumer leaves the group instead of holding partitions,
+      // and cannot rejoin it.
       await until(() => b.managedState().assignments.length === 2, 'the healthy member to own every partition')
+      await rejects(a.subscribe(env.topic), /ERR_MANAGED_CONTROL_OVERFLOW.*subscribe is not available/)
     } finally {
       await Promise.all([a.disconnect(), b.disconnect()])
+      await env.close()
+    }
+  },
+)
+
+test(
+  'the receive watchdog releases the partitions of an application that stops receiving',
+  { timeout: 60_000 },
+  async () => {
+    const env = await environment('watchdog', 2)
+    const stuck = env.consumer('range', { maxReceiveIdleMs: 1500 })
+    const healthy = new Member(env.consumer('range'), env.topic)
+    try {
+      await stuck.subscribe(env.topic)
+      await healthy.consumer.subscribe(env.topic)
+      healthy.start()
+      const { assignments } = await until(() => {
+        const state = stuck.managedState()
+        return state.assignments.length > 0 ? state : undefined
+      }, 'the stuck member to own partitions')
+      // It never calls recvManaged. The native poller would keep it in the
+      // group forever; the watchdog fails it instead.
+      const failed = await until(() => {
+        const state = stuck.managedState()
+        return state.status === 'failed' ? state : undefined
+      }, 'the watchdog')
+      equal(failed.failure, MANAGED_ERROR_CODES.RECEIVE_STALLED)
+      equal(stuck.isManagedAssignmentActive(env.topic, assignments[0].partition, assignments[0].assignment), false)
+      await rejects(stuck.recvManaged(), hasCode(MANAGED_ERROR_CODES.RECEIVE_STALLED))
+      await until(() => healthy.owned.size === 2, 'the healthy member to own every partition')
+      healthy.check()
+    } finally {
+      healthy.stopped = true
+      await Promise.all([stuck.disconnect(), healthy.consumer.disconnect()])
+      await env.close()
+    }
+  },
+)
+
+test(
+  'a commit in flight across a revocation keeps its own result and loses nothing',
+  { timeout: 180_000 },
+  async () => {
+    const env = await environment('inflight', 2)
+    const a = env.consumer('range')
+    const b = new Member(env.consumer('range'), env.topic)
+    const owned = new Map()
+    const position = new Map()
+    const first = { received: new Set() }
+    const across = []
+    const outcomes = {}
+    let stopTraffic = async () => undefined
+    let running = true
+    // Commits are fired without waiting, so one is always in flight.
+    const commit = (partition, identity, offset) => {
+      a.commitManaged(env.topic, partition, identity, offset)
+        .then(
+          () => 'confirmed',
+          (error) => error.code,
+        )
+        .then((outcome) => {
+          outcomes[outcome] = (outcomes[outcome] ?? 0) + 1
+          const dispatched = outcome === 'confirmed' || outcome === MANAGED_ERROR_CODES.COMMIT_FAILED
+          if (dispatched && running && !a.isManagedAssignmentActive(env.topic, partition, identity)) {
+            // The broker answered a request whose identity had been revoked.
+            across.push({ partition, identity, offset, outcome })
+          }
+        })
+    }
+    try {
+      await a.subscribe(env.topic)
+      const loop = (async () => {
+        while (running) {
+          const record = await a.recvManaged(50)
+          if (record === null) {
+            return
+          }
+          if (record.kind === 'assign') {
+            for (const { partition, assignment } of record.partitions) {
+              owned.set(partition, assignment)
+            }
+          } else if (record.kind === 'revoke') {
+            for (const { partition } of record.partitions) {
+              owned.delete(partition)
+              position.delete(partition)
+            }
+          } else if (record.kind === 'message') {
+            const { partition, offset, payload } = record.message
+            first.received.add(JSON.parse(payload.toString()).id)
+            position.set(partition, offset + 1)
+            commit(partition, record.assignment, offset + 1)
+          }
+          if (a.managedState().pendingCommits < 4) {
+            for (const [partition, identity] of owned) {
+              if (position.has(partition)) {
+                commit(partition, identity, position.get(partition))
+              }
+            }
+          }
+        }
+      })()
+      stopTraffic = env.traffic()
+      await until(() => owned.size === 2 && first.received.size >= 50, 'the first member to consume')
+      const before = new Map(owned)
+
+      await b.consumer.subscribe(env.topic)
+      b.start()
+      await until(() => across.length > 0, 'a result for a commit that was in flight when its identity was revoked')
+      await until(() => b.owned.size === 1 && owned.size === 1, 'the rebalance to finish')
+      b.check()
+      for (const { partition, identity } of across) {
+        // The late result belongs to the old identity only.
+        equal(identity, before.get(partition))
+        notEqual(owned.get(partition), identity)
+      }
+      // The current identity commits normally after the late result.
+      const [[partition, identity]] = [...owned]
+      await until(() => position.has(partition), 'progress under the new identity')
+      await a.commitManaged(env.topic, partition, identity, position.get(partition))
+
+      await stopTraffic()
+      running = false
+      a.cancelManagedReceive()
+      await loop
+      await until(() => a.managedState().pendingCommits === 0, 'pending commits to settle')
+      await b.stop()
+      await Promise.all([a.disconnect(), b.consumer.disconnect()])
+
+      // Whatever the late commit did at the broker, a member that restarts
+      // from the committed offsets finds every message that was not received.
+      await env.produce(40)
+      const c = new Member(env.consumer('range'), env.topic)
+      try {
+        await c.consumer.subscribe(env.topic)
+        c.start()
+        await until(() => missing(env.produced, first, b, c).length === 0, 'the restarted member', 60_000)
+        c.check()
+        deepEqual(missing(env.produced, first, b, c), [])
+      } finally {
+        c.stopped = true
+        await c.consumer.disconnect()
+      }
+      console.log(
+        `[inflight] across=${JSON.stringify(across.map(({ outcome }) => outcome))} outcomes=${JSON.stringify(outcomes)}`,
+      )
+    } finally {
+      running = false
+      b.stopped = true
+      await stopTraffic()
+      await Promise.all([a.disconnect(), b.consumer.disconnect()])
       await env.close()
     }
   },
@@ -560,6 +761,7 @@ test('disconnect settles a pending recvManaged and an in-flight commit', { timeo
   const env = await environment('disconnect', 1)
   const consumer = env.consumer()
   try {
+    await env.produce(3)
     await consumer.subscribe(env.topic)
     const assign = await until(async () => {
       const record = await consumer.recvManaged(500)
@@ -567,32 +769,34 @@ test('disconnect settles a pending recvManaged and an in-flight commit', { timeo
     }, 'the first assignment')
     const [{ assignment }] = assign.partitions
 
-    const pending = consumer.recvManaged()
-    const commit = consumer.commitManaged(env.topic, 0, assignment, 0).then(
-      () => 'committed',
-      (error) => error.code,
+    // Nothing is awaited between these calls: the receive is reserved and the
+    // commit is dispatched synchronously, so both are pending at disconnect.
+    const pending = consumer.recvManaged(60_000)
+    const commit = consumer.commitManaged(env.topic, 0, assignment, 3)
+    const second = consumer.commitManaged(env.topic, 0, assignment, 3).then(
+      () => 'sent',
+      (error) => error,
     )
-    // Let the commit reach its native dispatch before the disconnect.
-    for (let turn = 0; turn < 50 && consumer.managedState().pendingCommits === 0; turn++) {
-      await sleep(0)
-    }
-    await consumer.disconnect()
+    equal(consumer.managedState().pendingCommits, 2)
+    const closed = consumer.disconnect()
+    // A message was available, but the receive had not run: it ends cleanly.
     equal(await pending, null)
-    // The dispatched commit keeps its own outcome: confirmed, or a structured
-    // error. It is never reported as cancelled by the disconnect.
-    const outcome = await commit
-    ok(
-      ['committed', MANAGED_ERROR_CODES.COMMIT_FAILED, MANAGED_ERROR_CODES.COMMIT_UNKNOWN].includes(outcome),
-      String(outcome),
-    )
-    await until(() => consumer.managedState().pendingCommits === 0, 'pending commits to settle')
+    // The request already handed to the client is not cancelled by the
+    // disconnect: the close waits for it and the broker confirms it.
+    await commit
+    // The one still waiting behind it was never sent.
+    const refused = await second
+    equal(refused.code, MANAGED_ERROR_CODES.CLOSED)
+    equal(refused.outcomeUnknown, undefined)
+    await closed
+    equal((await env.committed()).get(0), '3')
 
     const state = consumer.managedState()
     equal(state.status, 'closed')
+    equal(state.pendingCommits, 0)
     deepEqual(state.assignments, [])
     await rejects(consumer.recvManaged(), hasCode(MANAGED_ERROR_CODES.CLOSED))
-    await rejects(consumer.commitManaged(env.topic, 0, assignment, 0), hasCode(MANAGED_ERROR_CODES.CLOSED))
-    console.log(`[disconnect] in-flight commit outcome=${outcome}`)
+    await rejects(consumer.commitManaged(env.topic, 0, assignment, 3), hasCode(MANAGED_ERROR_CODES.CLOSED))
   } finally {
     await consumer.disconnect()
     await env.close()

@@ -1,7 +1,7 @@
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { deepEqual, equal, ok, rejects, throws } from 'node:assert/strict'
 import { createInterface } from 'node:readline'
-import { setTimeout as sleep } from 'node:timers/promises'
+import { promisify } from 'node:util'
 
 import { test } from 'vite-plus/test'
 
@@ -211,6 +211,17 @@ test('only one recvManaged may be pending; cancellation and timeouts resolve as 
     deepEqual(await consumer.recvManaged(10), { kind: 'idle', reason: 'timeout' })
     deepEqual(await consumer.recvManaged(0), { kind: 'idle', reason: 'timeout' })
     await rejects(consumer.recvManaged(-1), hasCode(MANAGED_ERROR_CODES.INVALID_ARGUMENT))
+
+    // The call itself reserves the receive until its promise settles.
+    // Neither a second call nor a cancel in the same tick can miss it.
+    const immediate = consumer.recvManaged(0)
+    await rejects(consumer.recvManaged(0), hasCode(MANAGED_ERROR_CODES.RECEIVE_PENDING))
+    deepEqual(await immediate, { kind: 'idle', reason: 'timeout' })
+    const cancelled = consumer.recvManaged()
+    equal(consumer.cancelManagedReceive(), true)
+    equal(consumer.cancelManagedReceive(), true)
+    deepEqual(await cancelled, { kind: 'idle', reason: 'cancelled' })
+    equal(consumer.cancelManagedReceive(), false)
   } finally {
     await consumer.disconnect()
   }
@@ -234,10 +245,11 @@ test('commitManaged validates its arguments and the identity before any dispatch
 
 test('disconnect resolves the pending recvManaged with null and refuses new managed operations', async () => {
   const consumer = managedConsumer()
+  // The receive is reserved by the call, so an immediate disconnect ends it.
   const pending = consumer.recvManaged()
-  await sleep(20)
-  await consumer.disconnect()
+  const closed = consumer.disconnect()
   equal(await pending, null)
+  await closed
   await rejects(consumer.recvManaged(), hasCode(MANAGED_ERROR_CODES.CLOSED))
   await rejects(consumer.commitManaged('topic', 0, 'mc1.1.1', 1), hasCode(MANAGED_ERROR_CODES.CLOSED))
   const state = consumer.managedState()
@@ -308,10 +320,48 @@ test('managed records are a discriminated sequence that preserves message conten
     // `nextOffset` is the next offset to consume, as in `commit`.
     await consumer.commitManaged(topic, first.partition, assignment, tombstone.offset + 1)
     equal(consumer.managedState().pendingCommits, 0)
-    // An identity is bound to its own partition.
+    // An identity is bound to its own partition. Nothing is sent: a definitive outcome.
+    await rejects(consumer.commitManaged(topic, first.partition + 100, assignment, 1), (error) => {
+      hasCode(MANAGED_ERROR_CODES.STALE_ASSIGNMENT)(error)
+      equal((error as { outcomeUnknown?: boolean }).outcomeUnknown, false)
+      return true
+    })
+
+    // Commits issued without awaiting are dispatched in call order.
+    // An offset below one already authorized is refused, not sent after it.
+    const base = tombstone.offset + 1
+    const ordered = [10, 20, 20].map(async (delta) =>
+      consumer.commitManaged(topic, first.partition, assignment, base + delta),
+    )
+    equal(consumer.managedState().pendingCommits, 3)
+    await rejects(consumer.commitManaged(topic, first.partition, assignment, base + 15), (error) => {
+      hasCode(MANAGED_ERROR_CODES.COMMIT_REGRESSION)(error)
+      equal((error as { outcomeUnknown?: boolean }).outcomeUnknown, false)
+      return true
+    })
+    await Promise.all(ordered)
+    equal(consumer.managedState().pendingCommits, 0)
+
+    // A deadline only ends the observation. The request stays in flight.
+    // It waits behind fifty commits, far longer than a zero deadline.
+    const ahead = Array.from({ length: 50 }, async (_, index) =>
+      consumer.commitManaged(topic, first.partition, assignment, base + 30 + index),
+    )
+    await rejects(consumer.commitManaged(topic, first.partition, assignment, base + 80, 0), (error) => {
+      hasCode(MANAGED_ERROR_CODES.COMMIT_TIMEOUT)(error)
+      equal((error as { outcomeUnknown?: boolean }).outcomeUnknown, true)
+      return true
+    })
+    await Promise.all(ahead)
+    // The timed-out request was not dropped: it is sent and settles natively.
+    const settleDeadline = Date.now() + 5000
+    while (consumer.managedState().pendingCommits > 0 && Date.now() < settleDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    equal(consumer.managedState().pendingCommits, 0)
     await rejects(
-      consumer.commitManaged(topic, first.partition + 100, assignment, 1),
-      hasCode(MANAGED_ERROR_CODES.STALE_ASSIGNMENT),
+      consumer.commitManaged(topic, first.partition, assignment, 1, -1),
+      hasCode(MANAGED_ERROR_CODES.INVALID_ARGUMENT),
     )
   } finally {
     await consumer.disconnect()
@@ -363,4 +413,55 @@ test('managed tracing opens a processing span for message records only', async (
     await consumer.disconnect()
     broker.close()
   }
+})
+
+test('pending commits are bounded by maxPendingCommits', async () => {
+  const broker = await startMockBroker()
+  const topic = `managed-backlog-${crypto.randomUUID()}`
+  await broker.send(topic, [{ key: 'k', payload: 'one' }])
+  const consumer = managedConsumer(createClient(broker.brokers), { managedOptions: { maxPendingCommits: 2 } })
+  try {
+    await consumer.subscribe(topic)
+    await nextRecord(consumer, 'assign')
+    const { message, assignment } = (await nextRecord(consumer, 'message')) as Extract<
+      ManagedRecord,
+      { kind: 'message' }
+    >
+    const commits = [1, 2].map(async (delta) =>
+      consumer.commitManaged(topic, message.partition, assignment, message.offset + delta),
+    )
+    await rejects(consumer.commitManaged(topic, message.partition, assignment, message.offset + 3), (error) => {
+      hasCode(MANAGED_ERROR_CODES.COMMIT_BACKLOG)(error)
+      equal((error as { outcomeUnknown?: boolean }).outcomeUnknown, false)
+      return true
+    })
+    await Promise.all(commits)
+    await consumer.commitManaged(topic, message.partition, assignment, message.offset + 3)
+  } finally {
+    await consumer.disconnect()
+    broker.close()
+  }
+})
+
+test('a legacy consumer reports the same configuration as before managed mode existed', async () => {
+  const client = createClient()
+  const legacy = client.createConsumer({ groupId: 'legacy-config', enableAutoCommit: false })
+  const minimal = client.createConsumer({ groupId: 'legacy-config-minimal' })
+  try {
+    // No managed field appears unless it was set.
+    deepEqual(legacy.getConfig(), { groupId: 'legacy-config', enableAutoCommit: false })
+    deepEqual(minimal.getConfig(), { groupId: 'legacy-config-minimal' })
+    deepEqual(Object.keys(minimal.getConfig()), ['groupId'])
+  } finally {
+    await Promise.all([legacy.disconnect(), minimal.disconnect()])
+  }
+})
+
+test('a managed consumer collected without disconnect settles its pending receive', async () => {
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    ['--expose-gc', '--import', 'tsx', 'js-tests/fixtures/managed-finalizer-probe.mjs'],
+    { cwd: process.cwd(), timeout: 20_000 },
+  )
+  ok(stdout.includes('MANAGED_FINALIZER null'), stdout)
 })
