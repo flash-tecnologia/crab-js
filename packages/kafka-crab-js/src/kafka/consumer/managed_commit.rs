@@ -12,8 +12,9 @@ use rdkafka::{
   consumer::Consumer,
   error::{KafkaError, KafkaResult},
   types::RDKafkaErrorCode,
-  TopicPartitionList,
+  Offset, TopicPartitionList,
 };
+use tokio::runtime::Handle;
 
 use super::{
   context::{LoggingConsumer, ManagedConsumerState},
@@ -61,7 +62,17 @@ impl ManagedCommitQueue {
   /// Hands the commit to librdkafka's group thread without waiting for it.
   /// With a reply queue `rd_kafka_commit_queue` only enqueues a local
   /// operation, so this is safe inside the managed state's critical section.
-  pub fn enqueue(&self, offsets: &TopicPartitionList, id: u64) -> Result<(), KafkaCode> {
+  pub fn enqueue(
+    &self,
+    id: u64,
+    topic: &str,
+    partition: i32,
+    offset: i64,
+  ) -> Result<(), KafkaCode> {
+    let mut offsets = TopicPartitionList::with_capacity(1);
+    offsets
+      .add_partition_offset(topic, partition, Offset::Offset(offset))
+      .map_err(|_| kafka_code(bindings::rd_kafka_resp_err_t::RD_KAFKA_RESP_ERR__INVALID_ARG))?;
     // SAFETY: both pointers remain live for this call. librdkafka copies the
     // offsets and retains the reply queue for the scheduled operation. The
     // opaque is an integer id, never dereferenced.
@@ -82,14 +93,15 @@ impl ManagedCommitQueue {
   }
 
   /// Runs a blocking poller for as long as commits are unresolved. It retains
-  /// the native client until every dispatched commit has an outcome.
-  pub fn ensure_polling(self: &Arc<Self>, state: &Arc<ManagedConsumerState>) {
+  /// the native client until every dispatched commit has an outcome, and
+  /// dispatches the next commit of a partition when the previous one settles.
+  pub fn ensure_polling(self: &Arc<Self>, state: &Arc<ManagedConsumerState>, runtime: &Handle) {
     if self.polling.swap(true, Ordering::AcqRel) {
       return;
     }
     let queue = Arc::clone(self);
     let state = Arc::clone(state);
-    tokio::task::spawn_blocking(move || loop {
+    runtime.spawn_blocking(move || loop {
       let served = queue.poll(&state, POLL_TIMEOUT_MS);
       if state.pending_commits() == 0 {
         queue.polling.store(false, Ordering::Release);
@@ -146,9 +158,18 @@ impl ManagedCommitQueue {
         let outcome = if error as i32 == 0 {
           Ok(())
         } else {
-          Err(ManagedError::CommitFailed(kafka_code(error)))
+          Err(ManagedError::CommitFailed {
+            kafka: kafka_code(error),
+            dispatched: true,
+          })
         };
-        state.complete_commit(id, outcome);
+        state.complete_commit(
+          id,
+          outcome,
+          &mut |id: u64, topic: &str, partition: i32, offset: i64| {
+            self.enqueue(id, topic, partition, offset)
+          },
+        );
         served += 1;
       }
     }

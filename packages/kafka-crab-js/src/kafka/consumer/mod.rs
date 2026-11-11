@@ -5,4 +5,5 @@ pub mod context;
 pub mod kafka_consumer;
 pub mod managed;
 mod managed_commit;
+mod managed_pump;
 pub mod model;

@@ -184,40 +184,53 @@ export declare class KafkaConsumer {
    * transition. Every transition that preceded a message in librdkafka is
    * returned before it; transitions are returned even when no message exists.
    *
+   * Only one call may be pending, from the call until its promise settles: a
+   * second call in between rejects with `ERR_MANAGED_RECEIVE_PENDING`.
    * Resolves `{ kind: 'idle' }` after `timeoutMs` (or `cancelManagedReceive`)
    * and `null` when the consumer is disconnected while the call is pending.
-   * Only one call may be pending. Rejects with `error.code`:
-   * `ERR_MANAGED_RECEIVE_PENDING`, `ERR_MANAGED_CLOSED`,
-   * `ERR_MANAGED_CONTROL_OVERFLOW`, `ERR_MANAGED_CONTROL_FAILURE` (terminal),
-   * `ERR_MANAGED_RECEIVE_FAILED` (with `kafkaCode`; not terminal) or
+   * Other rejections (`error.code`): `ERR_MANAGED_CLOSED`, the terminal
+   * `ERR_MANAGED_CONTROL_OVERFLOW`, `ERR_MANAGED_CONTROL_FAILURE`,
+   * `ERR_MANAGED_BACKPRESSURE_FAILURE` and `ERR_MANAGED_RECEIVE_STALLED`,
+   * `ERR_MANAGED_RECEIVE_FAILED` (with `kafkaCode`; not terminal) and
    * `ERR_MANAGED_MODE` on a legacy consumer.
    * @param timeoutMs - Optional wait bound in milliseconds; omit to wait
    */
   recvManaged(timeoutMs?: number | undefined | null): Promise<ManagedRecord | null>
   /**
-   * Experimental (RFC-0017). Wakes the pending `recvManaged`, which resolves
-   * `{ kind: 'idle', reason: 'cancelled' }`. No admitted record is lost.
-   * @returns Whether a receive was pending
+   * Experimental (RFC-0017). Cancels the pending `recvManaged` if its result
+   * is not decided yet; it then resolves `{ kind: 'idle', reason:
+   * 'cancelled' }` without taking a record from the queue.
+   * @returns Whether a pending receive was cancelled
    */
   cancelManagedReceive(): boolean
   /**
    * Experimental (RFC-0017). Commits `nextOffset` (the next offset to consume,
    * as in `commit`) for a partition under the assignment identity that
-   * delivered the work. The final identity check and the native dispatch are
-   * ordered against revocation; the promise settles with the broker result.
-   * There is no automatic retry.
+   * delivered the work. The binding does not check that the work up to
+   * `nextOffset` was completed.
+   *
+   * Authorization happens synchronously in this call, ordered against
+   * revocation. Commits of a partition reach the client one at a time in call
+   * order; a `nextOffset` lower than one already authorized under the
+   * identity rejects with `ERR_MANAGED_COMMIT_REGRESSION`, and an equal one
+   * is sent again. The promise settles with the broker result. There is no
+   * automatic retry.
+   *
+   * `timeoutMs` only bounds the wait: on expiry the promise rejects with
+   * `ERR_MANAGED_COMMIT_TIMEOUT` and the request stays in flight.
    *
    * Rejects with `error.code`: `ERR_MANAGED_STALE_ASSIGNMENT`,
-   * `ERR_MANAGED_UNKNOWN_ASSIGNMENT`, `ERR_MANAGED_CLOSED`,
-   * `ERR_MANAGED_CONTROL_OVERFLOW`, `ERR_MANAGED_CONTROL_FAILURE`,
-   * `ERR_MANAGED_COMMIT_FAILED` (with `kafkaCode`/`kafkaErrorCode`),
-   * `ERR_MANAGED_COMMIT_UNKNOWN`, `ERR_MANAGED_INVALID_ARGUMENT` or
-   * `ERR_MANAGED_MODE`. Commit errors carry `outcomeUnknown`.
+   * `ERR_MANAGED_UNKNOWN_ASSIGNMENT`, `ERR_MANAGED_COMMIT_REGRESSION`,
+   * `ERR_MANAGED_COMMIT_BACKLOG`, `ERR_MANAGED_CLOSED`, a terminal failure
+   * code, `ERR_MANAGED_COMMIT_FAILED` (with `kafkaCode`/`kafkaErrorCode`),
+   * `ERR_MANAGED_COMMIT_UNKNOWN`, `ERR_MANAGED_COMMIT_TIMEOUT`,
+   * `ERR_MANAGED_INVALID_ARGUMENT` or `ERR_MANAGED_MODE`. Commit errors carry
+   * `outcomeUnknown`, which is `false` only when nothing was sent.
    *
    * The identity is a local authorization, not broker-side fencing: a request
    * dispatched before a revocation cannot be recalled and may still be applied.
    */
-  commitManaged(topic: string, partition: number, assignment: string, nextOffset: number): Promise<void>
+  commitManaged(topic: string, partition: number, assignment: string, nextOffset: number, timeoutMs?: number | undefined | null): Promise<void>
   /**
    * Experimental (RFC-0017). Whether `assignment` is the identity that
    * currently owns the partition, read from native state without waiting for
@@ -429,6 +442,18 @@ export interface ManagedConsumptionOptions {
    * (default 32 MiB). One message is always admitted.
    */
   maxBufferedBytes?: number
+  /**
+   * Managed commits dispatched or waiting for dispatch (default 1024,
+   * 1-65536). Beyond it `commitManaged` rejects `ERR_MANAGED_COMMIT_BACKLOG`.
+   */
+  maxPendingCommits?: number
+  /**
+   * Optional watchdog (ms, disabled by default). The binding polls for the
+   * application, so `max.poll.interval.ms` does not detect a stuck handler.
+   * With this set, a consumer with no `recvManaged` pending for longer fails
+   * with the terminal `ERR_MANAGED_RECEIVE_STALLED` and leaves the group.
+   */
+  maxReceiveIdleMs?: number
 }
 
 /** One partition of a managed assignment transition. */

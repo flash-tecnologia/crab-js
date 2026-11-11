@@ -43,6 +43,14 @@ pub struct ManagedConsumptionOptions {
   /// Bytes retained natively before assigned partitions are paused
   /// (default 32 MiB). One message is always admitted.
   pub max_buffered_bytes: Option<u32>,
+  /// Managed commits dispatched or waiting for dispatch (default 1024,
+  /// 1-65536). Beyond it `commitManaged` rejects `ERR_MANAGED_COMMIT_BACKLOG`.
+  pub max_pending_commits: Option<u32>,
+  /// Optional watchdog (ms, disabled by default). The binding polls for the
+  /// application, so `max.poll.interval.ms` does not detect a stuck handler.
+  /// With this set, a consumer with no `recvManaged` pending for longer fails
+  /// with the terminal `ERR_MANAGED_RECEIVE_STALLED` and leaves the group.
+  pub max_receive_idle_ms: Option<u32>,
 }
 
 /// One partition of a managed assignment transition.

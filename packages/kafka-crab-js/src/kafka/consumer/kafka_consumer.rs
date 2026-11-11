@@ -48,11 +48,12 @@ use super::{
   },
   context::{KafkaEvent, LoggingConsumer, ManagedConsumerState},
   managed::{
-    CommitAuthorization, KafkaCode, ManagedEntry, ManagedError, ManagedLimits, ManagedState,
-    ManagedStatus, PartitionChange, PartitionKey, ReceiveFailure, Received,
-    DEFAULT_MAX_BUFFERED_BYTES, DEFAULT_MAX_BUFFERED_MESSAGES, DEFAULT_MAX_CONTROL_RECORDS,
+    KafkaCode, ManagedEntry, ManagedError, ManagedLimits, ManagedState, ManagedStatus,
+    PartitionChange, PartitionKey, ReceiveFailure, Received, DEFAULT_MAX_BUFFERED_BYTES,
+    DEFAULT_MAX_BUFFERED_MESSAGES, DEFAULT_MAX_CONTROL_RECORDS, DEFAULT_MAX_PENDING_COMMITS,
   },
   managed_commit::ManagedCommitQueue,
+  managed_pump::{apply_flow, run_pump, PumpBackend, PumpEvent},
   model::{
     CommitMode, ConsumerConfiguration, ManagedPartition, ManagedRecord, ManagedStateSnapshot,
     OffsetModel, TopicPartition, TopicPartitionConfig, TopicPartitionId,
@@ -249,14 +250,9 @@ pub const MANAGED_CONSUMPTION_VERSION: u32 = 1;
 
 const MAX_MANAGED_CONTROL_RECORDS: u32 = 65_536;
 const MAX_MANAGED_BUFFERED_MESSAGES: u32 = 1_000_000;
-const MAX_MANAGED_RECV_TIMEOUT_MS: i64 = 86_400_000;
+const MAX_MANAGED_PENDING_COMMITS: u32 = 65_536;
+const MAX_MANAGED_TIMEOUT_MS: i64 = 86_400_000;
 const MANAGED_MODE_ERROR: &str = "ERR_MANAGED_MODE";
-/// How long the managed poller waits for the application to make room in a
-/// full buffer before pausing partitions. It bounds the delay of rebalance
-/// callbacks under saturation; a pause costs a fetch round trip on resume.
-const MANAGED_STALL_GRACE: Duration = Duration::from_millis(100);
-
-type ManagedCommitQueueSlot = Arc<std::sync::Mutex<Option<Arc<ManagedCommitQueue>>>>;
 
 fn managed_limit(name: &str, value: Option<u32>, default: usize, max: u32) -> Result<usize> {
   match value {
@@ -290,21 +286,37 @@ fn managed_limits(configuration: &ConsumerConfiguration) -> Result<ManagedLimits
       DEFAULT_MAX_BUFFERED_BYTES,
       u32::MAX,
     )?,
+    max_pending_commits: managed_limit(
+      "maxPendingCommits",
+      options.and_then(|o| o.max_pending_commits),
+      DEFAULT_MAX_PENDING_COMMITS,
+      MAX_MANAGED_PENDING_COMMITS,
+    )?,
+    max_receive_idle: match options.and_then(|o| o.max_receive_idle_ms) {
+      None => None,
+      Some(ms) => Some(Duration::from_millis(managed_limit(
+        "maxReceiveIdleMs",
+        Some(ms),
+        0,
+        MAX_MANAGED_TIMEOUT_MS as u32,
+      )? as u64)),
+    },
   })
 }
 
-/// Kafka errors after which the request may still have been applied.
-fn commit_outcome_unknown(code: &KafkaCode) -> bool {
-  use rdsys::rd_kafka_resp_err_t as E;
-  [
-    E::RD_KAFKA_RESP_ERR_REQUEST_TIMED_OUT,
-    E::RD_KAFKA_RESP_ERR_NETWORK_EXCEPTION,
-    E::RD_KAFKA_RESP_ERR__TIMED_OUT,
-    E::RD_KAFKA_RESP_ERR__TRANSPORT,
-    E::RD_KAFKA_RESP_ERR__DESTROY,
-  ]
-  .iter()
-  .any(|error| *error as i32 == code.code)
+fn managed_timeout(
+  name: &str,
+  value: Option<i64>,
+) -> std::result::Result<Option<Duration>, ManagedError> {
+  match value {
+    None => Ok(None),
+    Some(ms) if (0..=MAX_MANAGED_TIMEOUT_MS).contains(&ms) => {
+      Ok(Some(Duration::from_millis(ms as u64)))
+    }
+    Some(ms) => Err(ManagedError::InvalidArgument(format!(
+      "Invalid {name}: {ms}. Expected 0-{MAX_MANAGED_TIMEOUT_MS}."
+    ))),
+  }
 }
 
 fn managed_error_code(error: &ManagedError) -> &'static str {
@@ -314,12 +326,17 @@ fn managed_error_code(error: &ManagedError) -> &'static str {
     ManagedError::Closed => "ERR_MANAGED_CLOSED",
     ManagedError::ControlOverflow => "ERR_MANAGED_CONTROL_OVERFLOW",
     ManagedError::ControlFailure(_) => "ERR_MANAGED_CONTROL_FAILURE",
+    ManagedError::BackpressureFailure(_) => "ERR_MANAGED_BACKPRESSURE_FAILURE",
+    ManagedError::ReceiveStalled => "ERR_MANAGED_RECEIVE_STALLED",
     ManagedError::ReceiveFailed(_) => "ERR_MANAGED_RECEIVE_FAILED",
     ManagedError::StaleAssignment => "ERR_MANAGED_STALE_ASSIGNMENT",
     ManagedError::UnknownAssignment(_) => "ERR_MANAGED_UNKNOWN_ASSIGNMENT",
     ManagedError::InvalidArgument(_) => "ERR_MANAGED_INVALID_ARGUMENT",
-    ManagedError::CommitFailed(_) => "ERR_MANAGED_COMMIT_FAILED",
+    ManagedError::CommitRegression { .. } => "ERR_MANAGED_COMMIT_REGRESSION",
+    ManagedError::CommitBacklog => "ERR_MANAGED_COMMIT_BACKLOG",
+    ManagedError::CommitFailed { .. } => "ERR_MANAGED_COMMIT_FAILED",
     ManagedError::CommitUnknown(_) => "ERR_MANAGED_COMMIT_UNKNOWN",
+    ManagedError::CommitTimeout => "ERR_MANAGED_COMMIT_TIMEOUT",
   }
 }
 
@@ -334,14 +351,44 @@ fn managed_error_message(error: &ManagedError) -> String {
       "managed control queue overflowed; commit authorization was invalidated".to_owned()
     }
     ManagedError::ControlFailure(reason) => format!("managed control failure: {reason}"),
+    ManagedError::BackpressureFailure(reason) => format!("managed backpressure failure: {reason}"),
+    ManagedError::ReceiveStalled => {
+      "no recvManaged() was pending for longer than maxReceiveIdleMs".to_owned()
+    }
     ManagedError::ReceiveFailed(failure) => failure.message.clone(),
     ManagedError::StaleAssignment => {
       "assignment identity is no longer active for this partition".to_owned()
     }
     ManagedError::UnknownAssignment(reason) => reason.clone(),
     ManagedError::InvalidArgument(reason) => reason.clone(),
-    ManagedError::CommitFailed(code) => format!("managed commit failed: {}", code.name),
+    ManagedError::CommitRegression { authorized } => format!(
+      "nextOffset is lower than {authorized}, already authorized under this assignment identity"
+    ),
+    ManagedError::CommitBacklog => {
+      "too many managed commits are pending (maxPendingCommits)".to_owned()
+    }
+    ManagedError::CommitFailed { kafka, .. } => format!("managed commit failed: {}", kafka.name),
     ManagedError::CommitUnknown(reason) => format!("managed commit outcome is unknown: {reason}"),
+    ManagedError::CommitTimeout => {
+      "the commit deadline elapsed; the request was not cancelled and may still be applied"
+        .to_owned()
+    }
+  }
+}
+
+/// Whether the broker may have applied the commit. Only an error raised
+/// before the request was handed to librdkafka is definitive: librdkafka can
+/// retry or defer a request after an attempt whose fate is unknown, so the
+/// final code of a dispatched request does not prove that no attempt landed.
+fn commit_outcome_unknown(error: &ManagedError) -> Option<bool> {
+  match error {
+    ManagedError::CommitFailed { dispatched, .. } => Some(*dispatched),
+    ManagedError::CommitUnknown(_) | ManagedError::CommitTimeout => Some(true),
+    ManagedError::StaleAssignment
+    | ManagedError::UnknownAssignment(_)
+    | ManagedError::CommitRegression { .. }
+    | ManagedError::CommitBacklog => Some(false),
+    _ => None,
   }
 }
 
@@ -351,14 +398,9 @@ fn managed_js_error(env: &Env, error: &ManagedError) -> Error {
   let code = managed_error_code(error);
   let message = format!("[{code}] {}", managed_error_message(error));
   let kafka = match error {
-    ManagedError::CommitFailed(kafka) => Some(kafka),
+    ManagedError::CommitFailed { kafka, .. } => Some(kafka),
     ManagedError::ReceiveFailed(failure) => failure.kafka.as_ref(),
     _ => None,
-  };
-  let outcome_unknown = match error {
-    ManagedError::CommitUnknown(_) => true,
-    ManagedError::CommitFailed(kafka) => commit_outcome_unknown(kafka),
-    _ => false,
   };
   let build = || -> Result<Error> {
     let mut object = env.create_error(Error::new(Status::GenericFailure, message.clone()))?;
@@ -367,10 +409,7 @@ fn managed_js_error(env: &Env, error: &ManagedError) -> Error {
       object.set_named_property("kafkaCode", kafka.name.as_str())?;
       object.set_named_property("kafkaErrorCode", kafka.code)?;
     }
-    if matches!(
-      error,
-      ManagedError::CommitFailed(_) | ManagedError::CommitUnknown(_)
-    ) {
+    if let Some(outcome_unknown) = commit_outcome_unknown(error) {
       object.set_named_property("outcomeUnknown", outcome_unknown)?;
     }
     Ok(Error::from(object.to_unknown()))
@@ -398,101 +437,147 @@ fn tpl_keys(partitions: &RdTopicPartitionList) -> Vec<PartitionKey> {
     .collect()
 }
 
-fn partition_list(partitions: &[PartitionKey]) -> RdTopicPartitionList {
-  let mut list = RdTopicPartitionList::with_capacity(partitions.len());
-  for (topic, partition) in partitions {
-    list.add_partition(topic, *partition);
-  }
-  list
-}
-
-/// Applies the managed pause/resume plan. `flow_lock` serializes the receive
-/// pump with application pause/resume calls; rebalance callbacks never take it.
-fn apply_managed_flow(
-  consumer: &LoggingConsumer,
-  state: &ManagedConsumerState,
-  flow_lock: &std::sync::Mutex<()>,
-) {
-  let _flow_guard = flow_lock.lock().unwrap_or_else(|e| e.into_inner());
-  let plan = state.plan_flow();
-  if plan.is_empty() {
-    return;
-  }
-  if !plan.pause.is_empty() {
-    if let Err(error) = consumer.pause(&partition_list(&plan.pause)) {
-      warn!("Managed pause failed: {:?}", error);
-    }
-  }
-  if !plan.resume.is_empty() {
-    if let Err(error) = consumer.resume(&partition_list(&plan.resume)) {
-      warn!("Managed resume failed: {:?}", error);
-    }
-  }
-  state.flow_applied(&plan);
-}
-
-async fn managed_commit(
-  state: Option<Arc<ManagedConsumerState>>,
+/// librdkafka as seen by the managed pump.
+struct ConsumerPumpBackend {
   consumer: Arc<LoggingConsumer>,
-  queue_slot: ManagedCommitQueueSlot,
-  topic: String,
-  partition: i32,
-  assignment: String,
-  next_offset: i64,
-) -> std::result::Result<(), ManagedError> {
-  let Some(state) = state else {
-    return Err(ManagedError::NotManaged);
-  };
-  if topic.is_empty() || partition < 0 || next_offset < 0 {
-    return Err(ManagedError::InvalidArgument(
-      "commitManaged requires a topic, a non-negative partition and a non-negative next offset"
-        .to_owned(),
-    ));
-  }
-  match state.status() {
-    ManagedStatus::Active => {}
-    ManagedStatus::Closed => return Err(ManagedError::Closed),
-    ManagedStatus::Failed(error) => return Err(error),
-  }
-  let mut offsets = RdTopicPartitionList::new();
-  offsets
-    .add_partition_offset(&topic, partition, Offset::Offset(next_offset))
-    .map_err(|error| ManagedError::InvalidArgument(error.to_string()))?;
-  let queue = {
-    let mut slot = queue_slot.lock().unwrap_or_else(|e| e.into_inner());
-    match slot.as_ref() {
-      Some(queue) => queue.clone(),
-      None => {
-        let queue = Arc::new(ManagedCommitQueue::new(consumer).map_err(|error| {
-          ManagedError::ControlFailure(format!("failed to create commit reply queue: {error}"))
-        })?);
-        *slot = Some(queue.clone());
-        queue
-      }
-    }
-  };
+}
 
-  let result = loop {
-    let settled = state.commit_settled().notified();
-    tokio::pin!(settled);
-    settled.as_mut().enable();
-    // The identity check and the non-blocking dispatch share one critical
-    // section with the revoke callback. Nothing is awaited inside it.
-    let authorization = state.try_authorize_commit(&topic, partition, &assignment, &mut |id| {
-      queue.enqueue(&offsets, id)
-    })?;
-    match authorization {
-      CommitAuthorization::Dispatched(result) => break result,
-      CommitAuthorization::WaitForOlder => settled.await,
+impl ConsumerPumpBackend {
+  /// Runs a pause or resume and returns the partitions it did not confirm:
+  /// all of them on a call error, otherwise those with a per-partition error.
+  fn flow(
+    &self,
+    partitions: &[PartitionKey],
+    call: impl FnOnce(&RdTopicPartitionList) -> rdkafka::error::KafkaResult<()>,
+  ) -> Vec<PartitionKey> {
+    let mut list = RdTopicPartitionList::with_capacity(partitions.len());
+    for (topic, partition) in partitions {
+      list.add_partition(topic, *partition);
     }
-  };
-  queue.ensure_polling(&state);
-  // The broker result is awaited without holding any lock.
-  result.await.unwrap_or_else(|_| {
-    Err(ManagedError::CommitUnknown(
-      "commit result channel closed".to_owned(),
-    ))
-  })
+    if call(&list).is_err() {
+      return partitions.to_vec();
+    }
+    list
+      .elements()
+      .iter()
+      .filter(|partition| partition.error().is_err())
+      .map(|partition| (partition.topic().to_owned(), partition.partition()))
+      .collect()
+  }
+}
+
+impl PumpBackend for ConsumerPumpBackend {
+  type Message = Message;
+
+  async fn recv(&self) -> PumpEvent<Message> {
+    match self.consumer.recv().await {
+      Ok(received) => {
+        let message = create_message(&received, received.payload());
+        PumpEvent::Message {
+          topic: message.topic.clone(),
+          partition: message.partition,
+          bytes: message_wired_bytes(&message),
+          message,
+        }
+      }
+      Err(error) => PumpEvent::Error {
+        fatal: matches!(
+          error,
+          rdkafka::error::KafkaError::MessageConsumptionFatal(_)
+        ),
+        failure: ReceiveFailure {
+          message: format!("Failed to receive message from consumer: {error}"),
+          kafka: error.rdkafka_error_code().map(|code| KafkaCode {
+            name: format!("{code:?}"),
+            code: code as i32,
+          }),
+        },
+      },
+    }
+  }
+
+  fn pause(&self, partitions: &[PartitionKey]) -> Vec<PartitionKey> {
+    self.flow(partitions, |list| self.consumer.pause(list))
+  }
+
+  fn resume(&self, partitions: &[PartitionKey]) -> Vec<PartitionKey> {
+    self.flow(partitions, |list| self.consumer.resume(list))
+  }
+
+  fn unsubscribe(&self) {
+    self.consumer.unsubscribe();
+  }
+}
+
+/// Everything a managed consumer owns beyond a legacy one (RFC-0017). A
+/// legacy consumer holds `None` instead and allocates none of it.
+struct ManagedRuntime {
+  state: Arc<ManagedConsumerState>,
+  backend: Arc<ConsumerPumpBackend>,
+  runtime: tokio::runtime::Handle,
+  pump_started: AtomicBool,
+  /// Created on the first commit and kept for the consumer's lifetime. It is
+  /// only reached while the state is active, so a commit racing a disconnect
+  /// cannot create a queue on a consumer that is closing.
+  commit_queue: std::sync::Mutex<Option<Arc<ManagedCommitQueue>>>,
+  flow_lock: Arc<std::sync::Mutex<()>>,
+}
+
+impl ManagedRuntime {
+  fn dispatch(
+    &self,
+    id: u64,
+    topic: &str,
+    partition: i32,
+    offset: i64,
+  ) -> std::result::Result<(), KafkaCode> {
+    let mut slot = self.commit_queue.lock().unwrap_or_else(|e| e.into_inner());
+    let queue = match slot.as_ref() {
+      Some(queue) => queue,
+      None => slot.insert(Arc::new(
+        ManagedCommitQueue::new(self.backend.consumer.clone()).map_err(|error| KafkaCode {
+          name: format!("{error}"),
+          code: rdsys::rd_kafka_resp_err_t::RD_KAFKA_RESP_ERR__FAIL as i32,
+        })?,
+      )),
+    };
+    queue.enqueue(id, topic, partition, offset)?;
+    queue.ensure_polling(&self.state, &self.runtime);
+    Ok(())
+  }
+
+  /// Authorizes and dispatches (or queues) the commit synchronously, on the
+  /// calling thread, so commits enter librdkafka in call order.
+  fn submit_commit(
+    &self,
+    topic: &str,
+    partition: i32,
+    assignment: &str,
+    next_offset: i64,
+  ) -> std::result::Result<
+    tokio::sync::oneshot::Receiver<std::result::Result<(), ManagedError>>,
+    ManagedError,
+  > {
+    if topic.is_empty() || partition < 0 || next_offset < 0 {
+      return Err(ManagedError::InvalidArgument(
+        "commitManaged requires a topic, a non-negative partition and a non-negative next offset"
+          .to_owned(),
+      ));
+    }
+    self.state.submit_commit(
+      topic,
+      partition,
+      assignment,
+      next_offset,
+      &mut |id: u64, topic: &str, partition: i32, offset: i64| {
+        self.dispatch(id, topic, partition, offset)
+      },
+    )
+  }
+
+  fn apply_flow(&self) {
+    apply_flow(&*self.backend, &self.state, &self.flow_lock);
+  }
 }
 
 struct BatchCollection {
@@ -1417,12 +1502,8 @@ pub struct KafkaConsumer {
   /// disconnect is not held up by a blocking fetch.
   lifecycle_lock: Arc<Mutex<()>>,
   disconnected: Arc<AtomicBool>,
-  /// Managed consumption state (RFC-0017). `None` for legacy consumers, which
-  /// allocate none of the managed queues, tasks or reply queues below.
-  managed: Option<Arc<ManagedConsumerState>>,
-  managed_pump_started: AtomicBool,
-  managed_commit_queue: ManagedCommitQueueSlot,
-  managed_flow_lock: Arc<std::sync::Mutex<()>>,
+  /// Managed consumption (RFC-0017). `None` for legacy consumers.
+  managed: Option<Arc<ManagedRuntime>>,
 }
 
 #[napi]
@@ -1471,18 +1552,32 @@ impl KafkaConsumer {
       None
     };
 
-    let stream_consumer = create_stream_consumer(
-      client_config,
-      consumer_configuration,
-      configuration.clone(),
-      managed.clone(),
-    )
-    .map_err(|e| e.into_napi_error("Failed to create stream consumer"))?;
+    let stream_consumer = Arc::new(
+      create_stream_consumer(
+        client_config,
+        consumer_configuration,
+        configuration.clone(),
+        managed.clone(),
+      )
+      .map_err(|e| e.into_napi_error("Failed to create stream consumer"))?,
+    );
+    let managed = managed.map(|state| {
+      Arc::new(ManagedRuntime {
+        state,
+        backend: Arc::new(ConsumerPumpBackend {
+          consumer: stream_consumer.clone(),
+        }),
+        runtime: tokio::runtime::Handle::current(),
+        pump_started: AtomicBool::new(false),
+        commit_queue: std::sync::Mutex::new(None),
+        flow_lock: Arc::new(std::sync::Mutex::new(())),
+      })
+    });
 
     Ok(KafkaConsumer {
       client_config: client_config.clone(),
       consumer_config: consumer_configuration.clone(),
-      stream_consumer: Arc::new(stream_consumer),
+      stream_consumer,
       fetch_metadata_timeout: normalize_fetch_metadata_timeout(*fetch_metadata_timeout),
       disconnect_signal: watch::channel(()),
       client_id: kafka_client.configuration().client_id,
@@ -1493,9 +1588,6 @@ impl KafkaConsumer {
       lifecycle_lock: Arc::new(Mutex::new(())),
       disconnected: Arc::new(AtomicBool::new(false)),
       managed,
-      managed_pump_started: AtomicBool::new(false),
-      managed_commit_queue: Arc::new(std::sync::Mutex::new(None)),
-      managed_flow_lock: Arc::new(std::sync::Mutex::new(())),
     })
   }
 
@@ -1517,83 +1609,25 @@ impl KafkaConsumer {
     self
       .managed
       .as_ref()
+      .map(|managed| &managed.state)
       .ok_or_else(|| managed_js_error(env, &ManagedError::NotManaged))
   }
 
-  /// Starts the single native poller of a managed consumer. It serves
-  /// rebalance callbacks whether or not JavaScript is receiving, admits each
-  /// message right after the poll that returned it, and keeps the retained
-  /// messages bounded with partition pause/resume.
+  /// Starts the single native poller of a managed consumer (see `run_pump`).
   fn start_managed_pump(&self) {
-    let Some(state) = self.managed.clone() else {
+    let Some(managed) = &self.managed else {
       return;
     };
-    if self.managed_pump_started.swap(true, Ordering::AcqRel) {
+    if managed.pump_started.swap(true, Ordering::AcqRel) {
       return;
     }
-    let consumer = self.stream_consumer.clone();
-    let flow_lock = self.managed_flow_lock.clone();
     // Dropping the JS consumer drops the sender, which also ends the pump.
-    let mut disconnected = self.disconnect_signal.1.clone();
-    napi::bindgen_prelude::spawn(async move {
-      let mut released = false;
-      loop {
-        if state.is_saturated() {
-          // The retained-message bound is reached: take no more messages.
-          // A consumer that is only slower than the fetcher makes room within
-          // the grace period and never pays for a pause. If it stalls, pause
-          // the partitions so polling can resume for assignment control.
-          select! {
-            biased;
-            _ = disconnected.changed() => break,
-            _ = state.pump_wake().notified() => continue,
-            _ = tokio::time::sleep(MANAGED_STALL_GRACE) => {
-              state.engage_backpressure();
-              apply_managed_flow(&consumer, &state, &flow_lock);
-              continue;
-            }
-          }
-        }
-        select! {
-          biased;
-          _ = disconnected.changed() => break,
-          _ = state.pump_wake().notified() => {}
-          received = consumer.recv() => match received {
-            Ok(message) => {
-              let message = create_message(&message, message.payload());
-              let topic = message.topic.clone();
-              let partition = message.partition;
-              let bytes = message_wired_bytes(&message);
-              state.admit_message(&topic, partition, bytes, message);
-            }
-            Err(error) => {
-              let fatal = matches!(error, rdkafka::error::KafkaError::MessageConsumptionFatal(_));
-              state.push_receive_error(
-                ReceiveFailure {
-                  message: format!("Failed to receive message from consumer: {error}"),
-                  kafka: error.rdkafka_error_code().map(|code| KafkaCode {
-                    name: format!("{code:?}"),
-                    code: code as i32,
-                  }),
-                },
-                fatal,
-              );
-            }
-          }
-        }
-        match state.status() {
-          ManagedStatus::Active => apply_managed_flow(&consumer, &state, &flow_lock),
-          ManagedStatus::Failed(_) if !released => {
-            // Fail closed: leave the group so the partitions are not held by
-            // a consumer that can no longer commit. Polling continues so the
-            // resulting revocation is served until disconnect.
-            released = true;
-            consumer.unsubscribe();
-          }
-          _ => {}
-        }
-      }
-    });
+    napi::bindgen_prelude::spawn(run_pump(
+      managed.state.clone(),
+      managed.backend.clone(),
+      managed.flow_lock.clone(),
+      self.disconnect_signal.1.clone(),
+    ));
   }
 
   fn disconnected_error() -> Error {
@@ -1693,6 +1727,19 @@ impl KafkaConsumer {
     // lifecycle lock below is still required at the actual assignment point,
     // because disconnect may race this check while metadata is being fetched.
     self.ensure_connected()?;
+    if let Some(managed) = &self.managed {
+      // A failed managed consumer has left the group and must not rejoin it.
+      if let ManagedStatus::Failed(error) = managed.state.status() {
+        return Err(Error::new(
+          Status::InvalidArg,
+          format!(
+            "[{}] subscribe is not available after a terminal managed failure: {}",
+            managed_error_code(&error),
+            managed_error_message(&error)
+          ),
+        ));
+      }
+    }
 
     let topics = match topic_configs {
       Either::A(config) => {
@@ -1852,8 +1899,8 @@ impl KafkaConsumer {
   /// Messages will be buffered by the broker until resume() is called.
   #[napi]
   pub fn pause(&self) -> Result<()> {
-    if let Some(state) = &self.managed {
-      return self.managed_set_paused(state, state.active_partitions(), true);
+    if let Some(managed) = &self.managed {
+      return Self::managed_set_paused(managed, managed.state.active_partitions(), true);
     }
     self
       .stream_consumer
@@ -1865,8 +1912,8 @@ impl KafkaConsumer {
   /// Resumes message consumption on all assigned partitions after a pause.
   #[napi]
   pub fn resume(&self) -> Result<()> {
-    if let Some(state) = &self.managed {
-      return self.managed_set_paused(state, state.active_partitions(), false);
+    if let Some(managed) = &self.managed {
+      return Self::managed_set_paused(managed, managed.state.active_partitions(), false);
     }
     self
       .stream_consumer
@@ -1878,12 +1925,12 @@ impl KafkaConsumer {
   /// Managed consumers route application pauses through the managed state so
   /// the binding's own backpressure pause/resume never undoes them.
   fn managed_set_paused(
-    &self,
-    state: &Arc<ManagedConsumerState>,
+    managed: &ManagedRuntime,
     partitions: Vec<PartitionKey>,
     paused: bool,
   ) -> Result<()> {
-    state
+    managed
+      .state
       .set_user_paused(&partitions, paused)
       .map_err(|error| {
         Error::new(
@@ -1895,7 +1942,9 @@ impl KafkaConsumer {
           ),
         )
       })?;
-    apply_managed_flow(&self.stream_consumer, state, &self.managed_flow_lock);
+    // Synchronous on the calling thread, like the legacy pause/resume. A
+    // partition the client does not confirm is retried by the pump.
+    managed.apply_flow();
     Ok(())
   }
 
@@ -1915,8 +1964,8 @@ impl KafkaConsumer {
   #[napi]
   pub fn pause_partitions(&self, partitions: Vec<TopicPartitionId>) -> Result<()> {
     let selected = self.selected_partitions(partitions)?;
-    if let Some(state) = &self.managed {
-      return self.managed_set_paused(state, tpl_keys(&selected), true);
+    if let Some(managed) = &self.managed {
+      return Self::managed_set_paused(managed, tpl_keys(&selected), true);
     }
     self
       .stream_consumer
@@ -1934,8 +1983,8 @@ impl KafkaConsumer {
   #[napi]
   pub fn resume_partitions(&self, partitions: Vec<TopicPartitionId>) -> Result<()> {
     let selected = self.selected_partitions(partitions)?;
-    if let Some(state) = &self.managed {
-      return self.managed_set_paused(state, tpl_keys(&selected), false);
+    if let Some(managed) = &self.managed {
+      return Self::managed_set_paused(managed, tpl_keys(&selected), false);
     }
     self
       .stream_consumer
@@ -1980,23 +2029,24 @@ impl KafkaConsumer {
         let disconnected = self.disconnected.clone();
         let disconnect_signal = self.disconnect_signal.0.clone();
         let async_commit_queue = self.async_commit_queue.clone();
-        let managed = self.managed.clone();
-        let managed_commit_queue = self.managed_commit_queue.clone();
+        let managed = self.managed.as_ref().map(|managed| managed.state.clone());
+        if let Some(managed) = &managed {
+          // Synchronously, in the disconnect call itself: managed operations
+          // issued after it are refused, whenever the close task starts.
+          managed.close();
+        }
         // This task owns native close independently of any caller's cancellation.
         napi::bindgen_prelude::spawn(async move {
           let result: Result<()> = async {
             let lifecycle_guard = lifecycle_lock.lock().await;
             disconnected.store(true, Ordering::Release);
             if let Some(managed) = &managed {
-              // Stops admission, refuses new managed operations and wakes the
-              // pending receive before the close-time revocation is served.
-              // A commit already dispatched keeps the client alive through its
-              // poller until the broker result (or close) settles it.
+              // Stops admission, refuses new managed operations, wakes the
+              // reserved receive and settles commits not dispatched yet,
+              // before the close-time revocation is served. A commit already
+              // dispatched keeps the client alive through its poller until
+              // the broker result (or close) settles it.
               managed.close();
-              managed_commit_queue
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .take();
             }
             info!("Disconnecting consumer - This will stop the consumer from receiving messages");
             consumer.unsubscribe();
@@ -2813,12 +2863,14 @@ impl KafkaConsumer {
   /// transition. Every transition that preceded a message in librdkafka is
   /// returned before it; transitions are returned even when no message exists.
   ///
+  /// Only one call may be pending, from the call until its promise settles: a
+  /// second call in between rejects with `ERR_MANAGED_RECEIVE_PENDING`.
   /// Resolves `{ kind: 'idle' }` after `timeoutMs` (or `cancelManagedReceive`)
   /// and `null` when the consumer is disconnected while the call is pending.
-  /// Only one call may be pending. Rejects with `error.code`:
-  /// `ERR_MANAGED_RECEIVE_PENDING`, `ERR_MANAGED_CLOSED`,
-  /// `ERR_MANAGED_CONTROL_OVERFLOW`, `ERR_MANAGED_CONTROL_FAILURE` (terminal),
-  /// `ERR_MANAGED_RECEIVE_FAILED` (with `kafkaCode`; not terminal) or
+  /// Other rejections (`error.code`): `ERR_MANAGED_CLOSED`, the terminal
+  /// `ERR_MANAGED_CONTROL_OVERFLOW`, `ERR_MANAGED_CONTROL_FAILURE`,
+  /// `ERR_MANAGED_BACKPRESSURE_FAILURE` and `ERR_MANAGED_RECEIVE_STALLED`,
+  /// `ERR_MANAGED_RECEIVE_FAILED` (with `kafkaCode`; not terminal) and
   /// `ERR_MANAGED_MODE` on a legacy consumer.
   /// @param timeoutMs - Optional wait bound in milliseconds; omit to wait
   #[napi(ts_return_type = "Promise<ManagedRecord | null>")]
@@ -2827,59 +2879,74 @@ impl KafkaConsumer {
     env: &'env Env,
     timeout_ms: Option<i64>,
   ) -> Result<PromiseRaw<'env, Option<ManagedRecord>>> {
-    let state = self.managed.clone();
-    env.spawn_future_with_callback(
+    // Validated and reserved here, on the JavaScript thread, so the outcome of
+    // two calls in a row, or of a cancel or disconnect right after this call,
+    // does not depend on when the future below starts.
+    let reserved = match &self.managed {
+      None => Err(ManagedError::NotManaged),
+      Some(managed) => managed_timeout("timeoutMs", timeout_ms).and_then(|timeout| {
+        managed.state.reserve_receive()?;
+        Ok((managed.state.clone(), timeout))
+      }),
+    };
+    let reservation = reserved.as_ref().ok().map(|(state, _)| state.clone());
+    let promise = env.spawn_future_with_callback(
       async move {
-        let Some(state) = state else {
-          return Ok(Err(ManagedError::NotManaged));
-        };
-        let timeout = match timeout_ms {
-          None => None,
-          Some(ms) if (0..=MAX_MANAGED_RECV_TIMEOUT_MS).contains(&ms) => {
-            Some(Duration::from_millis(ms as u64))
+        Ok(match reserved {
+          Err(error) => (None, Err(error)),
+          Ok((state, timeout)) => {
+            let received = state.receive_reserved(timeout).await;
+            (Some(state), received)
           }
-          Some(ms) => {
-            return Ok(Err(ManagedError::InvalidArgument(format!(
-              "Invalid timeoutMs: {ms}. Expected 0-{MAX_MANAGED_RECV_TIMEOUT_MS}."
-            ))))
+        })
+      },
+      |env, (state, received)| {
+        // The reservation ends where the result becomes visible to JavaScript.
+        if let Some(state) = state {
+          state.finish_receive();
+        }
+        match received {
+          Ok(Received::Entry(ManagedEntry::Message {
+            message,
+            assignment,
+          })) => Ok(Some(ManagedRecord::Message {
+            message,
+            assignment,
+          })),
+          Ok(Received::Entry(ManagedEntry::Assign { partitions })) => {
+            Ok(Some(ManagedRecord::Assign {
+              partitions: managed_partitions(partitions),
+            }))
           }
-        };
-        Ok(state.receive(timeout).await)
+          Ok(Received::Entry(ManagedEntry::Revoke { partitions, lost })) => {
+            Ok(Some(ManagedRecord::Revoke {
+              partitions: managed_partitions(partitions),
+              lost,
+            }))
+          }
+          Ok(Received::Entry(ManagedEntry::ReceiveError(failure))) => {
+            Err(managed_js_error(env, &ManagedError::ReceiveFailed(failure)))
+          }
+          Ok(Received::Idle(reason)) => Ok(Some(ManagedRecord::Idle {
+            reason: reason.to_owned(),
+          })),
+          Ok(Received::End) => Ok(None),
+          Err(error) => Err(managed_js_error(env, &error)),
+        }
       },
-      |env, received| match received {
-        Ok(Received::Entry(ManagedEntry::Message {
-          message,
-          assignment,
-        })) => Ok(Some(ManagedRecord::Message {
-          message,
-          assignment,
-        })),
-        Ok(Received::Entry(ManagedEntry::Assign { partitions })) => {
-          Ok(Some(ManagedRecord::Assign {
-            partitions: managed_partitions(partitions),
-          }))
-        }
-        Ok(Received::Entry(ManagedEntry::Revoke { partitions, lost })) => {
-          Ok(Some(ManagedRecord::Revoke {
-            partitions: managed_partitions(partitions),
-            lost,
-          }))
-        }
-        Ok(Received::Entry(ManagedEntry::ReceiveError(failure))) => {
-          Err(managed_js_error(env, &ManagedError::ReceiveFailed(failure)))
-        }
-        Ok(Received::Idle(reason)) => Ok(Some(ManagedRecord::Idle {
-          reason: reason.to_owned(),
-        })),
-        Ok(Received::End) => Ok(None),
-        Err(error) => Err(managed_js_error(env, &error)),
-      },
-    )
+    );
+    if promise.is_err() {
+      if let Some(state) = reservation {
+        state.finish_receive();
+      }
+    }
+    promise
   }
 
-  /// Experimental (RFC-0017). Wakes the pending `recvManaged`, which resolves
-  /// `{ kind: 'idle', reason: 'cancelled' }`. No admitted record is lost.
-  /// @returns Whether a receive was pending
+  /// Experimental (RFC-0017). Cancels the pending `recvManaged` if its result
+  /// is not decided yet; it then resolves `{ kind: 'idle', reason:
+  /// 'cancelled' }` without taking a record from the queue.
+  /// @returns Whether a pending receive was cancelled
   #[napi]
   pub fn cancel_managed_receive(&self, env: &Env) -> Result<bool> {
     Ok(self.managed_state_or_throw(env)?.cancel_receive())
@@ -2887,16 +2954,26 @@ impl KafkaConsumer {
 
   /// Experimental (RFC-0017). Commits `nextOffset` (the next offset to consume,
   /// as in `commit`) for a partition under the assignment identity that
-  /// delivered the work. The final identity check and the native dispatch are
-  /// ordered against revocation; the promise settles with the broker result.
-  /// There is no automatic retry.
+  /// delivered the work. The binding does not check that the work up to
+  /// `nextOffset` was completed.
+  ///
+  /// Authorization happens synchronously in this call, ordered against
+  /// revocation. Commits of a partition reach the client one at a time in call
+  /// order; a `nextOffset` lower than one already authorized under the
+  /// identity rejects with `ERR_MANAGED_COMMIT_REGRESSION`, and an equal one
+  /// is sent again. The promise settles with the broker result. There is no
+  /// automatic retry.
+  ///
+  /// `timeoutMs` only bounds the wait: on expiry the promise rejects with
+  /// `ERR_MANAGED_COMMIT_TIMEOUT` and the request stays in flight.
   ///
   /// Rejects with `error.code`: `ERR_MANAGED_STALE_ASSIGNMENT`,
-  /// `ERR_MANAGED_UNKNOWN_ASSIGNMENT`, `ERR_MANAGED_CLOSED`,
-  /// `ERR_MANAGED_CONTROL_OVERFLOW`, `ERR_MANAGED_CONTROL_FAILURE`,
-  /// `ERR_MANAGED_COMMIT_FAILED` (with `kafkaCode`/`kafkaErrorCode`),
-  /// `ERR_MANAGED_COMMIT_UNKNOWN`, `ERR_MANAGED_INVALID_ARGUMENT` or
-  /// `ERR_MANAGED_MODE`. Commit errors carry `outcomeUnknown`.
+  /// `ERR_MANAGED_UNKNOWN_ASSIGNMENT`, `ERR_MANAGED_COMMIT_REGRESSION`,
+  /// `ERR_MANAGED_COMMIT_BACKLOG`, `ERR_MANAGED_CLOSED`, a terminal failure
+  /// code, `ERR_MANAGED_COMMIT_FAILED` (with `kafkaCode`/`kafkaErrorCode`),
+  /// `ERR_MANAGED_COMMIT_UNKNOWN`, `ERR_MANAGED_COMMIT_TIMEOUT`,
+  /// `ERR_MANAGED_INVALID_ARGUMENT` or `ERR_MANAGED_MODE`. Commit errors carry
+  /// `outcomeUnknown`, which is `false` only when nothing was sent.
   ///
   /// The identity is a local authorization, not broker-side fencing: a request
   /// dispatched before a revocation cannot be recalled and may still be applied.
@@ -2908,19 +2985,41 @@ impl KafkaConsumer {
     partition: i32,
     assignment: String,
     next_offset: i64,
+    timeout_ms: Option<i64>,
   ) -> Result<PromiseRaw<'env, ()>> {
-    let commit = managed_commit(
-      self.managed.clone(),
-      self.stream_consumer.clone(),
-      self.managed_commit_queue.clone(),
-      topic,
-      partition,
-      assignment,
-      next_offset,
-    );
-    env.spawn_future_with_callback(async move { Ok(commit.await) }, |env, outcome| {
-      outcome.map_err(|error| managed_js_error(env, &error))
-    })
+    let submitted = match &self.managed {
+      None => Err(ManagedError::NotManaged),
+      Some(managed) => managed_timeout("timeoutMs", timeout_ms).and_then(|timeout| {
+        managed
+          .submit_commit(&topic, partition, &assignment, next_offset)
+          .map(|result| (result, timeout))
+      }),
+    };
+    env.spawn_future_with_callback(
+      async move {
+        let (result, timeout) = match submitted {
+          Ok(submitted) => submitted,
+          Err(error) => return Ok(Err(error)),
+        };
+        // The broker result is awaited without holding any lock.
+        let settled = match timeout {
+          None => result.await,
+          Some(timeout) => match tokio::time::timeout(timeout, result).await {
+            Ok(settled) => settled,
+            // Only the observation ends; the request is not cancelled.
+            Err(_) => return Ok(Err(ManagedError::CommitTimeout)),
+          },
+        };
+        Ok(settled.unwrap_or_else(|_| {
+          Err(ManagedError::CommitUnknown(
+            "commit result channel closed".to_owned(),
+          ))
+        }))
+      },
+      |env, outcome: std::result::Result<(), ManagedError>| {
+        outcome.map_err(|error| managed_js_error(env, &error))
+      },
+    )
   }
 
   /// Experimental (RFC-0017). Whether `assignment` is the identity that
@@ -2972,5 +3071,77 @@ impl KafkaConsumer {
       dropped_receive_errors: snapshot.dropped_receive_errors as f64,
       purged_messages: snapshot.purged_messages as f64,
     })
+  }
+}
+
+impl Drop for KafkaConsumer {
+  fn drop(&mut self) {
+    // The JavaScript consumer was collected without disconnect: nothing polls
+    // any more (the pump ends with the disconnect sender dropped here, and
+    // there is none before subscribe), so settle a receive that is still
+    // pending and refuse commits that were not dispatched. The blocking
+    // native close itself runs on the blocking pool (`LoggingConsumer::drop`),
+    // whichever thread releases the last reference.
+    if let Some(managed) = &self.managed {
+      managed.state.close();
+    }
+  }
+}
+
+#[cfg(test)]
+mod managed_error_tests {
+  use super::*;
+
+  fn failed(code: rdsys::rd_kafka_resp_err_t, dispatched: bool) -> ManagedError {
+    ManagedError::CommitFailed {
+      kafka: KafkaCode {
+        name: format!("{code:?}"),
+        code: code as i32,
+      },
+      dispatched,
+    }
+  }
+
+  /// librdkafka may retry or defer a commit after an attempt whose fate is
+  /// unknown (`_TRANSPORT`, then for example `_WAIT_COORD` or a generation
+  /// error), so no final code of a dispatched request is treated as proof
+  /// that nothing was applied.
+  #[test]
+  fn outcome_is_unknown_for_every_error_of_a_dispatched_commit() {
+    use rdsys::rd_kafka_resp_err_t as E;
+    for code in [
+      E::RD_KAFKA_RESP_ERR__TRANSPORT,
+      E::RD_KAFKA_RESP_ERR__WAIT_COORD,
+      E::RD_KAFKA_RESP_ERR__TIMED_OUT,
+      E::RD_KAFKA_RESP_ERR_REQUEST_TIMED_OUT,
+      E::RD_KAFKA_RESP_ERR_NOT_COORDINATOR,
+      E::RD_KAFKA_RESP_ERR_COORDINATOR_NOT_AVAILABLE,
+      E::RD_KAFKA_RESP_ERR_ILLEGAL_GENERATION,
+      E::RD_KAFKA_RESP_ERR_REBALANCE_IN_PROGRESS,
+      E::RD_KAFKA_RESP_ERR_UNKNOWN_MEMBER_ID,
+    ] {
+      assert_eq!(commit_outcome_unknown(&failed(code, true)), Some(true));
+      // The same code is definitive when the request was never handed over.
+      assert_eq!(commit_outcome_unknown(&failed(code, false)), Some(false));
+    }
+    assert_eq!(
+      commit_outcome_unknown(&ManagedError::CommitUnknown(String::new())),
+      Some(true)
+    );
+    assert_eq!(
+      commit_outcome_unknown(&ManagedError::CommitTimeout),
+      Some(true)
+    );
+    for definitive in [
+      ManagedError::StaleAssignment,
+      ManagedError::UnknownAssignment(String::new()),
+      ManagedError::CommitRegression { authorized: 1 },
+      ManagedError::CommitBacklog,
+    ] {
+      assert_eq!(commit_outcome_unknown(&definitive), Some(false));
+    }
+    // Not commit outcomes: the property is absent.
+    assert_eq!(commit_outcome_unknown(&ManagedError::Closed), None);
+    assert_eq!(commit_outcome_unknown(&ManagedError::ReceivePending), None);
   }
 }

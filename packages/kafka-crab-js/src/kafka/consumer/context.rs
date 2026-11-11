@@ -124,7 +124,9 @@ impl KafkaCrabContext {
         ),
         consumer.assignment_lost(),
       ),
-      // rust-rdkafka drops the whole assignment on a rebalance error.
+      // Unreachable with rust-rdkafka 0.39: `handle_rebalance_event` only
+      // forwards assign and revoke events. Kept for exhaustiveness; should it
+      // ever fire, rust-rdkafka drops the whole assignment.
       Rebalance::Error(_) => managed.on_revoke(&[], true, false),
     }
   }
@@ -233,6 +235,10 @@ mod tests {
   use super::*;
   use crate::kafka::consumer::managed::ManagedLimits;
   use rdkafka::ClientConfig;
+  use std::{
+    alloc::{GlobalAlloc, Layout, System},
+    cell::Cell,
+  };
 
   fn consumer(managed: Option<Arc<ManagedConsumerState>>) -> BaseConsumer<KafkaCrabContext> {
     // The client is created without connecting; no broker is required.
@@ -250,22 +256,75 @@ mod tests {
     partitions
   }
 
-  /// RFC-0017 invariant 7: with managed mode off, ten thousand rebalances
-  /// create no managed state and retain nothing beyond the bounded broadcast.
-  #[test]
-  fn legacy_rebalances_allocate_no_managed_state() {
-    let consumer = consumer(None);
+  /// Counts live heap bytes per thread, so a test can measure what its own
+  /// thread retains without interference from tests running in parallel.
+  struct CountingAllocator;
+
+  thread_local! {
+    static LIVE_BYTES: Cell<isize> = const { Cell::new(0) };
+  }
+
+  fn track(delta: isize) {
+    let _ = LIVE_BYTES.try_with(|live| live.set(live.get() + delta));
+  }
+
+  // SAFETY: defers to the system allocator; only adds thread-local counting.
+  unsafe impl GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+      track(layout.size() as isize);
+      System.alloc(layout)
+    }
+
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+      track(-(layout.size() as isize));
+      System.dealloc(pointer, layout)
+    }
+  }
+
+  #[global_allocator]
+  static ALLOCATOR: CountingAllocator = CountingAllocator;
+
+  fn retained_by(rebalances: usize, consumer: &BaseConsumer<KafkaCrabContext>) -> isize {
     let context = consumer.context();
     let partitions = partitions();
-    for _ in 0..10_000 {
-      context.pre_rebalance(&consumer, &Rebalance::Assign(&partitions));
-      context.post_rebalance(&consumer, &Rebalance::Assign(&partitions));
-      context.pre_rebalance(&consumer, &Rebalance::Revoke(&partitions));
-      context.post_rebalance(&consumer, &Rebalance::Revoke(&partitions));
+    let before = LIVE_BYTES.with(Cell::get);
+    for _ in 0..rebalances {
+      context.pre_rebalance(consumer, &Rebalance::Assign(&partitions));
+      context.post_rebalance(consumer, &Rebalance::Assign(&partitions));
+      context.pre_rebalance(consumer, &Rebalance::Revoke(&partitions));
+      context.post_rebalance(consumer, &Rebalance::Revoke(&partitions));
     }
-    assert!(context.managed.is_none());
-    // `broadcast::channel(100)` rounds up to 128 retained events.
-    assert!(context.event_channel.0.len() <= 128);
+    LIVE_BYTES.with(Cell::get) - before
+  }
+
+  /// RFC-0017 invariant 7, measured: after the bounded broadcast is warm, ten
+  /// thousand rebalances through the real callbacks of a legacy context
+  /// retain no heap at all, while the same calls on a managed context with an
+  /// unread control queue retain memory for every record.
+  #[test]
+  fn legacy_rebalances_retain_no_memory() {
+    let legacy = consumer(None);
+    // Fill the 128-slot broadcast once; later events replace older ones.
+    retained_by(200, &legacy);
+    let retained = retained_by(10_000, &legacy);
+    assert!(
+      retained.abs() < 4096,
+      "legacy mode retained {retained} bytes over 10,000 rebalances"
+    );
+    assert!(legacy.context().managed.is_none());
+    assert!(legacy.context().event_channel.0.len() <= 128);
+
+    // The measurement is sensitive: managed records do show up in it.
+    let managed = consumer(Some(Arc::new(ManagedState::new(ManagedLimits {
+      max_control_records: 100_000,
+      ..ManagedLimits::default()
+    }))));
+    retained_by(200, &managed);
+    let retained = retained_by(10_000, &managed);
+    assert!(
+      retained > 1_000_000,
+      "managed mode retained only {retained} bytes"
+    );
   }
 
   /// Reproduction of the legacy gap (RFC-0017, "Problem and evidence"): the
