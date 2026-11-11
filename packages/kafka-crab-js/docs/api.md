@@ -193,12 +193,14 @@ caller's bytes instead of silently discarding them. On consumption, check
 
 All consumer factories accept these options:
 
-| Consumer option        | Default                          | Purpose                                                                                                          |
-| ---------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `groupId`              | Required                         | Kafka consumer group identifier.                                                                                 |
-| `enableAutoCommit`     | librdkafka configuration/default | If provided, overrides `configuration['enable.auto.commit']`; omission preserves the advanced setting.           |
-| `fetchMetadataTimeout` | 2,000 ms                         | Metadata timeout; zero falls back to the default, positive values clamp to 1–300,000 ms, negative values reject. |
-| `configuration`        | None                             | Additional consumer librdkafka properties.                                                                       |
+| Consumer option        | Default                          | Purpose                                                                                                              |
+| ---------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `groupId`              | Required                         | Kafka consumer group identifier.                                                                                     |
+| `enableAutoCommit`     | librdkafka configuration/default | If provided, overrides `configuration['enable.auto.commit']`; omission preserves the advanced setting.               |
+| `fetchMetadataTimeout` | 2,000 ms                         | Metadata timeout; zero falls back to the default, positive values clamp to 1–300,000 ms, negative values reject.     |
+| `configuration`        | None                             | Additional consumer librdkafka properties.                                                                           |
+| `managed`              | `false`                          | Experimental. Enables [managed consumption](#managed-consumption-experimental) for this consumer; fixed at creation. |
+| `managedOptions`       | See below                        | Experimental. Limits of the managed native state; requires `managed: true`.                                          |
 
 Current consumers supply `fetch.queue.backoff.ms=20` only when neither client nor
 consumer configuration supplies it. Registry version 4.1.3 uses librdkafka's
@@ -360,6 +362,138 @@ offsets to resume. With application-controlled commits, keep auto-commit and
 auto-offset-store disabled and commit only completed work. Work processed before
 a failure but not committed can be replayed, so downstream side effects should
 be idempotent.
+
+### Managed consumption (experimental)
+
+Managed consumption is an opt-in contract from
+[RFC-0017](rfc/proposed/0017-managed-consumption-rebalance/). It is a prototype: the API can
+change, it is built and tested on darwin-arm64 only, and it has not been validated for
+release. Check `MANAGED_CONSUMPTION_VERSION` (currently `1`) before relying on it.
+
+It ties each message, and each commit, to the incarnation of the partition assignment that
+delivered it. Assignment transitions and messages arrive as one sequence whose order is
+defined natively, so a message can never be attributed to a later assignment.
+
+```ts
+import { KafkaClient, MANAGED_ERROR_CODES, type ManagedConsumptionError } from 'kafka-crab-js'
+
+const consumer = client.createConsumer({ groupId: 'orders', managed: true })
+await consumer.subscribe('orders')
+
+for (;;) {
+  const record = await consumer.recvManaged(1_000)
+  if (record === null) break // Disconnected
+  if (record.kind === 'message') {
+    await handle(record.message)
+    try {
+      // The next offset to consume, under the identity that delivered the message.
+      await consumer.commitManaged(
+        record.message.topic,
+        record.message.partition,
+        record.assignment,
+        record.message.offset + 1,
+      )
+    } catch (error) {
+      const { code } = error as ManagedConsumptionError
+      if (code !== MANAGED_ERROR_CODES.STALE_ASSIGNMENT) throw error
+      // The partition was revoked: the next owner replays this message.
+    }
+  }
+}
+```
+
+Activation is fixed when the consumer is created. Managed mode disables
+`enable.auto.commit` and `enable.auto.offset.store` and rejects a configuration that enables
+either. A managed consumer rejects `recv`, `recvBatch`, the stream methods and factories,
+`commit`, `commitMessage`, `seek`, `unsubscribe` and manual assignment with an
+`[ERR_MANAGED_MODE]` error; a legacy consumer rejects the methods below. `onEvents` keeps
+working as an observational listener and is not part of the ordering.
+
+| Method                                                    | Behavior                                                                                                                              |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `managed`                                                 | Getter: whether the consumer was created with `managed: true`.                                                                        |
+| `recvManaged(timeoutMs?)`                                 | Next record in native order. Only one call may be pending.                                                                            |
+| `cancelManagedReceive()`                                  | Resolves the pending receive as `{ kind: 'idle', reason: 'cancelled' }`; returns whether one was pending. No record is lost.          |
+| `commitManaged(topic, partition, assignment, nextOffset)` | Commits the next offset to consume under an assignment identity. Resolves with the broker result. Never retried automatically.        |
+| `isManagedAssignmentActive(topic, partition, assignment)` | Whether the identity owns the partition right now, read from native state. It can become stale immediately.                           |
+| `managedState()`                                          | Diagnostic snapshot: `status`, `failure`, `assignments`, queued control records, retained messages and bytes, pause, pending commits. |
+
+`recvManaged` resolves one of:
+
+| Record                                               | Meaning                                                                                                                                        |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `{ kind: 'message', message, assignment }`           | An unchanged `Message` and the identity that owned its partition when it was admitted.                                                         |
+| `{ kind: 'assign', partitions }`                     | Each entry has `topic`, `partition` and its `assignment`. The list can be empty. A retained partition has `previousAssignment === assignment`. |
+| `{ kind: 'revoke', partitions, lost }`               | Each entry names the invalidated identity in `previousAssignment`. `lost` is librdkafka's assignment-lost flag.                                |
+| `{ kind: 'idle', reason: 'timeout' \| 'cancelled' }` | No record. Not end-of-stream.                                                                                                                  |
+| `null`                                               | The consumer was disconnected while the call was pending.                                                                                      |
+
+Every transition that preceded a message is returned before it, and transitions are returned
+on an idle topic. An identity is an opaque string. It stays the same while the partition is
+continuously owned, including across a cooperative rebalance that retains it, and changes
+whenever the partition is revoked and assigned again. When an identity is revoked, messages
+under it that have not been returned yet are released; the next owner fetches them again.
+
+Errors from the managed methods are rejections with real properties
+(`ManagedConsumptionError`); `isManagedConsumptionError(error)` narrows them.
+
+| `error.code`                     | Meaning                                                                                         |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `ERR_MANAGED_STALE_ASSIGNMENT`   | The identity was revoked. Nothing was sent. Do not resubmit the commit under a newer identity.  |
+| `ERR_MANAGED_UNKNOWN_ASSIGNMENT` | The identity is malformed or belongs to another consumer.                                       |
+| `ERR_MANAGED_COMMIT_FAILED`      | Kafka rejected or failed the commit; `kafkaCode` and `kafkaErrorCode` identify the error.       |
+| `ERR_MANAGED_COMMIT_UNKNOWN`     | The request was dispatched but no result was observed, for example because the consumer closed. |
+| `ERR_MANAGED_RECEIVE_PENDING`    | Another `recvManaged` is pending.                                                               |
+| `ERR_MANAGED_RECEIVE_FAILED`     | A consumption error from librdkafka, with `kafkaCode`. Not terminal: call `recvManaged` again.  |
+| `ERR_MANAGED_CLOSED`             | The consumer is disconnecting or disconnected.                                                  |
+| `ERR_MANAGED_CONTROL_OVERFLOW`   | Terminal. More transitions were pending than `maxControlRecords`.                               |
+| `ERR_MANAGED_CONTROL_FAILURE`    | Terminal. The native control state became incoherent, or librdkafka reported a fatal error.     |
+| `ERR_MANAGED_INVALID_ARGUMENT`   | Invalid argument.                                                                               |
+| `ERR_MANAGED_MODE`               | A managed method was called on a legacy consumer.                                               |
+
+Commit errors also carry `outcomeUnknown`. When it is `true` the broker may still have applied
+the commit, so it is not proof of failure. A Kafka error code alone does not say whether the
+partition was kept: `IllegalGeneration` and `RebalanceInProgress` also occur on partitions that
+a cooperative rebalance retains. Use `isManagedAssignmentActive` or the next `commitManaged`
+to find out.
+
+**What the identity does not guarantee.** It is a local authorization inside one consumer, not
+fencing by the broker:
+
+- A commit handed to librdkafka before a revocation cannot be recalled and may be applied
+  after the partition moved. It covers work that was already completed, so it cannot skip
+  messages, but it can move the committed offset backwards and cause replay.
+- Kafka does not check partition ownership on a commit. Other members, and legacy consumers
+  in the same group, are not constrained by it.
+- It does not know whether a handler finished. Commit only completed work.
+
+A terminal failure invalidates every identity before JavaScript is told, clears the native
+buffers and makes the consumer leave the group so its partitions are released. Disconnect the
+consumer and create a new one.
+
+`managedOptions` bounds the state owned by the binding:
+
+| Option                | Default | Behavior                                                                                 |
+| --------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `maxControlRecords`   | 1,024   | Transitions waiting for `recvManaged` (1–65,536). Exceeding it is the terminal overflow. |
+| `maxBufferedMessages` | 1,024   | Messages retained natively (1–1,000,000).                                                |
+| `maxBufferedBytes`    | 32 MiB  | Bytes retained natively. One message larger than the limit is still admitted.            |
+
+The binding polls natively whether or not `recvManaged` is called, so rebalances are served
+and authorization is updated while the application is busy. At a message limit it stops taking
+messages; if the application frees no room for 100 ms it pauses the owned partitions and
+resumes them at half of the limit. The limits can be exceeded by a few messages around a
+pause, and they do not cover librdkafka's own fetch queues or messages already returned.
+`pause`, `resume`, `pausePartitions` and `resumePartitions` keep working; only owned
+partitions can be paused and a pause ends when the partition is revoked.
+
+`disconnect()` resolves a pending `recvManaged` with `null`, rejects later managed calls and
+clears the buffers. A commit already dispatched settles on its own with the broker result or
+`ERR_MANAGED_COMMIT_UNKNOWN`; disconnecting does not cancel it.
+
+With diagnostics enabled, only `message` records publish receive events and open a
+processing span, closed with `record.message.endSpan()`. Transitions and idle results publish
+nothing.
 
 ## Web Streams
 

@@ -197,13 +197,14 @@ when the application needs to drain collected work instead.
 
 ## Choose your API
 
-| Your workload                                     | Start with                                                         | Delivered to your code                         |
-| ------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------- |
-| Bulk database writes, ingestion, analytics        | `createWebStreamConsumer({ batchSize: 64, batchTimeout: 5, ... })` | `Message[]` per read                           |
-| Sequential business logic, message-level handling | `createWebStreamConsumer({ groupId, ... })`                        | One `Message` per read, with internal prefetch |
-| Existing Node.js pipelines                        | `createStreamConsumer({ groupId, batchSize: 64, ... })`            | Individual `Message` objects in object mode    |
-| A custom polling or scheduling loop               | `createConsumer()` + `recvBatch(size, timeoutMs)`                  | Up to `size` messages per call                 |
-| One direct blocking receive                       | `createConsumer()` + `recv()`                                      | One message, or `null` after disconnect        |
+| Your workload                                     | Start with                                                           | Delivered to your code                         |
+| ------------------------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------- |
+| Bulk database writes, ingestion, analytics        | `createWebStreamConsumer({ batchSize: 64, batchTimeout: 5, ... })`   | `Message[]` per read                           |
+| Sequential business logic, message-level handling | `createWebStreamConsumer({ groupId, ... })`                          | One `Message` per read, with internal prefetch |
+| Existing Node.js pipelines                        | `createStreamConsumer({ groupId, batchSize: 64, ... })`              | Individual `Message` objects in object mode    |
+| A custom polling or scheduling loop               | `createConsumer()` + `recvBatch(size, timeoutMs)`                    | Up to `size` messages per call                 |
+| One direct blocking receive                       | `createConsumer()` + `recv()`                                        | One message, or `null` after disconnect        |
+| Commits tied to the partition assignment          | `createConsumer({ managed: true })` + `recvManaged()` (experimental) | Messages and assignment changes, in order      |
 
 Start with a batch size of **64 and a 5 ms timeout** for evaluation, then measure
 with your payload sizes and handler. Larger batches amortize per-delivery work;
@@ -216,6 +217,19 @@ internal collection without changing the one-message public interface. A Node
 batch stream still emits individual messages; choose the Web batch API when your
 application needs arrays. Await handlers with a reader loop, async iteration, or
 a pipeline sink so downstream processing applies backpressure.
+
+### Managed consumption (experimental)
+
+`createConsumer({ managed: true })` enables an opt-in contract in which `recvManaged()`
+returns messages and assignment changes as one ordered sequence, and
+`commitManaged(topic, partition, assignment, nextOffset)` is refused once the assignment that
+delivered the work has been revoked. Legacy consumers are unaffected and remain the default.
+
+This is a prototype of [RFC-0017](docs/rfc/proposed/0017-managed-consumption-rebalance/): the
+API can change and it is not validated for release. The assignment identity is a local
+authorization, not broker-side fencing. See
+[Managed consumption](docs/api.md#managed-consumption-experimental) for the contract, errors
+and limits.
 
 ## Benchmarks
 
