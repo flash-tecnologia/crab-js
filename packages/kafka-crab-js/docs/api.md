@@ -481,15 +481,20 @@ Errors from the managed methods are rejections with real properties
 | `ERR_MANAGED_INVALID_ARGUMENT`     | Invalid argument.                                                                                     |
 | `ERR_MANAGED_MODE`                 | A managed method was called on a legacy consumer.                                                     |
 
-Commit errors carry `outcomeUnknown`. It is `false` only when nothing was handed to
-librdkafka: `ERR_MANAGED_STALE_ASSIGNMENT`, `ERR_MANAGED_UNKNOWN_ASSIGNMENT`,
-`ERR_MANAGED_COMMIT_REGRESSION`, `ERR_MANAGED_COMMIT_BACKLOG`, and an
-`ERR_MANAGED_COMMIT_FAILED` raised at dispatch. For every other commit error it is `true`,
-whatever the `kafkaCode`: librdkafka can retry or defer a request after an attempt whose fate
-is unknown, so the final code does not prove that the broker applied nothing. A Kafka error
-code alone also does not say whether the partition was kept: `IllegalGeneration` and
-`RebalanceInProgress` occur on partitions that a cooperative rebalance retains. Use
-`isManagedAssignmentActive` or the next `commitManaged` to find out.
+Every rejection of `commitManaged` carries `outcomeUnknown`; rejections of `recvManaged` do
+not have the property.
+
+- `true`: the request was handed to librdkafka. This covers `ERR_MANAGED_COMMIT_FAILED` from
+  the broker whatever its `kafkaCode`, `ERR_MANAGED_COMMIT_UNKNOWN` and
+  `ERR_MANAGED_COMMIT_TIMEOUT`. librdkafka can retry or defer a request after an attempt whose
+  fate is unknown, so the final code does not prove that the broker applied nothing.
+- `false`: nothing was sent. This covers every other code, including `ERR_MANAGED_CLOSED`, the
+  terminal failure codes, `ERR_MANAGED_INVALID_ARGUMENT` and an `ERR_MANAGED_COMMIT_FAILED`
+  raised at dispatch.
+  A Kafka error
+  code alone also does not say whether the partition was kept: `IllegalGeneration` and
+  `RebalanceInProgress` occur on partitions that a cooperative rebalance retains. Use
+  `isManagedAssignmentActive` or the next `commitManaged` to find out.
 
 **What the identity does not guarantee.** It is a local authorization inside one consumer, not
 fencing by the broker:
@@ -508,30 +513,50 @@ then rejected. Disconnect the consumer and create a new one.
 
 `managedOptions` bounds the state owned by the binding:
 
-| Option                | Default | Behavior                                                                                               |
-| --------------------- | ------- | ------------------------------------------------------------------------------------------------------ |
-| `maxControlRecords`   | 1,024   | Transitions waiting for `recvManaged` (1–65,536). Exceeding it is the terminal overflow.               |
-| `maxBufferedMessages` | 1,024   | Messages retained natively (1–1,000,000). Best-effort up to twice the value, which is a hard ceiling.  |
-| `maxBufferedBytes`    | 32 MiB  | Bytes retained natively, with the same ceiling. One message larger than the limit is still admitted.   |
-| `maxPendingCommits`   | 1,024   | Commits sent or waiting to be sent (1–65,536). Beyond it `commitManaged` rejects.                      |
-| `maxReceiveIdleMs`    | Off     | Watchdog: longest time without a pending `recvManaged` before the consumer fails and leaves the group. |
+| Option                | Default | Behavior                                                                                     |
+| --------------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `maxControlRecords`   | 1,024   | Transitions waiting for `recvManaged` (1–65,536). Exceeding it is the terminal overflow.     |
+| `maxBufferedMessages` | 1,024   | Messages retained natively (1–1,000,000). Best-effort up to a hard ceiling, described below. |
+| `maxBufferedBytes`    | 32 MiB  | Bytes retained natively, best-effort up to a hard ceiling, described below.                  |
+| `maxPendingCommits`   | 1,024   | Commits sent or waiting to be sent (1–65,536). Beyond it `commitManaged` rejects.            |
+| `maxReceiveIdleMs`    | Off     | Watchdog: longest time JavaScript may go without draining the receive, described below.      |
 
 The binding polls natively whether or not `recvManaged` is called, so rebalances are served
 and authorization is updated while the application is busy. At a message limit it stops taking
 messages; if the application frees no room for 100 ms it pauses the owned partitions and
 resumes them at half of the limit. Messages already fetched when a pause takes effect are
-kept, so the retained count can pass the limit. If it reaches twice the limit, or pause/resume
-keeps failing, the consumer fails with `ERR_MANAGED_BACKPRESSURE_FAILURE`. While the buffer is
-full and before the pause, rebalance callbacks can be delayed by up to 100 ms. The limits do
-not cover librdkafka's own fetch queues or messages already returned.
+kept, so the retained count can pass the limit, up to a hard ceiling:
+
+- messages: twice `maxBufferedMessages`, or the limit plus 16 if that is more;
+- bytes: twice `maxBufferedBytes`, or the limit plus 1 MiB if that is more.
+
+A message that would take either total past its ceiling fails the consumer with
+`ERR_MANAGED_BACKPRESSURE_FAILURE`, as does a pause or resume that keeps failing for an owned
+partition. The one exception is a message admitted into an empty buffer, so a single message
+larger than the byte ceiling can still be delivered. While the buffer is full and before the
+pause, rebalance callbacks can be delayed by up to 100 ms. The limits do not cover
+librdkafka's own fetch queues or messages already returned.
 
 **`max.poll.interval.ms` does not protect a managed consumer.** Because the binding polls for
-the application, a handler that hangs does not make the consumer leave the group: it keeps its
-partitions and nothing else processes them. Set `maxReceiveIdleMs` to restore that protection,
-or enforce a handler deadline in the application.
+the application, a stuck application does not make the consumer leave the group: it keeps its
+partitions and nothing else processes them.
+
+`maxReceiveIdleMs` covers part of that gap. It measures only whether JavaScript is draining
+the receive. The consumer fails with `ERR_MANAGED_RECEIVE_STALLED` and leaves the group when,
+for longer than the limit, no `recvManaged` was called or a decided result was not collected
+(for example because the event loop is blocked). A `recvManaged` that is waiting for records
+counts as alive. Two consequences:
+
+- It does not detect hung handlers. A runtime that keeps calling `recvManaged` while its
+  handlers never finish stays in the group; enforce handler deadlines in the application.
+- A runtime that applies backpressure by not calling `recvManaged` for longer than the limit
+  is failed. Keep a receive pending, or pause partitions instead.
 
 `pause`, `resume`, `pausePartitions` and `resumePartitions` keep working; only owned
-partitions can be paused and a pause ends when the partition is revoked.
+partitions can be paused and a pause ends when the partition is revoked. They are applied on
+the calling thread unless the binding is applying its own pause at that moment, in which case
+they take effect right after it. They do not report a partition that librdkafka did not
+confirm: the binding retries it, and fails the consumer if an owned partition never confirms.
 
 `disconnect()` resolves a pending `recvManaged` with `null`, rejects later managed calls and
 commits still waiting, and clears the buffers. A commit already sent is not cancelled: the
