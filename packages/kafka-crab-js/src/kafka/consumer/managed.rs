@@ -33,8 +33,12 @@ pub const DEFAULT_MAX_PENDING_COMMITS: usize = 1024;
 /// coalesced instead of consuming the control budget without bound.
 const MAX_QUEUED_RECEIVE_ERRORS: usize = 16;
 /// Retained messages may pass the configured bound while a pause takes effect.
-/// Beyond this multiple the bound is not being enforced and the state fails.
+/// The hard ceiling is this multiple of the bound, but never less than the
+/// bound plus a fixed allowance, so a small bound is not failed by the few
+/// messages that were already fetched when the pause was requested.
 pub const HARD_CEILING_FACTOR: usize = 2;
+pub const HARD_CEILING_MIN_MESSAGES: usize = 16;
+pub const HARD_CEILING_MIN_BYTES: usize = 1024 * 1024;
 /// Consecutive pause/resume attempts that may fail before the state fails.
 pub const MAX_FLOW_FAILURES: u32 = 50;
 const TOKEN_PREFIX: &str = "mc1";
@@ -244,6 +248,7 @@ struct Inner<M> {
   message_bytes: usize,
   receive: ReceivePhase,
   cancel_requested: bool,
+  /// When the receive last changed phase, once the watchdog is armed.
   last_receive: Option<Instant>,
   chains: HashMap<PartitionKey, CommitChain>,
   in_flight: HashMap<u64, PartitionKey>,
@@ -253,6 +258,9 @@ struct Inner<M> {
   /// Partitions whose librdkafka application-pause flag is confirmed set. The
   /// flag outlives unassignment, so it is tracked until confirmed cleared.
   paused_native: HashSet<PartitionKey>,
+  /// Unowned partitions whose pause flag could not be cleared. They are not
+  /// retried while unowned; if one is assigned again it is tracked again.
+  orphan_pauses: HashSet<PartitionKey>,
   backpressure_paused: bool,
   flow_dirty: bool,
   flow_failures: u32,
@@ -266,6 +274,9 @@ pub struct ManagedState<M> {
   inner: Mutex<Inner<M>>,
   wake_receive: Notify,
   wake_pump: Notify,
+  /// Orders group membership changes with the terminal transition: a
+  /// subscribe and the failure-time unsubscribe never interleave.
+  membership: Mutex<()>,
 }
 
 type Replies = Vec<(oneshot::Sender<CommitOutcome>, CommitOutcome)>;
@@ -322,6 +333,7 @@ impl<M> ManagedState<M> {
         next_commit_id: 1,
         user_paused: HashSet::new(),
         paused_native: HashSet::new(),
+        orphan_pauses: HashSet::new(),
         backpressure_paused: false,
         flow_dirty: false,
         flow_failures: 0,
@@ -330,7 +342,19 @@ impl<M> ManagedState<M> {
       }),
       wake_receive: Notify::new(),
       wake_pump: Notify::new(),
+      membership: Mutex::new(()),
     }
+  }
+
+  /// Runs a group membership change (subscribe, or the unsubscribe of a
+  /// failed consumer) with the status read under the membership lock. A
+  /// subscribe that started while the state was active either completes
+  /// before the failure-time unsubscribe, which then undoes it, or observes
+  /// the terminal status and must not join. `change` may block on the client.
+  pub fn with_membership<R>(&self, change: impl FnOnce(&ManagedStatus) -> R) -> R {
+    let _membership = self.membership.lock().unwrap_or_else(|e| e.into_inner());
+    let status = self.status();
+    change(&status)
   }
 
   fn lock(&self) -> MutexGuard<'_, Inner<M>> {
@@ -398,7 +422,19 @@ impl<M> ManagedState<M> {
       None => inner.chains.values_mut().for_each(&mut drain),
     }
     inner.pending_commits -= replies.len() - before;
-    inner.chains.retain(|_, chain| chain.in_flight.is_some());
+    // Only the chains that were drained can have become empty.
+    match only {
+      Some(key) => {
+        if inner
+          .chains
+          .get(key)
+          .is_some_and(|chain| chain.in_flight.is_none())
+        {
+          inner.chains.remove(key);
+        }
+      }
+      None => inner.chains.retain(|_, chain| chain.in_flight.is_some()),
+    }
   }
 
   fn push_control(&self, inner: &mut Inner<M>, record: Queued<M>, replies: &mut Replies) {
@@ -428,6 +464,10 @@ impl<M> ManagedState<M> {
         let (assignment, previous_assignment) = match inner.active.get(key) {
           Some(active) => (self.token(active.seq), Some(self.token(active.seq))),
           None => {
+            if inner.orphan_pauses.remove(key) {
+              // Its pause flag may still be set: track it so it is cleared.
+              inner.paused_native.insert(key.clone());
+            }
             let seq = inner.next_seq;
             inner.next_seq += 1;
             inner.active.insert(
@@ -537,10 +577,11 @@ impl<M> ManagedState<M> {
         None => Some(ManagedError::ControlFailure(format!(
           "message admitted for {topic}[{partition}] without an active assignment"
         ))),
-        Some(_) if self.above_hard_ceiling(&inner) => {
-          Some(ManagedError::BackpressureFailure(format!(
-            "retained messages exceeded {HARD_CEILING_FACTOR}x the configured bound; partitions could not be paused"
-          )))
+        Some(_) if self.exceeds_hard_ceiling(&inner, bytes) => {
+          Some(ManagedError::BackpressureFailure(
+            "retained messages would exceed the hard ceiling of the configured bound; partitions could not be paused"
+              .to_owned(),
+          ))
         }
         Some(_) => None,
       };
@@ -609,6 +650,13 @@ impl<M> ManagedState<M> {
     Ok(())
   }
 
+  fn complete_receive(inner: &mut Inner<M>) {
+    inner.receive = ReceivePhase::Completed;
+    if inner.last_receive.is_some() {
+      inner.last_receive = Some(Instant::now());
+    }
+  }
+
   /// Releases the reservation once the result has been delivered.
   pub fn finish_receive(&self) {
     let mut inner = self.lock();
@@ -638,11 +686,11 @@ impl<M> ManagedState<M> {
           ManagedStatus::Failed(error) => return Err(error.clone()),
         }
         if inner.cancel_requested {
-          inner.receive = ReceivePhase::Completed;
+          Self::complete_receive(&mut inner);
           return Ok(Received::Idle("cancelled"));
         }
         if let Some(entry) = inner.queue.pop_front() {
-          inner.receive = ReceivePhase::Completed;
+          Self::complete_receive(&mut inner);
           return Ok(Received::Entry(match entry {
             Queued::Message(queued) => {
               let was_full = self.is_full(&inner);
@@ -682,7 +730,7 @@ impl<M> ManagedState<M> {
             .is_err()
           {
             // A record that arrived with the deadline stays queued.
-            self.lock().receive = ReceivePhase::Completed;
+            Self::complete_receive(&mut self.lock());
             return Ok(Received::Idle("timeout"));
           }
         }
@@ -959,9 +1007,13 @@ impl<M> ManagedState<M> {
   }
 
   /// The poller serves rebalances for the application, so
-  /// `max.poll.interval.ms` no longer detects a stuck handler. This optional
-  /// watchdog does: without a reserved receive for longer than
-  /// `max_receive_idle`, the state fails and the consumer leaves the group.
+  /// `max.poll.interval.ms` no longer shows that JavaScript is alive. This
+  /// optional watchdog measures one thing: whether JavaScript is draining
+  /// the receive. It fails the state, and the consumer leaves the group, when
+  /// for longer than `max_receive_idle` either no receive was requested, or a
+  /// decided result was not delivered (a blocked event loop). A receive that
+  /// is waiting for records counts as alive. It does not see handlers: a
+  /// runtime that keeps receiving while its handlers hang is not detected.
   pub fn check_receive_watchdog(&self) {
     let Some(limit) = self.limits.max_receive_idle else {
       return;
@@ -969,7 +1021,7 @@ impl<M> ManagedState<M> {
     let mut replies = Replies::new();
     {
       let mut inner = self.lock();
-      let stalled = inner.receive == ReceivePhase::Idle
+      let stalled = inner.receive != ReceivePhase::Waiting
         && inner
           .last_receive
           .is_some_and(|last| last.elapsed() > limit);
@@ -985,15 +1037,37 @@ impl<M> ManagedState<M> {
       || inner.message_bytes >= self.limits.max_buffered_bytes
   }
 
-  fn above_hard_ceiling(&self, inner: &Inner<M>) -> bool {
+  /// `(messages, bytes)` beyond which retained messages are no longer bounded.
+  pub fn hard_ceilings(&self) -> (usize, usize) {
     let limits = &self.limits;
-    inner.message_len
-      >= limits
+    (
+      limits
         .max_buffered_messages
         .saturating_mul(HARD_CEILING_FACTOR)
-      // A single message larger than the byte bound is always admitted.
-      || (inner.message_len > 1
-        && inner.message_bytes >= limits.max_buffered_bytes.saturating_mul(HARD_CEILING_FACTOR))
+        .max(
+          limits
+            .max_buffered_messages
+            .saturating_add(HARD_CEILING_MIN_MESSAGES),
+        ),
+      limits
+        .max_buffered_bytes
+        .saturating_mul(HARD_CEILING_FACTOR)
+        .max(
+          limits
+            .max_buffered_bytes
+            .saturating_add(HARD_CEILING_MIN_BYTES),
+        ),
+    )
+  }
+
+  /// Whether admitting `incoming` bytes would pass a hard ceiling, judged on
+  /// the resulting totals. The one exception is a message admitted into an
+  /// empty buffer: a single message larger than the byte ceiling must still
+  /// be deliverable.
+  fn exceeds_hard_ceiling(&self, inner: &Inner<M>, incoming: usize) -> bool {
+    let (max_messages, max_bytes) = self.hard_ceilings();
+    inner.message_len + 1 > max_messages
+      || (inner.message_len > 0 && inner.message_bytes.saturating_add(incoming) > max_bytes)
   }
 
   /// The retained-message bound is reached and no pause is in effect: the
@@ -1028,6 +1102,7 @@ impl<M> ManagedState<M> {
 
   pub fn mark_flow_dirty(&self) {
     self.lock().flow_dirty = true;
+    self.wake_pump.notify_one();
   }
 
   /// Computes the pause/resume calls that bring librdkafka in line with the
@@ -1063,23 +1138,36 @@ impl<M> ManagedState<M> {
 
   /// Records only what the client confirmed. `failed` lists partitions of the
   /// plan whose pause or resume was rejected; they stay planned and are tried
-  /// again. Returns false when something failed. After `MAX_FLOW_FAILURES`
-  /// consecutive failed attempts the bound (or the resumption of consumption)
-  /// cannot be guaranteed and the state fails.
+  /// again. Returns false when something must be retried. After
+  /// `MAX_FLOW_FAILURES` consecutive failed attempts the bound (or the
+  /// resumption of consumption) cannot be guaranteed and the state fails.
+  ///
+  /// A resume that fails for a partition this consumer no longer owns (for
+  /// example of a deleted topic) is not a failure: nothing is consumed from
+  /// it, so it is set aside and only tracked again if it is assigned again.
   pub fn flow_applied(&self, plan: &FlowPlan, failed: &[PartitionKey]) -> bool {
     let mut replies = Replies::new();
     let ok = {
       let mut inner = self.lock();
-      for key in plan.pause.iter().filter(|key| !failed.contains(key)) {
-        inner.paused_native.insert(key.clone());
+      let mut retry = false;
+      for key in &plan.pause {
+        if failed.contains(key) {
+          retry = true;
+        } else {
+          inner.paused_native.insert(key.clone());
+        }
       }
-      for key in plan.resume.iter().filter(|key| !failed.contains(key)) {
-        inner.paused_native.remove(key);
+      for key in &plan.resume {
+        if !failed.contains(key) {
+          inner.paused_native.remove(key);
+        } else if inner.active.contains_key(key) {
+          retry = true;
+        } else {
+          inner.paused_native.remove(key);
+          inner.orphan_pauses.insert(key.clone());
+        }
       }
-      if failed.is_empty() {
-        inner.flow_failures = 0;
-        true
-      } else {
+      if retry {
         inner.flow_failures += 1;
         if inner.flow_failures >= MAX_FLOW_FAILURES {
           self.fail(
@@ -1090,8 +1178,10 @@ impl<M> ManagedState<M> {
             &mut replies,
           );
         }
-        false
+      } else {
+        inner.flow_failures = 0;
       }
+      !retry
     };
     send_replies(replies);
     ok
@@ -1126,6 +1216,8 @@ impl<M> ManagedState<M> {
       }
     }
     inner.flow_dirty = true;
+    // The pump applies it, or retries what the caller could not confirm.
+    self.wake_pump.notify_one();
     Ok(())
   }
 
@@ -1927,44 +2019,87 @@ mod tests {
 
   #[test]
   fn the_byte_bound_saturates_independently_of_the_message_count() {
+    const MIB: usize = 1024 * 1024;
     let byte_limits = ManagedLimits {
-      max_buffered_bytes: 100,
+      max_buffered_bytes: 4 * MIB,
       ..limits(16, 1000)
     };
     let state = ManagedState::<u64>::new(byte_limits);
+    assert_eq!(state.hard_ceilings(), (2000, 8 * MIB));
     state.on_assign(&[key(0)]);
-    state.admit_message("topic", 0, 60, 1);
+    state.admit_message("topic", 0, 3 * MIB, 1);
     assert!(!state.is_saturated());
-    state.admit_message("topic", 0, 60, 2);
+    state.admit_message("topic", 0, 3 * MIB, 2);
     assert!(state.is_saturated());
-    assert_eq!(state.snapshot().buffered_bytes, 120);
-
-    // One message larger than the whole bound is admitted on its own.
-    let oversized = ManagedState::<u64>::new(byte_limits);
-    oversized.on_assign(&[key(0)]);
+    assert_eq!(state.snapshot().buffered_bytes, 6 * MIB);
+    // The ceiling is judged on the resulting total: 9 MiB would pass 8 MiB.
     assert!(matches!(
-      oversized.admit_message("topic", 0, 10_000, 1),
-      Admission::Queued
-    ));
-    assert!(oversized.is_saturated());
-    // With the pause not taking effect, a second one passes the hard ceiling.
-    assert!(matches!(
-      oversized.admit_message("topic", 0, 10, 2),
-      Admission::Queued
-    ));
-    assert!(matches!(
-      oversized.admit_message("topic", 0, 10, 3),
+      state.admit_message("topic", 0, 3 * MIB, 3),
       Admission::Dropped
     ));
     assert!(matches!(
-      oversized.status(),
+      state.status(),
       ManagedStatus::Failed(ManagedError::BackpressureFailure(_))
+    ));
+
+    // A message that exactly reaches the ceiling is still admitted.
+    let exact = ManagedState::<u64>::new(byte_limits);
+    exact.on_assign(&[key(0)]);
+    exact.admit_message("topic", 0, 5 * MIB, 1);
+    assert!(matches!(
+      exact.admit_message("topic", 0, 3 * MIB, 2),
+      Admission::Queued
+    ));
+    assert_eq!(exact.status(), ManagedStatus::Active);
+
+    // The only exception: one message larger than the whole ceiling is
+    // admitted into an empty buffer, so it can be delivered at all.
+    let oversized = ManagedState::<u64>::new(byte_limits);
+    oversized.on_assign(&[key(0)]);
+    assert!(matches!(
+      oversized.admit_message("topic", 0, 20 * MIB, 1),
+      Admission::Queued
+    ));
+    assert!(oversized.is_saturated());
+    assert!(matches!(
+      oversized.admit_message("topic", 0, 1, 2),
+      Admission::Dropped
+    ));
+  }
+
+  #[test]
+  fn small_bounds_tolerate_messages_fetched_before_the_pause() {
+    // With a bound of 1, doubling would fail on a single slipped message.
+    let state = small(16, 1);
+    assert_eq!(state.hard_ceilings().0, 1 + HARD_CEILING_MIN_MESSAGES);
+    assert_eq!(small(16, 100).hard_ceilings().0, 200);
+    let tiny = ManagedState::<u64>::new(ManagedLimits {
+      max_buffered_bytes: 64,
+      ..limits(16, 1000)
+    });
+    assert_eq!(tiny.hard_ceilings().1, 64 + HARD_CEILING_MIN_BYTES);
+
+    state.on_assign(&[key(0)]);
+    state.admit_message("topic", 0, 10, 0);
+    state.engage_backpressure();
+    for offset in 1..=HARD_CEILING_MIN_MESSAGES as u64 {
+      assert!(matches!(
+        state.admit_message("topic", 0, 10, offset),
+        Admission::Queued
+      ));
+    }
+    assert_eq!(state.status(), ManagedStatus::Active);
+    assert!(matches!(
+      state.admit_message("topic", 0, 10, 99),
+      Admission::Dropped
     ));
   }
 
   #[test]
   fn unconfirmed_pauses_are_retried_and_the_hard_ceiling_is_terminal() {
     let state = small(16, 4);
+    let (ceiling, _) = state.hard_ceilings();
+    assert_eq!(ceiling, 20);
     state.on_assign(&[key(0), key(1)]);
     for offset in 0..4 {
       state.admit_message("topic", 0, 10, offset);
@@ -1977,15 +2112,15 @@ mod tests {
     assert_eq!(retry.pause, vec![key(0)]);
     assert!(retry.resume.is_empty());
 
-    // Partition 0 keeps delivering. The bound may be passed, but not doubled.
-    for offset in 4..8 {
+    // Partition 0 keeps delivering. The bound may be passed, not the ceiling.
+    for offset in 4..ceiling as u64 {
       assert!(matches!(
         state.admit_message("topic", 0, 10, offset),
         Admission::Queued
       ));
     }
     assert!(matches!(
-      state.admit_message("topic", 0, 10, 8),
+      state.admit_message("topic", 0, 10, ceiling as u64),
       Admission::Dropped
     ));
     assert!(matches!(
@@ -1994,6 +2129,111 @@ mod tests {
     ));
     assert_eq!(state.snapshot().buffered_messages, 0);
     assert!(state.snapshot().assignments.is_empty());
+  }
+
+  #[test]
+  fn a_failed_resume_of_a_partition_no_longer_owned_is_not_a_failure() {
+    let state = small(256, 4);
+    state.on_assign(&[key(0), key(1)]);
+    state.set_user_paused(&[key(1)], true).unwrap();
+    assert!(state.flow_applied(&state.plan_flow(), &[]));
+    // The partition goes away (for example its topic was deleted) and the
+    // client can no longer clear its pause flag.
+    state.on_revoke(&[key(1)], false, false);
+    for _ in 0..MAX_FLOW_FAILURES * 2 {
+      let plan = state.plan_flow();
+      if plan.is_empty() {
+        break;
+      }
+      assert_eq!(plan.resume, vec![key(1)]);
+      assert!(state.flow_applied(&plan, &[key(1)]));
+    }
+    assert_eq!(state.status(), ManagedStatus::Active);
+    assert!(state.plan_flow().is_empty());
+    // If it is assigned again, the possibly stale flag is cleared after all.
+    state.on_assign(&[key(1)]);
+    let plan = state.plan_flow();
+    assert_eq!(plan.resume, vec![key(1)]);
+    assert!(state.flow_applied(&plan, &[]));
+    assert!(state.plan_flow().is_empty());
+  }
+
+  #[test]
+  fn revoking_many_partitions_settles_only_their_own_waiting_commits() {
+    let state = ManagedState::<u64>::new(ManagedLimits {
+      max_pending_commits: 10_000,
+      ..limits(16, 16)
+    });
+    let log = Dispatched::default();
+    let partitions: Vec<PartitionKey> = (0..500).map(key).collect();
+    state.on_assign(&partitions);
+    let mut waiting = Vec::new();
+    for partition in 0..500 {
+      let token = identity(&state, partition);
+      let _sent = submit(&state, &log, partition, &token, 1).unwrap();
+      waiting.push(submit(&state, &log, partition, &token, 2).unwrap());
+    }
+    assert_eq!(state.pending_commits(), 1000);
+    state.on_revoke(&partitions[..250], false, false);
+    // Waiting commits of the revoked half are refused; everything already
+    // sent, and the other half, is untouched.
+    assert_eq!(state.pending_commits(), 750);
+    for (partition, mut result) in waiting.into_iter().enumerate() {
+      match result.try_recv() {
+        Ok(outcome) => {
+          assert!(partition < 250);
+          assert_eq!(outcome, Err(ManagedError::StaleAssignment));
+        }
+        Err(_) => assert!(partition >= 250),
+      }
+    }
+  }
+
+  #[test]
+  fn membership_changes_are_ordered_with_the_terminal_transition() {
+    // A subscribe that is in progress when the state fails finishes first;
+    // the failure-time unsubscribe then runs after it and undoes it.
+    let state = Arc::new(small(0, 16));
+    let subscribed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (in_subscribe_tx, in_subscribe_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel::<()>();
+    let subscriber = std::thread::spawn({
+      let (state, subscribed) = (state.clone(), subscribed.clone());
+      move || {
+        state.with_membership(|status| {
+          assert_eq!(*status, ManagedStatus::Active);
+          in_subscribe_tx.send(()).unwrap();
+          release_rx.recv().unwrap();
+          subscribed.store(true, std::sync::atomic::Ordering::SeqCst);
+        })
+      }
+    });
+    in_subscribe_rx.recv().unwrap();
+    // Terminal failure while the subscribe is in progress.
+    state.on_assign(&[key(0)]);
+    assert!(matches!(state.status(), ManagedStatus::Failed(_)));
+    let (left_tx, left_rx) = mpsc::channel();
+    let leaver = std::thread::spawn({
+      let (state, subscribed) = (state.clone(), subscribed.clone());
+      move || {
+        state.with_membership(|status| {
+          assert!(matches!(status, ManagedStatus::Failed(_)));
+          subscribed.store(false, std::sync::atomic::Ordering::SeqCst);
+        });
+        left_tx.send(()).unwrap();
+      }
+    });
+    assert!(left_rx.recv_timeout(Duration::from_millis(100)).is_err());
+    release_tx.send(()).unwrap();
+    subscriber.join().unwrap();
+    left_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+    leaver.join().unwrap();
+    assert!(!subscribed.load(std::sync::atomic::Ordering::SeqCst));
+
+    // A subscribe that reaches its membership change after the failure sees
+    // the terminal status and must not join.
+    let late = state.with_membership(|status| *status == ManagedStatus::Active);
+    assert!(!late);
   }
 
   #[test]
@@ -2113,6 +2353,25 @@ mod tests {
       ManagedStatus::Failed(ManagedError::ReceiveStalled)
     );
     assert!(!state.is_assignment_active("topic", 0, &token));
+
+    // A decided result that JavaScript does not collect (a blocked event
+    // loop) is a stall too.
+    let state = ManagedState::<u64>::new(ManagedLimits {
+      max_receive_idle: Some(Duration::from_millis(40)),
+      ..limits(16, 16)
+    });
+    state.arm_receive_watchdog();
+    state.on_assign(&[key(0)]);
+    state.reserve_receive().unwrap();
+    state.receive_reserved(None).await.unwrap();
+    state.check_receive_watchdog();
+    assert_eq!(state.status(), ManagedStatus::Active);
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    state.check_receive_watchdog();
+    assert_eq!(
+      state.status(),
+      ManagedStatus::Failed(ManagedError::ReceiveStalled)
+    );
   }
 
   #[tokio::test]

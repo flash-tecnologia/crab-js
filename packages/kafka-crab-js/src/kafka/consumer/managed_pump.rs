@@ -72,6 +72,30 @@ pub fn apply_flow<B: PumpBackend>(
   state.flow_applied(&plan, &failed)
 }
 
+/// Pause/resume requested by the application, on the calling thread. If the
+/// pump is applying a plan right now the caller does not wait behind it: the
+/// pump is woken and applies the new plan next. Whatever the client does not
+/// confirm is retried by the pump, which fails the state if that never works;
+/// no error is returned to the caller.
+pub fn apply_flow_from_caller<B: PumpBackend>(
+  backend: &B,
+  state: &ManagedState<B::Message>,
+  flow_lock: &Mutex<()>,
+) {
+  let guard = match flow_lock.try_lock() {
+    Ok(guard) => guard,
+    Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+    Err(std::sync::TryLockError::WouldBlock) => {
+      state.mark_flow_dirty();
+      return;
+    }
+  };
+  drop(guard);
+  if !apply_flow(backend, state, flow_lock) {
+    state.mark_flow_dirty();
+  }
+}
+
 async fn sleep_until_some(deadline: Option<Instant>) {
   match deadline {
     Some(deadline) => tokio::time::sleep_until(deadline).await,
@@ -147,7 +171,12 @@ pub async fn run_pump<B: PumpBackend>(
         // resulting revocation is served until disconnect.
         released = true;
         let backend = backend.clone();
-        let _ = tokio::task::spawn_blocking(move || backend.unsubscribe()).await;
+        let state = state.clone();
+        // Under the membership lock, so a subscribe that was in progress when
+        // the state failed cannot be applied after this and rejoin the group.
+        let _ =
+          tokio::task::spawn_blocking(move || state.with_membership(|_| backend.unsubscribe()))
+            .await;
       }
       _ => {}
     }
@@ -380,8 +409,9 @@ mod tests {
     assert!(harness.state.snapshot().backpressure_paused);
 
     // The partition was never paused, so it keeps delivering. The retained
-    // count may pass the bound but is cut off at twice the bound.
-    for offset in 4..20 {
+    // count may pass the bound but is cut off at the hard ceiling.
+    let (ceiling, _) = harness.state.hard_ceilings();
+    for offset in 4..=ceiling as u64 {
       harness.message(offset);
     }
     harness
@@ -436,14 +466,13 @@ mod tests {
   async fn a_resume_that_never_succeeds_is_terminal_instead_of_a_silent_stall() {
     let harness = start(small(64));
     harness.state.on_assign(&[key(0)]);
+    // Only the public path is used: recording the pause wakes the pump.
     harness.state.set_user_paused(&[key(0)], true).unwrap();
-    harness.state.pump_wake().notify_one();
     harness
       .until("the pause", |h| !h.client.pauses.lock().unwrap().is_empty())
       .await;
     harness.client.fail_resume.store(true, Ordering::SeqCst);
     harness.state.set_user_paused(&[key(0)], false).unwrap();
-    harness.state.pump_wake().notify_one();
     harness
       .until("the terminal failure", |h| {
         h.state.status() != ManagedStatus::Active
@@ -510,5 +539,101 @@ mod tests {
       Ok(Received::End)
     ));
     assert_eq!(harness.state.reserve_receive(), Err(ManagedError::Closed));
+  }
+
+  #[tokio::test]
+  async fn an_application_resume_that_is_not_confirmed_is_retried_on_an_idle_topic() {
+    let harness = start(small(64));
+    harness.state.on_assign(&[key(0)]);
+    let flow_lock = Mutex::new(());
+    harness.state.set_user_paused(&[key(0)], true).unwrap();
+    apply_flow_from_caller(&*harness.client, &harness.state, &flow_lock);
+    harness
+      .until("the pause", |h| !h.client.pauses.lock().unwrap().is_empty())
+      .await;
+
+    // The caller's resume is rejected by the client. Nothing else happens on
+    // the topic, yet the pump retries until the client confirms it.
+    harness.client.fail_resume.store(true, Ordering::SeqCst);
+    harness.state.set_user_paused(&[key(0)], false).unwrap();
+    apply_flow_from_caller(&*harness.client, &harness.state, &flow_lock);
+    harness
+      .until("resume retries", |h| {
+        h.client.resumes.lock().unwrap().len() >= 3
+      })
+      .await;
+    harness.client.fail_resume.store(false, Ordering::SeqCst);
+    let attempts = harness.client.resumes.lock().unwrap().len();
+    harness
+      .until("the confirmed resume", |h| {
+        h.client.resumes.lock().unwrap().len() > attempts
+      })
+      .await;
+    tokio::time::sleep(STALL_GRACE * 3).await;
+    assert_eq!(harness.client.resumes.lock().unwrap().len(), attempts + 1);
+    assert_eq!(harness.state.status(), ManagedStatus::Active);
+  }
+
+  #[tokio::test]
+  async fn a_caller_does_not_wait_behind_a_plan_the_pump_is_applying() {
+    let harness = start(small(64));
+    harness.state.on_assign(&[key(0)]);
+    let flow_lock = Mutex::new(());
+    // The pump is inside a client call that holds the flow lock.
+    let busy = flow_lock.lock().unwrap();
+    harness.state.set_user_paused(&[key(0)], true).unwrap();
+    apply_flow_from_caller(&*harness.client, &harness.state, &flow_lock);
+    drop(busy);
+    // The request was handed to the pump, which applies it.
+    harness
+      .until("the pause", |h| !h.client.pauses.lock().unwrap().is_empty())
+      .await;
+    assert_eq!(*harness.client.pauses.lock().unwrap(), vec![vec![key(0)]]);
+  }
+
+  #[tokio::test]
+  async fn a_subscribe_in_progress_cannot_rejoin_after_the_terminal_unsubscribe() {
+    let harness = start(ManagedLimits {
+      max_control_records: 1,
+      ..ManagedLimits::default()
+    });
+    let (in_subscribe_tx, in_subscribe_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let subscriber = std::thread::spawn({
+      let (state, client) = (harness.state.clone(), harness.client.clone());
+      move || {
+        state.with_membership(|status| {
+          let active = *status == ManagedStatus::Active;
+          in_subscribe_tx.send(()).unwrap();
+          release_rx.recv().unwrap();
+          if active {
+            // The native subscribe of the in-progress call.
+            client.unsubscribed.store(false, Ordering::SeqCst);
+          }
+          active
+        })
+      }
+    });
+    in_subscribe_rx.recv().unwrap();
+    // The state fails while that subscribe is in progress.
+    harness.state.on_assign(&[key(0)]);
+    harness.state.on_assign(&[]);
+    assert!(matches!(harness.state.status(), ManagedStatus::Failed(_)));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    // The pump's unsubscribe waits for the subscribe instead of racing it.
+    assert!(!harness.client.unsubscribed.load(Ordering::SeqCst));
+    release_tx.send(()).unwrap();
+    assert!(subscriber.join().unwrap());
+    harness
+      .until("the unsubscribe", |h| {
+        h.client.unsubscribed.load(Ordering::SeqCst)
+      })
+      .await;
+    // A subscribe that reaches this point later is refused.
+    assert!(!harness
+      .state
+      .with_membership(|status| *status == ManagedStatus::Active));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(harness.client.unsubscribed.load(Ordering::SeqCst));
   }
 }

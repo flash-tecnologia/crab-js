@@ -53,7 +53,7 @@ use super::{
     DEFAULT_MAX_BUFFERED_MESSAGES, DEFAULT_MAX_CONTROL_RECORDS, DEFAULT_MAX_PENDING_COMMITS,
   },
   managed_commit::ManagedCommitQueue,
-  managed_pump::{apply_flow, run_pump, PumpBackend, PumpEvent},
+  managed_pump::{apply_flow_from_caller, run_pump, PumpBackend, PumpEvent},
   model::{
     CommitMode, ConsumerConfiguration, ManagedPartition, ManagedRecord, ManagedStateSnapshot,
     OffsetModel, TopicPartition, TopicPartitionConfig, TopicPartitionId,
@@ -395,6 +395,17 @@ fn commit_outcome_unknown(error: &ManagedError) -> Option<bool> {
 /// Builds the JavaScript error on the JS thread so `code`, `kafkaCode`,
 /// `kafkaErrorCode` and `outcomeUnknown` are real properties of the rejection.
 fn managed_js_error(env: &Env, error: &ManagedError) -> Error {
+  managed_js_error_for(env, error, false)
+}
+
+/// Rejections of `commitManaged` always carry `outcomeUnknown`: errors that
+/// are not commit outcomes (closed, terminal failure, invalid argument) were
+/// raised before anything was sent, so it is `false` for them.
+fn managed_commit_js_error(env: &Env, error: &ManagedError) -> Error {
+  managed_js_error_for(env, error, true)
+}
+
+fn managed_js_error_for(env: &Env, error: &ManagedError, commit: bool) -> Error {
   let code = managed_error_code(error);
   let message = format!("[{code}] {}", managed_error_message(error));
   let kafka = match error {
@@ -409,7 +420,11 @@ fn managed_js_error(env: &Env, error: &ManagedError) -> Error {
       object.set_named_property("kafkaCode", kafka.name.as_str())?;
       object.set_named_property("kafkaErrorCode", kafka.code)?;
     }
-    if let Some(outcome_unknown) = commit_outcome_unknown(error) {
+    let outcome_unknown = match commit_outcome_unknown(error) {
+      None if commit => Some(false),
+      outcome => outcome,
+    };
+    if let Some(outcome_unknown) = outcome_unknown {
       object.set_named_property("outcomeUnknown", outcome_unknown)?;
     }
     Ok(Error::from(object.to_unknown()))
@@ -576,7 +591,7 @@ impl ManagedRuntime {
   }
 
   fn apply_flow(&self) {
-    apply_flow(&*self.backend, &self.state, &self.flow_lock);
+    apply_flow_from_caller(&*self.backend, &self.state, &self.flow_lock);
   }
 }
 
@@ -1605,6 +1620,17 @@ impl KafkaConsumer {
     Ok(())
   }
 
+  fn managed_terminal_error(error: &ManagedError) -> Error {
+    Error::new(
+      Status::InvalidArg,
+      format!(
+        "[{}] subscribe is not available after a terminal managed failure: {}",
+        managed_error_code(error),
+        managed_error_message(error)
+      ),
+    )
+  }
+
   fn managed_state_or_throw(&self, env: &Env) -> Result<&Arc<ManagedConsumerState>> {
     self
       .managed
@@ -1729,15 +1755,9 @@ impl KafkaConsumer {
     self.ensure_connected()?;
     if let Some(managed) = &self.managed {
       // A failed managed consumer has left the group and must not rejoin it.
+      // This is the fast path; the subscription point checks again.
       if let ManagedStatus::Failed(error) = managed.state.status() {
-        return Err(Error::new(
-          Status::InvalidArg,
-          format!(
-            "[{}] subscribe is not available after a terminal managed failure: {}",
-            managed_error_code(&error),
-            managed_error_message(&error)
-          ),
-        ));
+        return Err(Self::managed_terminal_error(&error));
       }
     }
 
@@ -1869,8 +1889,19 @@ impl KafkaConsumer {
 
       let _lifecycle_guard = self.lifecycle_lock.lock().await;
       self.ensure_connected()?;
-      try_subscribe(&self.stream_consumer, &topics_name)
-        .map_err(|e| e.into_napi_error("Failed to subscribe to topics"))?;
+      match &self.managed {
+        None => try_subscribe(&self.stream_consumer, &topics_name)
+          .map_err(|e| e.into_napi_error("Failed to subscribe to topics"))?,
+        // The status is read again under the lock that the failure-time
+        // unsubscribe takes. A call that started while the state was active
+        // and reaches this point after a terminal failure must not rejoin.
+        Some(managed) => managed.state.with_membership(|status| match status {
+          ManagedStatus::Active => try_subscribe(&self.stream_consumer, &topics_name)
+            .map_err(|e| e.into_napi_error("Failed to subscribe to topics")),
+          ManagedStatus::Closed => Err(Self::disconnected_error()),
+          ManagedStatus::Failed(error) => Err(Self::managed_terminal_error(error)),
+        })?,
+      }
       self.start_managed_pump();
     }
 
@@ -1942,8 +1973,10 @@ impl KafkaConsumer {
           ),
         )
       })?;
-    // Synchronous on the calling thread, like the legacy pause/resume. A
-    // partition the client does not confirm is retried by the pump.
+    // Applied on the calling thread like the legacy pause/resume, unless the
+    // pump is applying a plan, in which case the pump applies this one next.
+    // What the client does not confirm is retried by the pump; no error is
+    // returned here.
     managed.apply_flow();
     Ok(())
   }
@@ -3017,7 +3050,7 @@ impl KafkaConsumer {
         }))
       },
       |env, outcome: std::result::Result<(), ManagedError>| {
-        outcome.map_err(|error| managed_js_error(env, &error))
+        outcome.map_err(|error| managed_commit_js_error(env, &error))
       },
     )
   }
