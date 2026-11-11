@@ -773,13 +773,14 @@ if (
   }
 }
 
-const { KafkaAdmin, KafkaClientConfig, KafkaConsumer, KafkaProducer, CommitMode, KafkaEventName, PartitionPosition, SecurityProtocol } = nativeBinding
+const { KafkaAdmin, KafkaClientConfig, KafkaConsumer, KafkaProducer, CommitMode, KafkaEventName, MANAGED_CONSUMPTION_VERSION, PartitionPosition, SecurityProtocol } = nativeBinding
 export { KafkaAdmin }
 export { KafkaClientConfig }
 export { KafkaConsumer }
 export { KafkaProducer }
 export { CommitMode }
 export { KafkaEventName }
+export { MANAGED_CONSUMPTION_VERSION }
 export { PartitionPosition }
 export { SecurityProtocol }
 export const __napiBindingTarget = __napiLoadedBindingTarget

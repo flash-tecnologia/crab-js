@@ -5,7 +5,14 @@
  * diagnostic channels instead of directly calling OpenTelemetry APIs.
  * Observability tools can subscribe to these channels to receive events.
  */
-import type { KafkaConsumer, KafkaProducer, Message, ProducerRecord, RecordMetadata } from '../../js-binding.js'
+import type {
+  KafkaConsumer,
+  KafkaProducer,
+  ManagedRecord,
+  Message,
+  ProducerRecord,
+  RecordMetadata,
+} from '../../js-binding.js'
 import {
   batchProcessEndChannel,
   type BatchProcessEndEvent,
@@ -242,6 +249,113 @@ export function instrumentConsumerReceive(
         })
       }
     }
+  }
+}
+
+/**
+ * Instruments a managed receive (RFC-0017, experimental).
+ *
+ * Receive events follow `recv()`: the start event is published before waiting,
+ * so subscribers that time from it (the OTEL duration metric) measure the real
+ * wait. Every call publishes one receive start/end pair. The end event carries
+ * the message only for message records; assignment transitions, idle results
+ * and end-of-stream end with `message: null`, like a `recv()` that returns
+ * nothing, so they open no poll or processing span. Only message records open a
+ * processing span, closed by `record.message.endSpan()`. A failed receive ends
+ * the pair with the error.
+ */
+export function instrumentManagedReceive(
+  originalReceive: (timeoutMs?: number | null) => Promise<ManagedRecord | null>,
+  groupId?: string,
+  config: DiagnosticInstrumentationConfig = {},
+): (this: KafkaConsumer, timeoutMs?: number | null) => Promise<ManagedRecord | null> {
+  const { clientId, serverAddress, serverPort } = config
+
+  return async function instrumentedManagedReceive(this: KafkaConsumer, timeoutMs?: number | null) {
+    const hasReceiveSubscribers = consumerReceiveStartChannel.hasSubscribers || consumerReceiveEndChannel.hasSubscribers
+    const hasProcessSubscribers = consumerProcessStartChannel.hasSubscribers || consumerProcessEndChannel.hasSubscribers
+
+    if (!hasReceiveSubscribers && !hasProcessSubscribers) {
+      return originalReceive.call(this, timeoutMs)
+    }
+
+    const timestamp = Date.now()
+    const context: Record<PropertyKey, unknown> = {}
+    if (consumerReceiveStartChannel.hasSubscribers) {
+      consumerReceiveStartChannel.publish({ timestamp, groupId, clientId, serverAddress, serverPort, context })
+    }
+    const publishReceiveEnd = (message: Message | null, error?: Error) => {
+      if (consumerReceiveEndChannel.hasSubscribers) {
+        consumerReceiveEndChannel.publish({
+          timestamp: Date.now(),
+          message,
+          groupId,
+          durationMs: Date.now() - timestamp,
+          error,
+          clientId,
+          serverAddress,
+          serverPort,
+          context,
+        })
+      }
+    }
+
+    let record: ManagedRecord | null
+    try {
+      record = await originalReceive.call(this, timeoutMs)
+    } catch (error) {
+      publishReceiveEnd(null, error instanceof Error ? error : new Error(String(error)))
+      throw error
+    }
+    if (record?.kind !== 'message') {
+      publishReceiveEnd(null)
+      return record
+    }
+
+    const { message } = record
+    publishReceiveEnd(message)
+    if (hasProcessSubscribers) {
+      const processContext: Record<PropertyKey, unknown> = {}
+      const processStartTime = Date.now()
+      if (consumerProcessStartChannel.hasSubscribers) {
+        consumerProcessStartChannel.publish({
+          timestamp: processStartTime,
+          message,
+          groupId,
+          clientId,
+          serverAddress,
+          serverPort,
+          context: processContext,
+        })
+      }
+
+      let ended = false
+      Object.defineProperty(message, 'endSpan', {
+        value: (processError?: Error) => {
+          if (ended) {
+            return
+          }
+          ended = true
+          if (consumerProcessEndChannel.hasSubscribers) {
+            consumerProcessEndChannel.publish({
+              timestamp: Date.now(),
+              message,
+              groupId,
+              durationMs: Date.now() - processStartTime,
+              error: processError,
+              clientId,
+              serverAddress,
+              serverPort,
+              context: processContext,
+            })
+          }
+        },
+        writable: false,
+        configurable: true,
+        enumerable: false,
+      })
+    }
+    return record
   }
 }
 

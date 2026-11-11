@@ -6,6 +6,9 @@ These RFCs split the M01–M10 review into independently reviewable decisions. T
 completed work from follow-up improvements while preserving the evidence and limitations of
 each validation.
 
+They also track subsequent consumer-contract proposals, including coordinated changes with
+the Flashify runtime.
+
 ## Status model
 
 For the consolidated audit, see [conformance](review/README.md),
@@ -13,6 +16,9 @@ For the consolidated audit, see [conformance](review/README.md),
 
 - **Implemented**: the current source and automated checks contain the described behavior.
 - **Proposed**: an improvement or validation that remains open; no production change is implied.
+
+A proposed RFC can have a prototype in the source tree. It stays under `proposed/` until its
+acceptance criteria are met, and any API it adds is experimental and opt-in.
 
 An implemented RFC can still list follow-up work. In particular, a passing unit or mock test
 does not replace validation against a real Kafka broker under load.
@@ -41,9 +47,10 @@ RFC-0006 describes the earlier `DashMap` design; RFC-0012 superseded that tracki
 
 ## Proposed follow-ups
 
-| RFC                                                      | Related item | Subject                                           |
-| -------------------------------------------------------- | ------------ | ------------------------------------------------- |
-| [0015](proposed/0015-real-kafka-performance-validation/) | M01/M06      | Validate behavior and performance with real Kafka |
+| RFC                                                      | Related item      | Subject                                                                          |
+| -------------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------- |
+| [0015](proposed/0015-real-kafka-performance-validation/) | M01/M06           | Validate behavior and performance with real Kafka                                |
+| [0017](proposed/0017-managed-consumption-rebalance/)     | Flashify RFC 0003 | Managed consumption and assignment-bound commits (prototype, opt-in, unreleased) |
 
 Byte-based backpressure was originally numbered 0012 while proposed; that number is used by
 oneshot tracking. The implemented byte-budget work is RFC-0016; its remaining

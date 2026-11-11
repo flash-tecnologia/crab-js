@@ -17,6 +17,10 @@ export type {
   KafkaCrabError,
   KafkaEvent,
   KafkaEventPayload,
+  ManagedConsumptionOptions,
+  ManagedPartition,
+  ManagedRecord,
+  ManagedStateSnapshot,
   Message,
   MessageProducer,
   OffsetModel,
@@ -29,7 +33,19 @@ export type {
   TopicPartitionConfig,
 } from '../js-binding.js'
 
-export { KafkaAdmin, KafkaClientConfig, KafkaConsumer, KafkaProducer } from '../js-binding.js'
+export {
+  KafkaAdmin,
+  KafkaClientConfig,
+  KafkaConsumer,
+  KafkaProducer,
+  MANAGED_CONSUMPTION_VERSION,
+} from '../js-binding.js'
+export {
+  isManagedConsumptionError,
+  MANAGED_ERROR_CODES,
+  type ManagedConsumptionError,
+  type ManagedErrorCode,
+} from './managed.js'
 export type { CommitMode, KafkaEventName, PartitionPosition, SecurityProtocol } from '../js-binding.js'
 export { KafkaClient } from './kafka-client.js'
 export { BaseKafkaStreamReadable } from './streams/base-kafka-stream-readable.js'
@@ -74,6 +90,7 @@ export {
   instrumentBatchReceive,
   instrumentConsumerReadableStream,
   instrumentConsumerReceive,
+  instrumentManagedReceive,
   instrumentProducerSend,
   producerSendEndChannel,
   type ProducerSendEndEvent,

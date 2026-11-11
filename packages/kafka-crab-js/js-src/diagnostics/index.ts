@@ -44,5 +44,6 @@ export {
   instrumentBatchReceive,
   instrumentConsumerReadableStream,
   instrumentConsumerReceive,
+  instrumentManagedReceive,
   instrumentProducerSend,
 } from './instrumentation.js'
