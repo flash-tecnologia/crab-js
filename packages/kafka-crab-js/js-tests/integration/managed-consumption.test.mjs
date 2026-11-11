@@ -782,7 +782,7 @@ test('disconnect settles a pending recvManaged and an in-flight commit', { timeo
     const [{ assignment }] = assign.partitions
 
     // Nothing is awaited between these calls: the receive is reserved and the
-    // commit is dispatched synchronously, so both are pending at disconnect.
+    // first commit is dispatched synchronously, before the disconnect.
     const pending = consumer.recvManaged(60_000)
     const commit = consumer.commitManaged(env.topic, 0, assignment, 3)
     const second = consumer.commitManaged(env.topic, 0, assignment, 3).then(
@@ -791,8 +791,14 @@ test('disconnect settles a pending recvManaged and an in-flight commit', { timeo
     )
     ok(consumer.managedState().pendingCommits <= 2)
     const closed = consumer.disconnect()
-    // A message was available, but the receive had not run: it ends cleanly.
-    equal(await pending, null)
+    // The receive ends cleanly, unless the native side had already taken the
+    // available message before the disconnect; both are within the contract.
+    const last = await pending
+    if (last !== null) {
+      equal(last.kind, 'message')
+      equal(last.assignment, assignment)
+      equal(last.message.offset, 0)
+    }
     // The request already handed to the client is not cancelled by the
     // disconnect: the close waits for it and the broker confirms it.
     await commit

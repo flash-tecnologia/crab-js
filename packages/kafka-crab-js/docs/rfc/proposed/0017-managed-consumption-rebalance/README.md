@@ -500,7 +500,9 @@ callbacks never take.
   every 100 ms for the others. Passing a ceiling, or fifty consecutive failed attempts on an
   owned partition, ends in the terminal `ERR_MANAGED_BACKPRESSURE_FAILURE`, so neither
   unbounded growth nor a silent stall is possible. A resume that fails for a partition the
-  consumer no longer owns (for example of a deleted topic) is set aside instead of counted.
+  consumer no longer owns (for example of a deleted topic) is set aside instead of counted. If
+  that partition is assigned again its native pause state is treated as unknown and the desired
+  state, paused or not, is sent again.
 - Pause and resume wait on librdkafka's threads without a timeout, so the pump runs them on the
   blocking pool, not on an async worker. Polling, and therefore rebalance callbacks, wait for
   that call. `pausePartitions` and `resumePartitions` stay synchronous on the calling thread,
@@ -569,7 +571,7 @@ Commands, from `packages/kafka-crab-js`:
 
 | Suite                           | Command                                                                                       | Result       |
 | ------------------------------- | --------------------------------------------------------------------------------------------- | ------------ |
-| Rust                            | `cargo test`                                                                                  | 59 passed    |
+| Rust                            | `cargo test`                                                                                  | 60 passed    |
 | Unit                            | `pnpm test`                                                                                   | 83 passed    |
 | Managed, real broker            | `KAFKA_BROKERS=127.0.0.1:29092 node --test js-tests/integration/managed-consumption.test.mjs` | 11 passed    |
 | Legacy regressions, real broker | same, for `consumer-manual-commit`, `partition-lifecycle` and `consumer`                      | 15, 2 and 11 |
