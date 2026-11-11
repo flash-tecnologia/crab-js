@@ -261,6 +261,10 @@ struct Inner<M> {
   /// Unowned partitions whose pause flag could not be cleared. They are not
   /// retried while unowned; if one is assigned again it is tracked again.
   orphan_pauses: HashSet<PartitionKey>,
+  /// Owned partitions whose native pause flag is not known (an orphan that
+  /// was assigned again; its topic may have been recreated without the
+  /// flag). The desired state is applied to them explicitly, paused or not.
+  native_unknown: HashSet<PartitionKey>,
   backpressure_paused: bool,
   flow_dirty: bool,
   flow_failures: u32,
@@ -334,6 +338,7 @@ impl<M> ManagedState<M> {
         user_paused: HashSet::new(),
         paused_native: HashSet::new(),
         orphan_pauses: HashSet::new(),
+        native_unknown: HashSet::new(),
         backpressure_paused: false,
         flow_dirty: false,
         flow_failures: 0,
@@ -465,8 +470,9 @@ impl<M> ManagedState<M> {
           Some(active) => (self.token(active.seq), Some(self.token(active.seq))),
           None => {
             if inner.orphan_pauses.remove(key) {
-              // Its pause flag may still be set: track it so it is cleared.
-              inner.paused_native.insert(key.clone());
+              // Its pause flag may or may not still be set. Nothing is
+              // assumed: the desired state is sent to the client again.
+              inner.native_unknown.insert(key.clone());
             }
             let seq = inner.next_seq;
             inner.next_seq += 1;
@@ -526,6 +532,9 @@ impl<M> ManagedState<M> {
           continue;
         };
         inner.user_paused.remove(&key);
+        if inner.native_unknown.remove(&key) {
+          inner.orphan_pauses.insert(key.clone());
+        }
         Self::drain_queued_commits(
           &mut inner,
           Some(&key),
@@ -1131,6 +1140,14 @@ impl<M> ManagedState<M> {
         plan.resume.push(key.clone());
       }
     }
+    // Unknown native state: a wanted pause is already planned above, because
+    // such a key is not in `paused_native`; an unwanted one is cleared here.
+    for key in &inner.native_unknown {
+      let wanted = inner.backpressure_paused || inner.user_paused.contains(key);
+      if !wanted && !plan.resume.contains(key) {
+        plan.resume.push(key.clone());
+      }
+    }
     plan.pause.sort();
     plan.resume.sort();
     plan
@@ -1155,15 +1172,18 @@ impl<M> ManagedState<M> {
           retry = true;
         } else {
           inner.paused_native.insert(key.clone());
+          inner.native_unknown.remove(key);
         }
       }
       for key in &plan.resume {
         if !failed.contains(key) {
           inner.paused_native.remove(key);
+          inner.native_unknown.remove(key);
         } else if inner.active.contains_key(key) {
           retry = true;
         } else {
           inner.paused_native.remove(key);
+          inner.native_unknown.remove(key);
           inner.orphan_pauses.insert(key.clone());
         }
       }
@@ -2156,6 +2176,53 @@ mod tests {
     assert_eq!(plan.resume, vec![key(1)]);
     assert!(state.flow_applied(&plan, &[]));
     assert!(state.plan_flow().is_empty());
+  }
+
+  /// The topic of an orphaned pause may have been deleted and recreated: the
+  /// new native partition does not carry the old flag. Its state is treated
+  /// as unknown, so a wanted pause is sent again instead of assumed.
+  #[test]
+  fn a_reassigned_orphan_is_paused_again_when_backpressure_is_active() {
+    let state = small(256, 4);
+    state.on_assign(&[key(0), key(1)]);
+    for offset in 0..4 {
+      state.admit_message("topic", 0, 10, offset);
+    }
+    state.engage_backpressure();
+    let plan = state.plan_flow();
+    assert_eq!(plan.pause, vec![key(0), key(1)]);
+    assert!(state.flow_applied(&plan, &[]));
+    // Partition 1 goes away and its flag cannot be cleared: it is orphaned.
+    state.on_revoke(&[key(1)], false, false);
+    let plan = state.plan_flow();
+    assert_eq!(plan.resume, vec![key(1)]);
+    assert!(state.flow_applied(&plan, &[key(1)]));
+    assert!(state.plan_flow().is_empty());
+
+    // It returns while backpressure still holds: the pause is requested
+    // again, and only its confirmation counts.
+    state.on_assign(&[key(1)]);
+    assert!(state.snapshot().backpressure_paused);
+    let plan = state.plan_flow();
+    assert_eq!(plan.pause, vec![key(1)]);
+    assert!(plan.resume.is_empty());
+    assert!(!state.flow_applied(&plan, &[key(1)]));
+    assert_eq!(state.plan_flow().pause, vec![key(1)]);
+    assert!(state.flow_applied(&state.plan_flow(), &[]));
+    assert!(state.plan_flow().is_empty());
+
+    // Revoked again while its state is unknown, it is not retried unowned.
+    let unknown = small(256, 4);
+    unknown.on_assign(&[key(1)]);
+    unknown.set_user_paused(&[key(1)], true).unwrap();
+    unknown.flow_applied(&unknown.plan_flow(), &[]);
+    unknown.on_revoke(&[key(1)], false, false);
+    unknown.flow_applied(&unknown.plan_flow(), &[key(1)]);
+    unknown.on_assign(&[key(1)]);
+    unknown.on_revoke(&[key(1)], false, false);
+    assert!(unknown.plan_flow().is_empty());
+    unknown.on_assign(&[key(1)]);
+    assert_eq!(unknown.plan_flow().resume, vec![key(1)]);
   }
 
   #[test]

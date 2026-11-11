@@ -54,7 +54,16 @@ pub fn apply_flow<B: PumpBackend>(
   state: &ManagedState<B::Message>,
   flow_lock: &Mutex<()>,
 ) -> bool {
-  let _flow_guard = flow_lock.lock().unwrap_or_else(|e| e.into_inner());
+  let flow_guard = flow_lock.lock().unwrap_or_else(|e| e.into_inner());
+  apply_flow_locked(backend, state, &flow_guard)
+}
+
+/// Plans and applies with the flow lock already held by the caller.
+fn apply_flow_locked<B: PumpBackend>(
+  backend: &B,
+  state: &ManagedState<B::Message>,
+  _flow_guard: &std::sync::MutexGuard<'_, ()>,
+) -> bool {
   let plan = state.plan_flow();
   if plan.is_empty() {
     return true;
@@ -90,8 +99,9 @@ pub fn apply_flow_from_caller<B: PumpBackend>(
       return;
     }
   };
-  drop(guard);
-  if !apply_flow(backend, state, flow_lock) {
+  // Applied under the guard obtained above: the lock is never requested a
+  // second time, so the pump cannot slip in and make this thread wait.
+  if !apply_flow_locked(backend, state, &guard) {
     state.mark_flow_dirty();
   }
 }
@@ -200,6 +210,7 @@ mod tests {
   struct FakeClient {
     events: AsyncMutex<mpsc::UnboundedReceiver<PumpEvent<u64>>>,
     polls: AtomicUsize,
+    confirmed_resumes: AtomicUsize,
     fail_pause: AtomicBool,
     fail_resume: AtomicBool,
     pauses: Mutex<Vec<Vec<PartitionKey>>>,
@@ -228,10 +239,14 @@ mod tests {
     }
 
     fn resume(&self, partitions: &[PartitionKey]) -> Vec<PartitionKey> {
+      // The outcome is decided before the attempt becomes visible, and a
+      // success is counted only once it is complete.
+      let fail = self.fail_resume.load(Ordering::SeqCst);
       self.resumes.lock().unwrap().push(partitions.to_vec());
-      if self.fail_resume.load(Ordering::SeqCst) {
+      if fail {
         partitions.to_vec()
       } else {
+        self.confirmed_resumes.fetch_add(1, Ordering::SeqCst);
         Vec::new()
       }
     }
@@ -258,6 +273,7 @@ mod tests {
     let client = Arc::new(FakeClient {
       events: AsyncMutex::new(events),
       polls: AtomicUsize::new(0),
+      confirmed_resumes: AtomicUsize::new(0),
       fail_pause: AtomicBool::new(false),
       fail_resume: AtomicBool::new(false),
       pauses: Mutex::default(),
@@ -562,15 +578,20 @@ mod tests {
         h.client.resumes.lock().unwrap().len() >= 3
       })
       .await;
+    assert_eq!(harness.client.confirmed_resumes.load(Ordering::SeqCst), 0);
     harness.client.fail_resume.store(false, Ordering::SeqCst);
-    let attempts = harness.client.resumes.lock().unwrap().len();
+    // Wait for an attempt that completed successfully, whichever one it is.
     harness
       .until("the confirmed resume", |h| {
-        h.client.resumes.lock().unwrap().len() > attempts
+        h.client.confirmed_resumes.load(Ordering::SeqCst) == 1
       })
       .await;
+    // Give the pump time to record the confirmation, then expect silence.
+    tokio::time::sleep(STALL_GRACE * 2).await;
+    let attempts = harness.client.resumes.lock().unwrap().len();
     tokio::time::sleep(STALL_GRACE * 3).await;
-    assert_eq!(harness.client.resumes.lock().unwrap().len(), attempts + 1);
+    assert_eq!(harness.client.resumes.lock().unwrap().len(), attempts);
+    assert_eq!(harness.client.confirmed_resumes.load(Ordering::SeqCst), 1);
     assert_eq!(harness.state.status(), ManagedStatus::Active);
   }
 
