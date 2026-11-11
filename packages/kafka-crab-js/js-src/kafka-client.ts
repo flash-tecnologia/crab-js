@@ -18,6 +18,7 @@ import {
   instrumentBatchReceive,
   instrumentConsumerReadableStream,
   instrumentConsumerReceive,
+  instrumentManagedReceive,
   instrumentProducerSend,
 } from './diagnostics/instrumentation.js'
 import { attachSendFailureDetails } from './send-failure.js'
@@ -36,6 +37,15 @@ type KafkaConsumerWithWebStream = KafkaConsumer & {
   recvStream: (prefetchSize?: number, prefetchTimeoutMs?: number) => ReadableStream<Message>
   recvBatchStream: (size: number, timeoutMs: number) => ReadableStream<Message[]>
   recvBatchStreamCompact: (size: number, timeoutMs: number) => ReadableStream<CompactMessageBatch>
+}
+
+/** Streams are legacy receive paths; managed consumption (RFC-0017) uses `createConsumer`. */
+function assertLegacyConsumerConfiguration(configuration: ConsumerConfiguration, factory: string): void {
+  if (configuration.managed) {
+    throw new Error(
+      `[ERR_MANAGED_MODE] ${factory} does not support managed consumption; use createConsumer({ managed: true })`,
+    )
+  }
 }
 
 export interface StreamConsumerConfiguration extends ConsumerConfiguration {
@@ -626,6 +636,7 @@ export class KafkaClient {
     streamConfiguration: StreamConsumerConfiguration,
   ): KafkaStreamReadable | KafkaBatchStreamReadable {
     const { batchSize, batchTimeout, streamOptions, ...consumerConfiguration } = streamConfiguration
+    assertLegacyConsumerConfiguration(consumerConfiguration, 'createStreamConsumer')
     const kafkaConsumer = this.kafkaClientConfig.createConsumer(consumerConfiguration)
     const instrumentedConsumer = this._diagnosticsEnabled
       ? this._instrumentConsumer(kafkaConsumer, consumerConfiguration.groupId)
@@ -687,6 +698,7 @@ export class KafkaClient {
   public createWebStreamConsumer(streamConfiguration: WebStreamConsumerConfiguration): WebStreamConsumer {
     const { batchSize, batchTimeout, serialPrefetchSize, serialPrefetchTimeout, ...consumerConfiguration } =
       streamConfiguration
+    assertLegacyConsumerConfiguration(consumerConfiguration, 'createWebStreamConsumer')
 
     const kafkaConsumer = this.kafkaClientConfig.createConsumer(consumerConfiguration)
     const instrumentedConsumer = this._diagnosticsEnabled
@@ -745,6 +757,14 @@ export class KafkaClient {
     // Use diagnostic channel-based instrumentation for near-zero overhead when no subscribers
     consumer.recv = instrumentConsumerReceive(originalRecv, groupId, this._diagnosticsConfig)
     consumer.recvBatch = instrumentBatchReceive(originalRecvBatch, groupId, this._diagnosticsConfig)
+    if (consumer.managed) {
+      // Managed consumers reject the legacy receives above; trace the managed one.
+      consumer.recvManaged = instrumentManagedReceive(
+        consumer.recvManaged.bind(consumer),
+        groupId,
+        this._diagnosticsConfig,
+      )
+    }
 
     return consumer
   }

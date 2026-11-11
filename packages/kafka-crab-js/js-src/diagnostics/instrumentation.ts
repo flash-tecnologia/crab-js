@@ -5,7 +5,14 @@
  * diagnostic channels instead of directly calling OpenTelemetry APIs.
  * Observability tools can subscribe to these channels to receive events.
  */
-import type { KafkaConsumer, KafkaProducer, Message, ProducerRecord, RecordMetadata } from '../../js-binding.js'
+import type {
+  KafkaConsumer,
+  KafkaProducer,
+  ManagedRecord,
+  Message,
+  ProducerRecord,
+  RecordMetadata,
+} from '../../js-binding.js'
 import {
   batchProcessEndChannel,
   type BatchProcessEndEvent,
@@ -242,6 +249,109 @@ export function instrumentConsumerReceive(
         })
       }
     }
+  }
+}
+
+/**
+ * Instruments a managed receive (RFC-0017, experimental).
+ *
+ * Only message records are traced: they publish one receive start/end pair and
+ * open one processing span, closed by `record.message.endSpan()`. Assignment
+ * transitions, idle results and end-of-stream publish nothing, so control
+ * delivery never creates spans. A failed receive publishes a receive pair
+ * carrying the error.
+ */
+export function instrumentManagedReceive(
+  originalReceive: (timeoutMs?: number | null) => Promise<ManagedRecord | null>,
+  groupId?: string,
+  config: DiagnosticInstrumentationConfig = {},
+): (this: KafkaConsumer, timeoutMs?: number | null) => Promise<ManagedRecord | null> {
+  const { clientId, serverAddress, serverPort } = config
+
+  return async function instrumentedManagedReceive(this: KafkaConsumer, timeoutMs?: number | null) {
+    const hasReceiveSubscribers = consumerReceiveStartChannel.hasSubscribers || consumerReceiveEndChannel.hasSubscribers
+    const hasProcessSubscribers = consumerProcessStartChannel.hasSubscribers || consumerProcessEndChannel.hasSubscribers
+
+    if (!hasReceiveSubscribers && !hasProcessSubscribers) {
+      return originalReceive.call(this, timeoutMs)
+    }
+
+    const timestamp = Date.now()
+    const context: Record<PropertyKey, unknown> = {}
+    const publishReceive = (message: Message | null, error?: Error) => {
+      if (consumerReceiveStartChannel.hasSubscribers) {
+        consumerReceiveStartChannel.publish({ timestamp, groupId, clientId, serverAddress, serverPort, context })
+      }
+      if (consumerReceiveEndChannel.hasSubscribers) {
+        consumerReceiveEndChannel.publish({
+          timestamp: Date.now(),
+          message,
+          groupId,
+          durationMs: Date.now() - timestamp,
+          error,
+          clientId,
+          serverAddress,
+          serverPort,
+          context,
+        })
+      }
+    }
+
+    let record: ManagedRecord | null
+    try {
+      record = await originalReceive.call(this, timeoutMs)
+    } catch (error) {
+      publishReceive(null, error instanceof Error ? error : new Error(String(error)))
+      throw error
+    }
+    if (record?.kind !== 'message') {
+      return record
+    }
+
+    const { message } = record
+    publishReceive(message)
+    if (hasProcessSubscribers) {
+      const processContext: Record<PropertyKey, unknown> = {}
+      const processStartTime = Date.now()
+      if (consumerProcessStartChannel.hasSubscribers) {
+        consumerProcessStartChannel.publish({
+          timestamp: processStartTime,
+          message,
+          groupId,
+          clientId,
+          serverAddress,
+          serverPort,
+          context: processContext,
+        })
+      }
+
+      let ended = false
+      Object.defineProperty(message, 'endSpan', {
+        value: (processError?: Error) => {
+          if (ended) {
+            return
+          }
+          ended = true
+          if (consumerProcessEndChannel.hasSubscribers) {
+            consumerProcessEndChannel.publish({
+              timestamp: Date.now(),
+              message,
+              groupId,
+              durationMs: Date.now() - processStartTime,
+              error: processError,
+              clientId,
+              serverAddress,
+              serverPort,
+              context: processContext,
+            })
+          }
+        },
+        writable: false,
+        configurable: true,
+        enumerable: false,
+      })
+    }
+    return record
   }
 }
 

@@ -176,6 +176,57 @@ export declare class KafkaConsumer {
    * @param commit - The commit mode (Sync or Async)
    */
   commitMessage(message: Message, commit: CommitMode): Promise<void>
+  /** Whether this consumer was created with `managed: true` (RFC-0017). */
+  get managed(): boolean
+  /**
+   * Experimental (RFC-0017). Returns the next managed record in native order:
+   * a message with the identity of its partition assignment, or an assignment
+   * transition. Every transition that preceded a message in librdkafka is
+   * returned before it; transitions are returned even when no message exists.
+   *
+   * Resolves `{ kind: 'idle' }` after `timeoutMs` (or `cancelManagedReceive`)
+   * and `null` when the consumer is disconnected while the call is pending.
+   * Only one call may be pending. Rejects with `error.code`:
+   * `ERR_MANAGED_RECEIVE_PENDING`, `ERR_MANAGED_CLOSED`,
+   * `ERR_MANAGED_CONTROL_OVERFLOW`, `ERR_MANAGED_CONTROL_FAILURE` (terminal),
+   * `ERR_MANAGED_RECEIVE_FAILED` (with `kafkaCode`; not terminal) or
+   * `ERR_MANAGED_MODE` on a legacy consumer.
+   * @param timeoutMs - Optional wait bound in milliseconds; omit to wait
+   */
+  recvManaged(timeoutMs?: number | undefined | null): Promise<ManagedRecord | null>
+  /**
+   * Experimental (RFC-0017). Wakes the pending `recvManaged`, which resolves
+   * `{ kind: 'idle', reason: 'cancelled' }`. No admitted record is lost.
+   * @returns Whether a receive was pending
+   */
+  cancelManagedReceive(): boolean
+  /**
+   * Experimental (RFC-0017). Commits `nextOffset` (the next offset to consume,
+   * as in `commit`) for a partition under the assignment identity that
+   * delivered the work. The final identity check and the native dispatch are
+   * ordered against revocation; the promise settles with the broker result.
+   * There is no automatic retry.
+   *
+   * Rejects with `error.code`: `ERR_MANAGED_STALE_ASSIGNMENT`,
+   * `ERR_MANAGED_UNKNOWN_ASSIGNMENT`, `ERR_MANAGED_CLOSED`,
+   * `ERR_MANAGED_CONTROL_OVERFLOW`, `ERR_MANAGED_CONTROL_FAILURE`,
+   * `ERR_MANAGED_COMMIT_FAILED` (with `kafkaCode`/`kafkaErrorCode`),
+   * `ERR_MANAGED_COMMIT_UNKNOWN`, `ERR_MANAGED_INVALID_ARGUMENT` or
+   * `ERR_MANAGED_MODE`. Commit errors carry `outcomeUnknown`.
+   *
+   * The identity is a local authorization, not broker-side fencing: a request
+   * dispatched before a revocation cannot be recalled and may still be applied.
+   */
+  commitManaged(topic: string, partition: number, assignment: string, nextOffset: number): Promise<void>
+  /**
+   * Experimental (RFC-0017). Whether `assignment` is the identity that
+   * currently owns the partition, read from native state without waiting for
+   * `recvManaged`. A `true` result can be invalidated at any time; only
+   * `commitManaged` orders the check against revocation.
+   */
+  isManagedAssignmentActive(topic: string, partition: number, assignment: string): boolean
+  /** Experimental (RFC-0017). Diagnostic snapshot of the managed native state. */
+  managedState(): ManagedStateSnapshot
 }
 
 export declare class KafkaProducer {
@@ -300,6 +351,15 @@ export interface ConsumerConfiguration {
    * fail-fast: it falls back to the default. Negative values are rejected.
    */
   fetchMetadataTimeout?: number
+  /**
+   * Experimental (RFC-0017). Enables managed consumption for this consumer:
+   * `recvManaged`/`commitManaged` replace the legacy receive and commit
+   * methods. Fixed at creation; requires auto commit and auto offset store
+   * to be disabled (they default to `false` in this mode).
+   */
+  managed?: boolean
+  /** Experimental (RFC-0017). Bounds for the managed native state. */
+  managedOptions?: ManagedConsumptionOptions
 }
 
 export interface CreateTopicsOptions {
@@ -338,6 +398,74 @@ export interface KafkaEventPayload {
   action?: string
   tpl: Array<TopicPartition>
   error?: string
+}
+
+/**
+ * Version of the managed consumption contract (RFC-0017) implemented by this
+ * binding: ordered `recvManaged`, assignment-bound `commitManaged` and
+ * structured `ERR_MANAGED_*` errors. Bumped on any incompatible change.
+ * Experimental.
+ */
+export declare const MANAGED_CONSUMPTION_VERSION: number
+
+/**
+ * Experimental (RFC-0017). Limits of the binding-owned managed state. They do
+ * not bound librdkafka's own fetch queues or messages already handed to
+ * JavaScript.
+ */
+export interface ManagedConsumptionOptions {
+  /**
+   * Assignment transitions that may wait for `recvManaged` (default 1024,
+   * 1-65536). Exceeding it is a terminal `ERR_MANAGED_CONTROL_OVERFLOW`.
+   */
+  maxControlRecords?: number
+  /**
+   * Messages retained natively before assigned partitions are paused
+   * (default 1024, 1-1000000). Fetching resumes at half of the limit.
+   */
+  maxBufferedMessages?: number
+  /**
+   * Bytes retained natively before assigned partitions are paused
+   * (default 32 MiB). One message is always admitted.
+   */
+  maxBufferedBytes?: number
+}
+
+/** One partition of a managed assignment transition. */
+export interface ManagedPartition {
+  topic: string
+  partition: number
+  /** Identity that owns the partition after the transition. Absent on revoke. */
+  assignment?: string
+  /**
+   * Identity that owned it before: the invalidated one on revoke, or the same
+   * value as `assignment` when an assign names a retained partition.
+   */
+  previousAssignment?: string
+}
+
+/** Record returned by `recvManaged`, in the order defined natively. */
+export type ManagedRecord =
+  | { kind: 'message'; message: Message; assignment: string }
+  | { kind: 'assign'; partitions: Array<ManagedPartition> }
+  | { kind: 'revoke'; partitions: Array<ManagedPartition>; lost: boolean }
+  | { kind: 'idle'; reason: string }
+
+/** Diagnostic snapshot of the managed native state. */
+export interface ManagedStateSnapshot {
+  /** `active`, `closed` or `failed`. */
+  status: string
+  /** Error code of the terminal failure when `status` is `failed`. */
+  failure?: string
+  assignments: Array<ManagedPartition>
+  queuedControlRecords: number
+  bufferedMessages: number
+  bufferedBytes: number
+  backpressurePaused: boolean
+  pendingCommits: number
+  droppedReceiveErrors: number
+  /** Undelivered messages released because their identity was revoked. */
+  purgedMessages: number
 }
 
 export interface Message {

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use rdkafka::{
   consumer::{Consumer, StreamConsumer},
@@ -14,7 +14,7 @@ use crate::kafka::{
 };
 
 use super::{
-  context::KafkaCrabContext,
+  context::{KafkaCrabContext, ManagedConsumerState},
   model::{ConsumerConfiguration, OffsetModel, PartitionOffset, PartitionPosition, TopicPartition},
 };
 
@@ -107,14 +107,41 @@ pub fn build_consumer_config(
   consumer_config
 }
 
+/// Settings that would let librdkafka commit or store offsets behind the
+/// managed completion protocol.
+const MANAGED_DISABLED_SETTINGS: [&str; 2] = ["enable.auto.commit", "enable.auto.offset.store"];
+
+/// Returns the first setting that explicitly re-enables automatic offset
+/// commit/storage, from either the convenience option or raw configuration.
+pub fn managed_config_conflict(consumer_config: &ClientConfig) -> Option<&'static str> {
+  MANAGED_DISABLED_SETTINGS.into_iter().find(|key| {
+    consumer_config.get(key).is_some_and(|value| {
+      !matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "false" | "f" | "0"
+      )
+    })
+  })
+}
+
 pub fn create_stream_consumer(
   client_config: &ClientConfig,
   consumer_configuration: &ConsumerConfiguration,
   configuration: Option<HashMap<String, serde_json::Value>>,
+  managed: Option<Arc<ManagedConsumerState>>,
 ) -> anyhow::Result<LoggingConsumer> {
-  let context = KafkaCrabContext::new();
   let group_id = consumer_configuration.group_id.clone();
-  let consumer_config = build_consumer_config(client_config, consumer_configuration, configuration);
+  let mut consumer_config =
+    build_consumer_config(client_config, consumer_configuration, configuration);
+  if managed.is_some() {
+    if let Some(key) = managed_config_conflict(&consumer_config) {
+      anyhow::bail!("managed consumption requires {key}=false");
+    }
+    for key in MANAGED_DISABLED_SETTINGS {
+      consumer_config.set(key, "false");
+    }
+  }
+  let context = KafkaCrabContext::new(managed);
 
   let consumer = consumer_config.create_with_context(context)?;
 

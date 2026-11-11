@@ -841,5 +841,6 @@ module.exports.KafkaConsumer = nativeBinding.KafkaConsumer
 module.exports.KafkaProducer = nativeBinding.KafkaProducer
 module.exports.CommitMode = nativeBinding.CommitMode
 module.exports.KafkaEventName = nativeBinding.KafkaEventName
+module.exports.MANAGED_CONSUMPTION_VERSION = nativeBinding.MANAGED_CONSUMPTION_VERSION
 module.exports.PartitionPosition = nativeBinding.PartitionPosition
 module.exports.SecurityProtocol = nativeBinding.SecurityProtocol
