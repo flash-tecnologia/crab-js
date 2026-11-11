@@ -332,6 +332,12 @@ service adopts both pinned versions and lockfile changes in one rollout, initial
 canary. Flashify `Sync` selects the new contract and fails startup with an incompatible binding;
 there is no silent fallback. Native managed mode remains opt-in for direct binding consumers.
 
+Decision recorded on 2026-11-11: `commitMode: 'Sync'` is itself the opt-in on the Flashify side,
+so no additional Flashify flag is introduced. `Sync` is not Flashify's default; the omitted and
+`'manual'` modes keep their current behavior. The only known user of `Sync` is the legacy-sync
+service, which adopts both pinned versions together. On the binding side the opt-in is
+`managed: true`, unchanged.
+
 Legacy API signatures and semantics remain supported for legacy consumers. Restricting incompatible
 operations on an explicitly managed consumer is part of the new contract. Choose package versions
 and semver classification only after reviewing the wrapper's new minimum binding requirement.
@@ -359,8 +365,9 @@ as settled. The intended guarantees are requirements; they are not proof of nati
 ## Prototype status (2026-11-11)
 
 This section records what the native prototype decided for decisions 1–4 and what was
-measured. It does not close the acceptance criteria: decisions 5–6, the joint Flashify matrix
-and the proxy generation-error scenarios are still open. The API is opt-in and experimental.
+measured, after one round of independent review. It does not close the acceptance criteria:
+decisions 5–6, the joint Flashify matrix and the proxy generation-error scenarios are still
+open. The API is opt-in and experimental.
 
 Environment of every number below: macOS arm64 (darwin-arm64 only), rustc 1.99.1, Node 24.18,
 rust-rdkafka 0.39 / librdkafka 2.12.1, one `apache/kafka:3.9.1` broker, release build.
@@ -373,16 +380,27 @@ rust-rdkafka 0.39 / librdkafka 2.12.1, one `apache/kafka:3.9.1` broker, release 
 | Contradictions    | `enable.auto.commit` and `enable.auto.offset.store` default to `false` in managed mode; an explicit truthy value from `enableAutoCommit`, consumer or client configuration fails creation.                                                                             |
 | Capability        | Exported constant `MANAGED_CONSUMPTION_VERSION` (`1`) for the whole contract, plus the `consumer.managed` getter.                                                                                                                                                      |
 | Records           | `recvManaged(timeoutMs?)` resolves one record of a discriminated union on `kind`: `message` (`message`, `assignment`), `assign` / `revoke` (`partitions[]` with `assignment` and `previousAssignment`; `lost` on revoke), `idle` (`reason: 'timeout' \| 'cancelled'`). |
-| Identity          | Opaque string, unique per consumer instance and assignment incarnation. A retained partition named again by an assign reports `assignment === previousAssignment`.                                                                                                     |
-| Commit            | `commitManaged(topic, partition, assignment, nextOffset)`; `nextOffset` is the next offset to consume, a JavaScript number as in `commit`.                                                                                                                             |
-| Termination       | Disconnect while pending resolves `null`; later calls reject `ERR_MANAGED_CLOSED`. `cancelManagedReceive()` and the timeout resolve `idle`. Overflow and control failure reject every current and later call.                                                          |
-| Errors            | Real properties on the rejection: `code` (`ERR_MANAGED_*`), `kafkaCode` / `kafkaErrorCode` when a Kafka error exists, `outcomeUnknown` on commit errors. Stale, unknown identity, closing, overflow, control failure and broker failure have distinct codes.           |
+| Single receive    | The call reserves the receive synchronously, until its promise settles. A second call in between rejects, including in the same tick.                                                                                                                                  |
+| Identity          | Opaque string with a random per-instance component and a per-assignment sequence. A retained partition named again by an assign reports `assignment === previousAssignment`.                                                                                           |
+| Commit            | `commitManaged(topic, partition, assignment, nextOffset, timeoutMs?)`; `nextOffset` is the next offset to consume, a JavaScript number as in `commit`. Authorization and dispatch happen synchronously in the call.                                                    |
+| Termination       | Disconnect, or garbage collection of the consumer, resolves a pending receive with `null`; later calls reject `ERR_MANAGED_CLOSED`. `cancelManagedReceive()` and the timeout resolve `idle` without taking a record. Terminal failures reject current and later calls. |
+| Errors            | Real properties on the rejection: `code` (`ERR_MANAGED_*`), `kafkaCode` / `kafkaErrorCode` when a Kafka error exists, `outcomeUnknown` on commit errors.                                                                                                               |
 | Mode guards       | Managed rejects `recv`, `recvBatch`, the three stream methods and both stream factories, `commit`, `commitMessage`, `seek`, `unsubscribe` and manual assignment. Legacy rejects every managed method.                                                                  |
-| Legacy guard code | Guards on existing methods keep their N-API status (`InvalidArg`) and carry `[ERR_MANAGED_MODE]` in the message; only the new methods reject with a structured `code`. Changing that would alter the legacy signatures.                                                |
+| Legacy guard code | Guards on existing methods keep their N-API status (`InvalidArg`) and carry `[ERR_MANAGED_MODE]` in the message; only the new methods reject with a structured `code`.                                                                                                 |
+
+`outcomeUnknown` is `false` only when nothing was handed to librdkafka: stale or unknown
+identity, regression, backlog, or a local dispatch failure. It is `true` for every error of a
+request that was sent, for a deadline and for a close. librdkafka retries or defers an
+OffsetCommit after `_TRANSPORT`, `NOT_COORDINATOR` and similar errors and can then finish with
+another code such as `_WAIT_COORD` or a generation error, so the final code does not prove that
+no attempt was applied.
 
 `pause`/`resume` and `pausePartitions`/`resumePartitions` stay available: they are routed
 through the managed state so the binding's own pause never undoes an application pause.
 Only owned partitions can be paused, and a pause does not survive revocation.
+
+The `KafkaConsumer` type gained members. Runtime behavior of legacy consumers is unchanged, but
+a wrapper that type-checks a structural mock against `KafkaConsumer` must add them.
 
 ### Decision 2 — ordering mechanism
 
@@ -392,6 +410,7 @@ rebalance callbacks inside that poll, so on that task the sequence is exactly li
 - `pre_rebalance` updates the shared state under a short `std::sync::Mutex` and appends the
   transition record: identities are created before the native assign and invalidated before
   the native unassign. The callback touches no JavaScript and makes no broker round trip.
+  "Revoked" in this document means that local step, not a broker-side fact.
 - When the poll returns a message, the pump admits it under the same mutex, stamps it with the
   identity owning the partition at that moment and appends it to the same queue. A transition
   that preceded the message is therefore ahead of it, and a message cannot be stamped with an
@@ -402,52 +421,89 @@ rebalance callbacks inside that poll, so on that task the sequence is exactly li
 - A message for a partition without an active identity is treated as a broken ordering
   assumption and is a terminal `ERR_MANAGED_CONTROL_FAILURE`, not a silent drop.
 
-Commit dispatch takes the same mutex: `commitManaged` re-validates lifecycle and identity and
-calls `rd_kafka_commit_queue` (a local enqueue to the group thread) in one critical section,
-then awaits the broker result outside it. A revoke callback either finished before the check,
-and the commit is refused without dispatch, or starts after the request was handed over.
-Results return on a dedicated reply queue and are matched to their promise by a per-commit
-opaque, so a late result stays with its original identity. Managed results are not republished
-as `CommitCallback` events; the promise is the single owner. A commit under a newer identity of
-the same partition waits for unresolved commits of older identities before it is dispatched.
+Commits take the same mutex. `commitManaged` validates lifecycle and identity and calls
+`rd_kafka_commit_queue` (a local enqueue to the group thread) in one critical section, on the
+calling thread. A revoke callback either finished before the check, and the commit is refused
+without dispatch, or starts after the request was handed over.
 
-Callback safety: the mutex is never held across an await, a broker round trip or JavaScript.
-Pause/resume calls use a separate lock that callbacks never take.
+- Commits of one partition are dispatched one at a time, in call order. A later call waits in
+  a per-partition queue and is re-validated, in the same critical section, when it is
+  dispatched. Two commits issued without awaiting can therefore not reach the broker reordered.
+- A `nextOffset` lower than one already authorized under the identity is rejected
+  (`ERR_MANAGED_COMMIT_REGRESSION`). An equal one is sent again, which is how a failed commit
+  is retried.
+- A commit of a newer identity never overlaps an unresolved request of an older identity of the
+  same partition: it waits in the same queue.
+- A revocation, a terminal failure and a close settle the commits that are still waiting
+  (`ERR_MANAGED_STALE_ASSIGNMENT`, the failure code, `ERR_MANAGED_CLOSED`). A request already
+  sent keeps its own result.
+- Results return on a dedicated reply queue and are matched to their promise by a per-commit
+  opaque, so a late result stays with its original identity. Managed results are not
+  republished as `CommitCallback` events; the promise is the single owner.
+- `timeoutMs` ends only the observation (`ERR_MANAGED_COMMIT_TIMEOUT`, `outcomeUnknown: true`).
+  The request is not cancelled and still holds its place in the partition's queue.
+
+Callback safety: the mutex is never held across an await, a broker round trip or JavaScript,
+and lookups under it are by partition or commit id. Pause/resume calls use a separate lock that
+callbacks never take.
 
 **Limits of the guarantee.** The identity is a local authorization, not broker-side fencing.
 
 - A request handed over before a revocation cannot be recalled. librdkafka sends it with the
   member's current generation, possibly after the rebalance, and the classic protocol does not
   check partition ownership. It may therefore be applied after the partition moved.
-- Such a request was authorized for completed work, so applying it cannot skip unprocessed
-  messages. It can move the committed offset backwards relative to the new owner's commits,
-  which causes replay.
+- The binding does not validate `nextOffset` against anything the application did. Only if the
+  caller commits a completed prefix does a late commit never skip unprocessed messages; it can
+  still move the committed offset backwards relative to the new owner's commits, which
+  causes replay.
 - Commits from other members, or from legacy consumers in the same group, are outside this
   protocol. The reproduction below shows the broker accepting one for a revoked partition.
+- librdkafka can retry a sent request internally. Ordering is guaranteed at dispatch; a retry
+  of an older request of another partition is unaffected, and within a partition the next
+  commit is only dispatched after the previous one settled.
 
 ### Decision 3 — backpressure and budgets
 
 - The pump keeps polling whether or not JavaScript calls `recvManaged`, so assignment control
   and commit authorization progress while the application is busy or its event loop is blocked.
+- Consequence: `max.poll.interval.ms` no longer detects a stuck handler, because the binding
+  polls on the application's behalf. A consumer whose JavaScript stopped receiving keeps its
+  partitions. The optional watchdog `managedOptions.maxReceiveIdleMs` restores that protection:
+  with no `recvManaged` pending for longer, the consumer fails with the terminal
+  `ERR_MANAGED_RECEIVE_STALLED` and leaves the group. It is off by default.
 - Retained messages are bounded by `maxBufferedMessages` (1024) and `maxBufferedBytes`
   (32 MiB, the RFC-0016 default and accounting). At the bound the pump stops taking messages.
   If the application makes room within 100 ms nothing is paused. After 100 ms without room the
   pump pauses the owned partitions and resumes polling for control only; it resumes them at
-  half of the bound. A message that slips in around a pause is kept, so the bound can be
-  exceeded by a few messages. One oversized message is always admitted.
-- These limits cover the binding's buffer only: not librdkafka's fetch queues, and not messages
-  already handed to JavaScript.
+  half of the bound.
+- The bound is best-effort between the bound and twice the bound: messages already fetched
+  when a pause takes effect are kept. A pause or resume is recorded only for the partitions
+  librdkafka confirmed and is retried every 100 ms for the others. Twice the bound is a hard
+  ceiling, and fifty consecutive failed attempts are a limit too: both end in the terminal
+  `ERR_MANAGED_BACKPRESSURE_FAILURE`, so neither unbounded growth nor a silent stall is
+  possible. One message larger than the byte bound is always admitted.
+- Pause and resume wait on librdkafka's threads without a timeout, so the pump runs them on the
+  blocking pool, not on an async worker. Polling, and therefore rebalance callbacks, wait for
+  that call. `pausePartitions` and `resumePartitions` stay synchronous on the calling thread,
+  as in legacy mode.
+- Under saturation the pump does not poll for up to 100 ms, which delays rebalance callbacks
+  by the same amount.
 - Control records have their own budget, `maxControlRecords` (1024). Exceeding it sets a
   terminal status in the same critical section that clears the identities and buffers, wakes
   the pending receive and makes the consumer leave the group. The status is the notification,
   so it cannot be lost to a full queue. Nothing is overwritten.
+- Commits dispatched or waiting are bounded by `maxPendingCommits` (1024); beyond it
+  `commitManaged` rejects `ERR_MANAGED_COMMIT_BACKLOG` without sending anything.
+- Up to 16 consumption errors are kept for `recvManaged`; further ones are counted and dropped.
+- These limits cover the binding's state only: not librdkafka's fetch queues, and not messages
+  already handed to JavaScript.
 - `ByteBudget` itself is not reused: it makes the producer of bytes wait, and the pump must
   never wait on the application. Only its default and byte accounting are shared.
 
 Rejected alternative, measured: pausing as soon as the buffer filled gave 1.2k msg/s, because
-each resume costs a fetch round trip. With the grace period: 69k msg/s for `recvManaged`
-against 77k msg/s for legacy `recv()` (100,000 messages of 200 bytes, one partition, two runs
-each, peak retained 1024).
+each resume costs a fetch round trip. With the grace period: 69k–70k msg/s for `recvManaged`
+against 78k–85k msg/s for legacy `recv()` (100,000 messages of 200 bytes, one partition, two
+runs each, peak retained 1024).
 
 ### Decision 4 — state query for commit recovery
 
@@ -460,44 +516,73 @@ run below, commits on retained partitions failed with `IllegalGeneration` and
 `RebalanceInProgress` while their identities stayed active, and later commits under the same
 identities were confirmed.
 
+### Lifecycle
+
+- `disconnect()` closes the managed state synchronously in the call. A pending receive resolves
+  `null`, commits still waiting are refused, and a request already sent is neither cancelled
+  nor reported as cancelled: the native close waits for it and its promise gets the broker
+  result, or `ERR_MANAGED_COMMIT_UNKNOWN` if the client closed without one.
+- A consumer that is garbage collected without disconnect closes the state the same way, and
+  the pump ends when its disconnect signal is dropped.
+- After a terminal failure the consumer has left the group; `subscribe` is rejected.
+- The blocking native close never runs on an async worker: the last reference to the client is
+  released to the blocking pool, whichever thread drops it.
+- A legacy consumer holds a single `None` in place of all managed state.
+
 ### Evidence
 
 Commands, from `packages/kafka-crab-js`:
 
 | Suite                           | Command                                                                                       | Result       |
 | ------------------------------- | --------------------------------------------------------------------------------------------- | ------------ |
-| Rust                            | `cargo test`                                                                                  | 36 passed    |
-| Unit                            | `pnpm test`                                                                                   | 80 passed    |
-| Managed, real broker            | `KAFKA_BROKERS=127.0.0.1:29092 node --test js-tests/integration/managed-consumption.test.mjs` | 9 passed     |
+| Rust                            | `cargo test`                                                                                  | 52 passed    |
+| Unit                            | `pnpm test`                                                                                   | 83 passed    |
+| Managed, real broker            | `KAFKA_BROKERS=127.0.0.1:29092 node --test js-tests/integration/managed-consumption.test.mjs` | 11 passed    |
 | Legacy regressions, real broker | same, for `consumer-manual-commit`, `partition-lifecycle` and `consumer`                      | 15, 2 and 11 |
 
 - **Reproductions of the legacy gap.** A lagging `onEvents` receiver loses 72 of 200 rebalance
   events (Rust). With `cooperative-sticky`, a legacy member that lost a partition committed
   offset 41 for it and the broker confirmed it; the managed commit with the revoked identity was
   refused and the committed offset did not move (integration).
-- **Join and leave under traffic**, four partitions, 520–990 messages per run. With
+- **Join and leave under traffic**, four partitions, 700–1,030 messages per run. With
   `cooperative-sticky` retained partitions kept their identity; with `range` every identity
-  changed. A partition that left and returned got a new identity, commits with the old one
-  were refused, and no produced id was missing. Final committed offsets equalled the high
-  watermarks. Replays per run: 0–1.
+  changed. A partition that left and returned got a new identity and commits with the old one
+  were refused. The offsets received under each identity formed one contiguous stream. A new
+  member then restarted from the broker-committed offsets: its first offset on every partition
+  equalled the committed one, no committed offset was beyond processed work and no produced id
+  was missing. Replays per run: 0–1.
+- **Commit in flight across a revocation.** With commits issued continuously without awaiting,
+  each run observed two results (both confirmed) arriving for identities that had already been
+  revoked, 4–9 waiting commits refused as stale, and no missing id after a restart from the
+  committed offsets. The reordering, waiting and regression cases are deterministic in Rust.
+- **Disconnect with a commit in flight.** A receive and two commits were pending at
+  `disconnect()`. The receive resolved `null`, the sent commit was confirmed and visible at the
+  broker, and the waiting one was refused as closed.
 - **Control without consumption.** With `maxBufferedMessages: 16` and 300 messages available,
   the retained count stayed at 16. A second member then joined while the JavaScript thread was
   blocked for 8 s: both native states showed the new assignment, the old identities were
   inactive and 16 retained messages had been released. No id was missing afterwards.
-- **Overflow.** With `maxControlRecords: 1` the second transition failed the consumer; the
-  identities were inactive before any receive, and the other member took every partition.
-- **Legacy memory.** 10,000 simulated rebalances through the real callbacks of a legacy
-  context leave no managed state and at most 128 broadcast events (Rust). This is a structural
-  check, not an RSS measurement.
+- **Overflow and watchdog.** With `maxControlRecords: 1` the second transition failed the
+  consumer; with `maxReceiveIdleMs: 1500` so did 1.5 s without a receive. In both cases the
+  identities were inactive before any receive and the other member took every partition.
+- **Pump loop with injected failures** (Rust, fake client): no poll while saturated, pause only
+  after the grace period, a consumer that keeps up is never paused, an unconfirmed pause is
+  retried, twice the bound and fifty failed resumes are terminal, and dropping the consumer
+  ends the pump and settles a pending receive.
+- **Legacy memory.** After warm-up, 10,000 rebalances through the real callbacks of a legacy
+  context retained less than 4 KiB of heap on the calling thread, measured with a counting
+  allocator; the same calls on a managed context with an unread queue retained over 1 MiB.
+  `getConfig()` of a legacy consumer is unchanged.
 
 ### Not done in the prototype
 
 - Decisions 5 and 6, the joint Flashify matrix (600 messages, six partitions, 4 s control
   delay) and the proxy generation-error scenarios.
-- A commit that is in flight across a revoke and reassign is covered deterministically in Rust
-  only. The real-broker run covers disconnect with an in-flight commit.
-- No deadline for an unresolved commit: a newer identity waits for as long as librdkafka keeps
-  the older request open.
-- Finalization of a managed consumer that is never disconnected was not measured.
+- `lost: true` is covered at the state level only; no real-broker run produced a lost
+  assignment.
+- The in-flight commits observed across a real revocation were all confirmed. A broker
+  rejection of such a request is covered in Rust only.
+- A deadline on `commitManaged` does not free the partition's commit queue: a newer commit
+  waits for as long as librdkafka keeps the older request open.
 - `managed` consumers do not support manual assignment, `seek` or `unsubscribe`.
 - Linux and x86 artifacts, CI, package version and changelog.
