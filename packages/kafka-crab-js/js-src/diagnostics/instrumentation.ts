@@ -255,11 +255,14 @@ export function instrumentConsumerReceive(
 /**
  * Instruments a managed receive (RFC-0017, experimental).
  *
- * Only message records are traced: they publish one receive start/end pair and
- * open one processing span, closed by `record.message.endSpan()`. Assignment
- * transitions, idle results and end-of-stream publish nothing, so control
- * delivery never creates spans. A failed receive publishes a receive pair
- * carrying the error.
+ * Receive events follow `recv()`: the start event is published before waiting,
+ * so subscribers that time from it (the OTEL duration metric) measure the real
+ * wait. Every call publishes one receive start/end pair. The end event carries
+ * the message only for message records; assignment transitions, idle results
+ * and end-of-stream end with `message: null`, like a `recv()` that returns
+ * nothing, so they open no poll or processing span. Only message records open a
+ * processing span, closed by `record.message.endSpan()`. A failed receive ends
+ * the pair with the error.
  */
 export function instrumentManagedReceive(
   originalReceive: (timeoutMs?: number | null) => Promise<ManagedRecord | null>,
@@ -278,10 +281,10 @@ export function instrumentManagedReceive(
 
     const timestamp = Date.now()
     const context: Record<PropertyKey, unknown> = {}
-    const publishReceive = (message: Message | null, error?: Error) => {
-      if (consumerReceiveStartChannel.hasSubscribers) {
-        consumerReceiveStartChannel.publish({ timestamp, groupId, clientId, serverAddress, serverPort, context })
-      }
+    if (consumerReceiveStartChannel.hasSubscribers) {
+      consumerReceiveStartChannel.publish({ timestamp, groupId, clientId, serverAddress, serverPort, context })
+    }
+    const publishReceiveEnd = (message: Message | null, error?: Error) => {
       if (consumerReceiveEndChannel.hasSubscribers) {
         consumerReceiveEndChannel.publish({
           timestamp: Date.now(),
@@ -301,15 +304,16 @@ export function instrumentManagedReceive(
     try {
       record = await originalReceive.call(this, timeoutMs)
     } catch (error) {
-      publishReceive(null, error instanceof Error ? error : new Error(String(error)))
+      publishReceiveEnd(null, error instanceof Error ? error : new Error(String(error)))
       throw error
     }
     if (record?.kind !== 'message') {
+      publishReceiveEnd(null)
       return record
     }
 
     const { message } = record
-    publishReceive(message)
+    publishReceiveEnd(message)
     if (hasProcessSubscribers) {
       const processContext: Record<PropertyKey, unknown> = {}
       const processStartTime = Date.now()

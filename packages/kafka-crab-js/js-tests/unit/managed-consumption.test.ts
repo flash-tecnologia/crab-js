@@ -21,6 +21,9 @@ import {
 
 const UNAVAILABLE_BROKER = '127.0.0.1:1'
 const FIXTURE_TIMEOUT_MS = 10_000
+// Tests that start the mock broker and round-trip commits exceed the default 5 s timeout.
+// Slower CI runners (x86_64 macOS) need the longer budget.
+const BROKER_TEST = { timeout: 30_000 }
 
 const createClient = (brokers = UNAVAILABLE_BROKER, diagnostics = false) =>
   new KafkaClient({ brokers, clientId: `managed-unit-${crypto.randomUUID()}`, diagnostics, logLevel: 'error' })
@@ -268,7 +271,7 @@ test('disconnect resolves the pending recvManaged with null and refuses new mana
   equal(consumer.cancelManagedReceive(), false)
 })
 
-test('managed records are a discriminated sequence that preserves message contents', async () => {
+test('managed records are a discriminated sequence that preserves message contents', BROKER_TEST, async () => {
   const broker = await startMockBroker()
   const topic = `managed-shape-${crypto.randomUUID()}`
   // One key keeps the three messages on one partition of the mock topic.
@@ -335,30 +338,61 @@ test('managed records are a discriminated sequence that preserves message conten
       equal((error as { outcomeUnknown?: boolean }).outcomeUnknown, false)
       return true
     })
+  } finally {
+    await consumer.disconnect()
+    broker.close()
+  }
+})
 
-    // Commits issued without awaiting are dispatched in call order.
+/** Subscribes a managed consumer to a one-message topic and returns its owned partition. */
+async function ownedPartition(prefix: string) {
+  const broker = await startMockBroker()
+  const topic = `${prefix}-${crypto.randomUUID()}`
+  await broker.send(topic, [{ key: 'k', payload: 'one' }])
+  const consumer = managedConsumer(createClient(broker.brokers))
+  await consumer.subscribe(topic)
+  await nextRecord(consumer, 'assign')
+  const record = await nextRecord(consumer, 'message')
+  ok(record.kind === 'message')
+  const close = async () => {
+    await consumer.disconnect()
+    broker.close()
+  }
+  return { broker, close, consumer, topic, partition: record.message.partition, assignment: record.assignment }
+}
+
+test('managed commits issued without awaiting are dispatched in call order', BROKER_TEST, async () => {
+  const { close, consumer, topic, partition, assignment } = await ownedPartition('managed-order')
+  try {
     // An offset below one already authorized is refused, not sent after it.
-    const base = tombstone.offset + 1
-    const ordered = [10, 20, 20].map(async (delta) =>
-      consumer.commitManaged(topic, first.partition, assignment, base + delta),
-    )
+    const ordered = [10, 20, 20].map(async (offset) => consumer.commitManaged(topic, partition, assignment, offset))
     // How many are still unresolved here depends on the broker, not on this test.
     ok(consumer.managedState().pendingCommits <= 3)
-    await rejects(consumer.commitManaged(topic, first.partition, assignment, base + 15), (error) => {
+    await rejects(consumer.commitManaged(topic, partition, assignment, 15), (error) => {
       hasCode(MANAGED_ERROR_CODES.COMMIT_REGRESSION)(error)
       equal((error as { outcomeUnknown?: boolean }).outcomeUnknown, false)
       return true
     })
     await Promise.all(ordered)
     equal(consumer.managedState().pendingCommits, 0)
+    await rejects(
+      consumer.commitManaged(topic, partition, assignment, 1, -1),
+      hasCode(MANAGED_ERROR_CODES.INVALID_ARGUMENT),
+    )
+  } finally {
+    await close()
+  }
+})
 
-    // A deadline only ends the observation. The request stays in flight.
-    // It waits behind fifty commits, far longer than a zero deadline.
-    const ahead = Array.from({ length: 50 }, async (_, index) =>
-      consumer.commitManaged(topic, first.partition, assignment, base + 30 + index),
+test('a managed commit deadline ends only the observation', BROKER_TEST, async () => {
+  const { close, consumer, topic, partition, assignment } = await ownedPartition('managed-deadline')
+  try {
+    // The request waits behind a chain of commits, longer than a zero deadline.
+    const ahead = Array.from({ length: 20 }, async (_, index) =>
+      consumer.commitManaged(topic, partition, assignment, 10 + index),
     )
     // Whether the deadline wins is up to the broker: both outcomes are valid.
-    const deadline: unknown = await consumer.commitManaged(topic, first.partition, assignment, base + 80, 0).then(
+    const deadline: unknown = await consumer.commitManaged(topic, partition, assignment, 40, 0).then(
       () => undefined,
       (error: unknown) => error,
     )
@@ -368,22 +402,17 @@ test('managed records are a discriminated sequence that preserves message conten
     }
     await Promise.all(ahead)
     // The timed-out request was not dropped: it is sent and settles natively.
-    const settleDeadline = Date.now() + 5000
+    const settleDeadline = Date.now() + 10_000
     while (consumer.managedState().pendingCommits > 0 && Date.now() < settleDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
     equal(consumer.managedState().pendingCommits, 0)
-    await rejects(
-      consumer.commitManaged(topic, first.partition, assignment, 1, -1),
-      hasCode(MANAGED_ERROR_CODES.INVALID_ARGUMENT),
-    )
   } finally {
-    await consumer.disconnect()
-    broker.close()
+    await close()
   }
 })
 
-test('managed tracing opens a processing span for message records only', async () => {
+test('managed tracing opens a processing span for message records only', BROKER_TEST, async () => {
   const broker = await startMockBroker()
   const topic = `managed-tracing-${crypto.randomUUID()}`
   await broker.send(topic, [{ payload: 'traced' }])
@@ -398,29 +427,48 @@ test('managed tracing opens a processing span for message records only', async (
   for (const [channel, handler] of subscriptions) {
     channel.subscribe(handler as never)
   }
+  const timings: [string, number][] = []
+  const onStartTiming = () => timings.push(['start', performance.now()])
+  const onEndTiming = () => timings.push(['end', performance.now()])
+  consumerReceiveStartChannel.subscribe(onStartTiming)
+  consumerReceiveEndChannel.subscribe(onEndTiming)
   try {
+    // The start event precedes the wait, so a subscriber timing from it (the
+    // OTEL duration metric) measures the whole wait, as with `recv()`. Before
+    // Subscribing, nothing can arrive, so this receive waits its full timeout.
+    deepEqual(await consumer.recvManaged(50), { kind: 'idle', reason: 'timeout' })
+    const [start, end] = timings
+    ok(start?.[0] === 'start' && end?.[0] === 'end')
+    ok(end[1] - start[1] >= 40, `receive timing covered ${end[1] - start[1]} ms of a 50 ms wait`)
+    deepEqual(events, ['receive:start', 'receive:end:false'])
+
     await consumer.subscribe(topic)
-    deepEqual(await consumer.recvManaged(10), { kind: 'idle', reason: 'timeout' })
     await nextRecord(consumer, 'assign')
-    // Control and idle records publish nothing.
-    deepEqual(events, [])
+    // Control and idle records end their receive pair without a message and open no processing span.
+    ok(events.every((event) => event === 'receive:start' || event === 'receive:end:false'))
+    events.length = 0
 
     const record = await nextRecord(consumer, 'message')
     ok(record.kind === 'message')
-    deepEqual(events, ['receive:start', 'receive:end:true', 'process:start'])
+    // Idle receives may precede the message; it is the last pair.
+    deepEqual(events.slice(-3), ['receive:start', 'receive:end:true', 'process:start'])
+    events.length = 0
     const { endSpan } = record.message as typeof record.message & { endSpan: (error?: Error) => void }
     endSpan()
     endSpan(new Error('ignored second end'))
-    deepEqual(events, ['receive:start', 'receive:end:true', 'process:start', 'process:end:ok'])
+    deepEqual(events, ['process:end:ok'])
 
     // A failed receive is observable and opens no processing span.
+    events.length = 0
     const pending = consumer.recvManaged()
     await rejects(consumer.recvManaged(), hasCode(MANAGED_ERROR_CODES.RECEIVE_PENDING))
-    deepEqual(events.slice(4), ['receive:start', 'receive:end:false'])
+    deepEqual(events, ['receive:start', 'receive:start', 'receive:end:false'])
     consumer.cancelManagedReceive()
     await pending
-    equal(events.length, 6)
+    deepEqual(events, ['receive:start', 'receive:start', 'receive:end:false', 'receive:end:false'])
   } finally {
+    consumerReceiveStartChannel.unsubscribe(onStartTiming)
+    consumerReceiveEndChannel.unsubscribe(onEndTiming)
     for (const [channel, handler] of subscriptions) {
       channel.unsubscribe(handler as never)
     }
@@ -429,7 +477,7 @@ test('managed tracing opens a processing span for message records only', async (
   }
 })
 
-test('pending commits are bounded by maxPendingCommits', async () => {
+test('pending commits are bounded by maxPendingCommits', BROKER_TEST, async () => {
   const broker = await startMockBroker()
   const topic = `managed-backlog-${crypto.randomUUID()}`
   await broker.send(topic, [{ key: 'k', payload: 'one' }])
